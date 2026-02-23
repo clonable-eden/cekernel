@@ -1,0 +1,22 @@
+{
+  "name": "clonable-eden-glimmer",
+  "owner": {
+    "name": "clonable-eden"
+  },
+  "metadata": {
+    "description": "clonable-eden の実験的プラグイン群。アイデアの火種を温める場所。"
+  },
+  "plugins": [
+    {
+      "name": "kernel",
+      "source": "./kernel",
+      "description": "Claude Code 並列エージェント基盤。OS のプロセスモデルに倣い、issue を独立した Worker に分配・監視・回収する。",
+      "version": "0.1.0",
+      "author": {
+        "name": "clonable-eden"
+      },
+      "keywords": ["parallel", "worktree", "orchestrator", "worker", "ipc"],
+      "category": "workflow"
+    }
+  ]
+}
