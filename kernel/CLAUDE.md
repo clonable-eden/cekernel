@@ -117,7 +117,7 @@ BASE_BRANCH="${2:-main}"
 ```yaml
 name: <agent-name>
 description: <description>
-allowed-tools: Read, Edit, Write, Bash(git *), Bash(gh *), Bash(bash *)
+allowed-tools: Read, Edit, Write, Bash
 ```
 
 ### 権限の分離
