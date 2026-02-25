@@ -49,6 +49,7 @@ echo "  Test 1: stale worktree + branch cleanup"
 
   # worktree と branch が存在することを確認
   assert_dir_exists "Stale worktree exists before cleanup" "$WORKTREE"
+  assert_file_exists "Stale worktree has .git file" "${WORKTREE}/.git"
 
   # cleanup_stale_worktree を実行
   source_cleanup_stale

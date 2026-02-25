@@ -87,9 +87,33 @@ LOG_DIR="${SESSION_IPC_DIR}/logs"
 mkdir -p "$LOG_DIR"
 LOG_FILE="${LOG_DIR}/worker-${ISSUE_NUMBER}.log"
 
+# ── Stale worktree/branch cleanup (retry safety) ──
+# 前回の spawn 失敗 + 不完全な rollback で worktree や branch が残っている場合、
+# 再作成前にクリーンアップする。
+cleanup_stale_worktree() {
+  local worktree="$1" branch="$2"
+  # git worktree として登録されている場合（.git ファイルが worktree 参照を持つ）
+  if [[ -f "${worktree}/.git" ]]; then
+    echo "Warning: stale worktree found at ${worktree}, removing..." >&2
+    git worktree remove --force "$worktree" 2>/dev/null || true
+  fi
+  # git worktree list に登録されていないが、ディレクトリだけ残っている場合
+  if [[ -d "$worktree" ]]; then
+    echo "Warning: orphaned worktree directory found at ${worktree}, removing..." >&2
+    rm -rf "$worktree"
+    git worktree prune 2>/dev/null || true
+  fi
+  # stale branch を削除
+  if git rev-parse --verify "$branch" >/dev/null 2>&1; then
+    echo "Warning: stale branch found: ${branch}, deleting..." >&2
+    git branch -D "$branch" 2>/dev/null || true
+  fi
+}
+
 # ── Worktree 作成 ──
 mkdir -p "$WORKTREE_DIR"
 git fetch origin "${BASE_BRANCH}" --quiet
+cleanup_stale_worktree "$WORKTREE" "$BRANCH"
 git worktree add -b "$BRANCH" "$WORKTREE" "origin/${BASE_BRANCH}"
 
 # ── Trust 登録（Worker が trust プロンプトなしで起動できるように） ──
@@ -118,7 +142,8 @@ MAIN_PANE=$(wezterm cli spawn --new-window "${WORKSPACE_ARGS[@]}" --cwd "$WORKTR
 
 # Pane ID を保存（health-check / cleanup --force で使用）
 echo "$MAIN_PANE" > "${SESSION_IPC_DIR}/pane-${ISSUE_NUMBER}"
-wezterm cli send-text --pane-id "$MAIN_PANE" -- "export SESSION_ID='${SESSION_ID}'"
+# WezTerm の --cwd が確実に反映されないケースに備え、明示的に cd する
+wezterm cli send-text --pane-id "$MAIN_PANE" -- "cd '${WORKTREE}' && export SESSION_ID='${SESSION_ID}'"
 wezterm cli send-text --pane-id "$MAIN_PANE" --no-paste $'\r'
 
 # 下部: auto-refresh git log
