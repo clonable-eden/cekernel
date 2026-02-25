@@ -11,7 +11,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/session-id.sh"
+source "${SCRIPT_DIR}/../shared/session-id.sh"
 
 if [[ ! -d "$SESSION_IPC_DIR" ]]; then
   echo "No active session: ${SESSION_IPC_DIR}" >&2

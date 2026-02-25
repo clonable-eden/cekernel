@@ -6,16 +6,16 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/helpers.sh"
+source "${SCRIPT_DIR}/../helpers.sh"
 
-KERNEL_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+KERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 echo "test: rollback"
 
 # テスト用セッション
 export SESSION_ID="test-rollback-00000001"
-source "${KERNEL_DIR}/scripts/session-id.sh"
-source "${KERNEL_DIR}/scripts/claude-json-helper.sh"
+source "${KERNEL_DIR}/scripts/shared/session-id.sh"
+source "${KERNEL_DIR}/scripts/shared/claude-json-helper.sh"
 
 # ── テスト用の一時 Git リポジトリを作成 ──
 TEST_TMP=$(mktemp -d)
@@ -42,7 +42,7 @@ export -f wezterm
 source_rollback() {
   # spawn-worker.sh から rollback 関数だけを抽出
   # これは spawn-worker.sh の rollback() と同一であることを前提とする
-  local script="${KERNEL_DIR}/scripts/spawn-worker.sh"
+  local script="${KERNEL_DIR}/scripts/orchestrator/spawn-worker.sh"
   # rollback 関数を抽出して eval する
   local func_body
   func_body=$(sed -n '/^rollback()/,/^}/p' "$script")

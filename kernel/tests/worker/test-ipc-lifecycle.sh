@@ -3,15 +3,15 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/helpers.sh"
+source "${SCRIPT_DIR}/../helpers.sh"
 
-KERNEL_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+KERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 echo "test: ipc-lifecycle (session-scoped)"
 
 # テスト用セッション
 export SESSION_ID="test-lifecycle-00000001"
-source "${KERNEL_DIR}/scripts/session-id.sh"
+source "${KERNEL_DIR}/scripts/shared/session-id.sh"
 
 # セットアップ: セッションディレクトリと FIFO を作成
 ISSUE_NUMBER=42
@@ -28,7 +28,7 @@ RESULT_FILE=$(mktemp)
 READER_PID=$!
 
 # notify-complete.sh で書き込み
-bash "${KERNEL_DIR}/scripts/notify-complete.sh" "$ISSUE_NUMBER" merged 99
+bash "${KERNEL_DIR}/scripts/worker/notify-complete.sh" "$ISSUE_NUMBER" merged 99
 
 # 読み取り完了を待機
 wait "$READER_PID" || true

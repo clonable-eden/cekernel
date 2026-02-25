@@ -8,8 +8,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/session-id.sh"
-source "${SCRIPT_DIR}/claude-json-helper.sh"
+source "${SCRIPT_DIR}/../shared/session-id.sh"
+source "${SCRIPT_DIR}/../shared/claude-json-helper.sh"
 
 # ── オプションパース（後方互換: --force を受け入れるが動作は同一） ──
 while [[ $# -gt 0 ]]; do

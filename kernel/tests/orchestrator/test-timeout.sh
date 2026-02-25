@@ -3,14 +3,14 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/helpers.sh"
+source "${SCRIPT_DIR}/../helpers.sh"
 
-KERNEL_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+KERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 echo "test: timeout"
 
 export SESSION_ID="test-timeout-00000001"
-source "${KERNEL_DIR}/scripts/session-id.sh"
+source "${KERNEL_DIR}/scripts/shared/session-id.sh"
 
 ISSUE=99
 
@@ -28,7 +28,7 @@ RESULT_FILE=$(mktemp)
 
 # 2秒タイムアウトで watch-workers を起動（Writer は書き込まない）
 KERNEL_WORKER_TIMEOUT=2 \
-  bash "${KERNEL_DIR}/scripts/watch-workers.sh" "$ISSUE" > "$RESULT_FILE" 2>/dev/null &
+  bash "${KERNEL_DIR}/scripts/orchestrator/watch-workers.sh" "$ISSUE" > "$RESULT_FILE" 2>/dev/null &
 WATCH_PID=$!
 
 # 完了をポーリング（最大 10 秒）
@@ -59,7 +59,7 @@ mkfifo "${SESSION_IPC_DIR}/worker-${ISSUE}"
 RESULT_FILE=$(mktemp)
 
 KERNEL_WORKER_TIMEOUT=10 \
-  bash "${KERNEL_DIR}/scripts/watch-workers.sh" "$ISSUE" > "$RESULT_FILE" 2>/dev/null &
+  bash "${KERNEL_DIR}/scripts/orchestrator/watch-workers.sh" "$ISSUE" > "$RESULT_FILE" 2>/dev/null &
 WATCH_PID=$!
 
 # watch-workers が FIFO を開くのを待つ

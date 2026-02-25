@@ -6,10 +6,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/helpers.sh"
+source "${SCRIPT_DIR}/../helpers.sh"
 
-KERNEL_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-SCRIPTS_DIR="${KERNEL_DIR}/scripts"
+KERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+SCRIPTS_DIR="${KERNEL_DIR}/scripts/orchestrator"
 
 echo "test: plugin-root-fallback"
 
@@ -23,13 +23,13 @@ RESULT=$(
   bash -c "
     set -euo pipefail
     SCRIPT_DIR='${SCRIPTS_DIR}'
-    source \"\${SCRIPT_DIR}/session-id.sh\"
+    source \"\${SCRIPT_DIR}/../shared/session-id.sh\"
     # この行が spawn-worker.sh に存在するかテスト
-    CLAUDE_PLUGIN_ROOT=\"\${CLAUDE_PLUGIN_ROOT:-\$(cd \"\${SCRIPT_DIR}/..\" && pwd)}\"
+    CLAUDE_PLUGIN_ROOT=\"\${CLAUDE_PLUGIN_ROOT:-\$(cd \"\${SCRIPT_DIR}/../..\" && pwd)}\"
     echo \"\$CLAUDE_PLUGIN_ROOT\"
   "
 )
-assert_eq "Fallback derives CLAUDE_PLUGIN_ROOT from SCRIPT_DIR/.." "$KERNEL_DIR" "$RESULT"
+assert_eq "Fallback derives CLAUDE_PLUGIN_ROOT from SCRIPT_DIR/../.." "$KERNEL_DIR" "$RESULT"
 
 # ── Test 2: CLAUDE_PLUGIN_ROOT が既に設定されていれば上書きしない ──
 RESULT=$(
@@ -37,8 +37,8 @@ RESULT=$(
   bash -c "
     set -euo pipefail
     SCRIPT_DIR='${SCRIPTS_DIR}'
-    source \"\${SCRIPT_DIR}/session-id.sh\"
-    CLAUDE_PLUGIN_ROOT=\"\${CLAUDE_PLUGIN_ROOT:-\$(cd \"\${SCRIPT_DIR}/..\" && pwd)}\"
+    source \"\${SCRIPT_DIR}/../shared/session-id.sh\"
+    CLAUDE_PLUGIN_ROOT=\"\${CLAUDE_PLUGIN_ROOT:-\$(cd \"\${SCRIPT_DIR}/../..\" && pwd)}\"
     echo \"\$CLAUDE_PLUGIN_ROOT\"
   "
 )

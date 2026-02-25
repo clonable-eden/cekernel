@@ -3,14 +3,14 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/helpers.sh"
+source "${SCRIPT_DIR}/../helpers.sh"
 
-KERNEL_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+KERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 echo "test: watch-workers (session-scoped)"
 
 export SESSION_ID="test-watch-00000001"
-source "${KERNEL_DIR}/scripts/session-id.sh"
+source "${KERNEL_DIR}/scripts/shared/session-id.sh"
 
 ISSUES=(20 21)
 
@@ -32,7 +32,7 @@ done
 RESULT_FILE=$(mktemp)
 
 # バックグラウンドで watch-workers を起動
-bash "${KERNEL_DIR}/scripts/watch-workers.sh" "${ISSUES[@]}" > "$RESULT_FILE" 2>/dev/null &
+bash "${KERNEL_DIR}/scripts/orchestrator/watch-workers.sh" "${ISSUES[@]}" > "$RESULT_FILE" 2>/dev/null &
 WATCH_PID=$!
 
 # watch-workers が FIFO を開くのを待つ
