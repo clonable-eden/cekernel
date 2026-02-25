@@ -16,6 +16,16 @@ tools: Read, Edit, Write, Bash
 4. 完了の監視（named pipe 経由）
 5. worktree のクリーンアップ
 
+## Issue トリアージ
+
+各 issue について `gh issue view` で内容を確認し、以下を検証する:
+
+1. **要件の明確さ**: 何を変更すべきか具体的に記述されているか
+2. **スコープ**: 実装範囲が特定できるか
+3. **依存関係**: 他の issue に依存していないか
+
+要件が曖昧または不十分な場合は、即座に FAIL し理由を返す。ユーザーが issue を修正してから再実行する想定。
+
 ## ワークフロー
 
 ### SESSION_ID の管理
@@ -139,7 +149,7 @@ kernel が Worker に対して定義するのはライフサイクル（PR → C
 - ブランチ命名規則
 
 spawn-worker.sh は `claude --agent kernel:worker` で Worker を起動する。
-`--agent` フラグにより Worker エージェント定義の `allowed-tools` が適用され、
+`--agent` フラグにより Worker エージェント定義の `tools` が適用され、
 パーミッションプロンプトなしで自律実行できる。
 
 spawn-worker.sh はデフォルトのブランチ名を生成するが、
