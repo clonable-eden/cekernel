@@ -116,21 +116,22 @@ export KERNEL_MAX_WORKERS=5
 
 ## Worker Permissions
 
-Worker / Orchestrator のエージェント定義には `allowed-tools` が設定されており、
-パーミッションプロンプトなしで以下のツールを使用できる:
+Worker / Orchestrator のエージェント定義には `tools` が設定されており、
+以下のツールを使用できる:
 
 | Tool | 用途 |
 |------|------|
 | `Read` | ファイル読み取り |
 | `Edit` | ファイル編集 |
 | `Write` | ファイル書き込み |
-| `Bash(git *)` | git 操作 |
-| `Bash(gh *)` | GitHub CLI（PR 作成、CI 確認、merge） |
-| `Bash(bash *)` | シェルスクリプト実行 |
+| `Bash` | git, gh, シェルスクリプト等すべての Bash コマンド |
 
 `spawn-worker.sh` は `claude --agent kernel:worker` で Worker を起動する。
-`--agent` フラグによりエージェント定義の `allowed-tools` が自動適用され、
-Worker は人手の介入なしに自律的にライフサイクルを完遂できる。
+`--agent` フラグによりエージェント定義の `tools` が自動適用される。
+
+なお、エージェントとスキルでは frontmatter のキー名が異なる:
+- **エージェント** (`agents/*.md`): `tools`
+- **スキル** (`skills/*/SKILL.md`): `allowed-tools`
 
 ## TDD Workflow
 
