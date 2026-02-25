@@ -1,15 +1,42 @@
 #!/usr/bin/env bash
 # cleanup-worktree.sh — Worktree + branch 削除
 #
-# Usage: cleanup-worktree.sh <issue-number>
+# Usage: cleanup-worktree.sh [--force] <issue-number>
+#
+# --force: Worker プロセスと WezTerm pane を強制終了してからクリーンアップ
+#          （kill -9 / SIGKILL 相当）
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/session-id.sh"
 
-ISSUE_NUMBER="${1:?Usage: cleanup-worktree.sh <issue-number>}"
+# ── オプションパース ──
+FORCE=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --force) FORCE=1; shift ;;
+    *) break ;;
+  esac
+done
+
+ISSUE_NUMBER="${1:?Usage: cleanup-worktree.sh [--force] <issue-number>}"
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 WORKTREE_DIR="${REPO_ROOT}/.worktrees"
+
+# ── --force: Worker プロセスを強制終了 ──
+if [[ "$FORCE" -eq 1 ]]; then
+  PANE_FILE="${SESSION_IPC_DIR}/pane-${ISSUE_NUMBER}"
+
+  # WezTerm pane を kill
+  if [[ -f "$PANE_FILE" ]]; then
+    PANE_ID=$(cat "$PANE_FILE")
+    if command -v wezterm >/dev/null 2>&1; then
+      wezterm cli kill-pane --pane-id "$PANE_ID" 2>/dev/null && \
+        echo "Killed WezTerm pane: ${PANE_ID}" >&2 || true
+    fi
+    rm -f "$PANE_FILE"
+  fi
+fi
 
 # issue 番号に一致する worktree を検索
 WORKTREE=$(git worktree list --porcelain \
@@ -37,6 +64,8 @@ fi
 
 # FIFO クリーンアップ（セッションスコープ）
 rm -f "${SESSION_IPC_DIR}/worker-${ISSUE_NUMBER}"
+# Pane ID ファイルのクリーンアップ
+rm -f "${SESSION_IPC_DIR}/pane-${ISSUE_NUMBER}"
 
 # ログファイル クリーンアップ
 rm -f "${SESSION_IPC_DIR}/logs/worker-${ISSUE_NUMBER}.log"

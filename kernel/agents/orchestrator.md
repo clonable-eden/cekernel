@@ -46,10 +46,66 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/spawn-worker.sh 6
 ${CLAUDE_PLUGIN_ROOT}/scripts/watch-workers.sh 4 5 6
 ```
 
+## スケジューリング
+
+### 同時実行数の制限
+
+`GLIMMER_MAX_WORKERS` 環境変数（デフォルト: 3）で同時 Worker 数を制限する。
+`spawn-worker.sh` はセッション内のアクティブ FIFO 数をカウントし、上限到達時に exit 2 を返す。
+
+```bash
+# 例: 最大 5 Worker に設定
+export GLIMMER_MAX_WORKERS=5
+```
+
+### キューイングルール
+
+issue 数が `GLIMMER_MAX_WORKERS` を超える場合、Orchestrator は以下の手順でスケジューリングする:
+
+1. 先頭 `MAX_WORKERS` 件の独立した issue を同時起動
+2. `watch-workers.sh` でいずれかの Worker 完了を検知
+3. 完了した Worker のクリーンアップ後、キュー内の次の issue を起動
+4. 全 issue が完了するまで 2–3 を繰り返す
+
+```bash
+# キューイング付き並列処理の例
+ISSUES=(4 5 6 7 8 9)
+BATCH=()
+
+for issue in "${ISSUES[@]}"; do
+  ${CLAUDE_PLUGIN_ROOT}/scripts/spawn-worker.sh "$issue"
+  if [[ $? -eq 2 ]]; then
+    # 上限到達 — 先行 Worker の完了を待つ
+    ${CLAUDE_PLUGIN_ROOT}/scripts/watch-workers.sh "${BATCH[@]}"
+    for done_issue in "${BATCH[@]}"; do
+      ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-worktree.sh "$done_issue"
+    done
+    BATCH=()
+    ${CLAUDE_PLUGIN_ROOT}/scripts/spawn-worker.sh "$issue"
+  fi
+  BATCH+=("$issue")
+done
+
+# 残りの Worker を監視
+[[ ${#BATCH[@]} -gt 0 ]] && ${CLAUDE_PLUGIN_ROOT}/scripts/watch-workers.sh "${BATCH[@]}"
+```
+
+### Worker 状態の確認
+
+`worker-status.sh` でセッション内の稼働中 Worker を確認できる。
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/worker-status.sh
+# 出力例 (JSON Lines):
+# {"issue":4,"worktree":"/path/.worktrees/issue/4-...","fifo":"/tmp/glimmer-ipc/.../worker-4","uptime":"12m"}
+# {"issue":5,"worktree":"/path/.worktrees/issue/5-...","fifo":"/tmp/glimmer-ipc/.../worker-5","uptime":"8m"}
+```
+
 ## 判断基準
 
-- 依存関係のない issue は並列処理
+- 依存関係のない issue は並列処理（`GLIMMER_MAX_WORKERS` の範囲内）
 - 依存関係のある issue は直列処理（先行 issue の完了を待つ）
+- `GLIMMER_MAX_WORKERS` を超える場合はキューイング（先行完了を待って次を起動）
 - Worker 失敗時: PR の状態を確認し、再試行 or エスカレーション
 
 ## Worker と対象リポジトリの関係
@@ -86,8 +142,52 @@ stat -c %Y "${SESSION_IPC_DIR}/logs/worker-4.log"  # Linux
 
 ログが長時間更新されない Worker はハング候補として調査する。
 
+## タイムアウトとゾンビ管理
+
+### タイムアウト（SIGALRM 相当）
+
+`watch-workers.sh` は環境変数 `GLIMMER_WORKER_TIMEOUT` でタイムアウトを制御する（デフォルト: 3600秒 = 1時間）。
+
+```bash
+# タイムアウトを30分に設定
+export GLIMMER_WORKER_TIMEOUT=1800
+${CLAUDE_PLUGIN_ROOT}/scripts/watch-workers.sh 4 5 6
+```
+
+タイムアウト時、以下の JSON が返る:
+
+```json
+{"issue":4,"status":"timeout","detail":"No response within 1800s"}
+```
+
+### ゾンビ検知（waitpid + WNOHANG 相当）
+
+```bash
+# 特定 Worker の状態を確認
+${CLAUDE_PLUGIN_ROOT}/scripts/health-check.sh 4
+
+# セッション内の全 Worker を検査
+${CLAUDE_PLUGIN_ROOT}/scripts/health-check.sh
+```
+
+### 強制クリーンアップ（SIGKILL 相当）
+
+```bash
+# --force: WezTerm pane を kill してから worktree を削除
+${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-worktree.sh --force 4
+```
+
+### OS アナロジー
+
+| Unix Concept | Kernel Implementation |
+|---|---|
+| `SIGALRM` / watchdog | `GLIMMER_WORKER_TIMEOUT` |
+| `kill -9` (SIGKILL) | `cleanup-worktree.sh --force` |
+| zombie reaping (`waitpid` + `WNOHANG`) | `health-check.sh` |
+
 ## エラーハンドリング
 
-- Worker が応答しない: ログの最終更新時刻を確認し、WezTerm ウィンドウの状態を確認
+- Worker が応答しない: ログの最終更新時刻を確認し、`health-check.sh` でゾンビ検知 → `cleanup-worktree.sh --force` で強制終了
 - merge コンフリクト: Worker が自力で解決を試みる。不可能な場合は FIFO にエラー通知
 - CI 失敗: Worker が修正を試みる。3 回失敗で人間にエスカレーション
+- タイムアウト: `watch-workers.sh` が自動で検知し、`timeout` ステータスを返す

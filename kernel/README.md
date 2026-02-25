@@ -35,6 +35,10 @@ Orchestrator (agent1)              Worker (agent2, 3, 4, ...)
 | `syslog` | ライフサイクルイベントのログ書き込み |
 | `tail -f` / `journalctl` | `watch-logs.sh` |
 | log rotation | `cleanup-worktree.sh` でログも削除 |
+| `ulimit -u` (max processes) | `GLIMMER_MAX_WORKERS` |
+| `ps aux` | `worker-status.sh` |
+| process scheduler | Orchestrator のキューイングロジック |
+| semaphore | FIFO 数による concurrency guard |
 
 ## Structure
 
@@ -50,7 +54,8 @@ kernel/
       SKILL.md               # /kernel:orchestrate スキル
   scripts/
     session-id.sh            # セッション ID 生成 + IPC ディレクトリ導出
-    spawn-worker.sh          # worktree作成 + WezTermウィンドウ起動
+    spawn-worker.sh          # worktree作成 + WezTermウィンドウ起動（concurrency guard 付き）
+    worker-status.sh         # 稼働中 Worker の一覧表示
     notify-complete.sh       # Worker → Orchestrator 完了通知
     watch-workers.sh         # 複数Workerの完了を並列監視
     watch-logs.sh            # Workerログのリアルタイム監視
@@ -81,10 +86,14 @@ Claude Code のプラグインマーケットプレイスから導入する:
 
 # または直接スクリプトを実行
 kernel/scripts/spawn-worker.sh 4        # issue #4 の Worker 起動
+kernel/scripts/worker-status.sh         # 稼働中 Worker の一覧
 kernel/scripts/watch-workers.sh 4 5 6   # 並列監視
 kernel/scripts/watch-logs.sh             # 全 Worker のログ監視
 kernel/scripts/watch-logs.sh 4           # 特定 Worker のログ監視
 kernel/scripts/cleanup-worktree.sh 4    # 後片付け
+
+# 同時実行数を変更（デフォルト: 3）
+export GLIMMER_MAX_WORKERS=5
 ```
 
 ## Constraint: 権限の分離
@@ -142,6 +151,24 @@ kernel/scripts/watch-logs.sh 4           # 特定 Worker
 - **作成**: `spawn-worker.sh` が Worker 起動時に作成
 - **書き込み**: `spawn-worker.sh`（SPAWN）、`notify-complete.sh`（COMPLETE/FAILED）
 - **削除**: `cleanup-worktree.sh` が worktree クリーンアップ時に削除
+
+## Resource Governance
+
+### 同時実行数制限
+
+`GLIMMER_MAX_WORKERS` 環境変数で同時 Worker 数を制限する（デフォルト: 3）。
+`spawn-worker.sh` はセッション内のアクティブ FIFO 数をカウントし、上限に達している場合 exit 2 を返す。
+Orchestrator はこの exit code を受けてキューイングを行う。
+
+### Worker Status
+
+`worker-status.sh` でセッション内の稼働中 Worker を JSON Lines 形式で確認できる:
+
+```bash
+kernel/scripts/worker-status.sh
+# {"issue":4,"worktree":"/path/.worktrees/issue/4-...","fifo":"/tmp/glimmer-ipc/.../worker-4","uptime":"12m"}
+```
+
 
 ## IPC: Named Pipe
 
