@@ -1,21 +1,20 @@
 #!/usr/bin/env bash
-# cleanup-worktree.sh — Worktree + branch 削除
+# cleanup-worktree.sh — Worktree + branch + WezTerm pane 削除
 #
 # Usage: cleanup-worktree.sh [--force] <issue-number>
 #
-# --force: Worker プロセスと WezTerm pane を強制終了してからクリーンアップ
-#          （kill -9 / SIGKILL 相当）
+# WezTerm pane は常に閉じる（Worker 完了後の残存ウィンドウ対策）。
+# --force は後方互換のため残しているが、現在は通常モードと同じ動作。
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/session-id.sh"
 source "${SCRIPT_DIR}/claude-json-helper.sh"
 
-# ── オプションパース ──
-FORCE=0
+# ── オプションパース（後方互換: --force を受け入れるが動作は同一） ──
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --force) FORCE=1; shift ;;
+    --force) shift ;;
     *) break ;;
   esac
 done
