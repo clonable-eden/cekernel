@@ -165,7 +165,7 @@ wezterm cli split-pane \
 # 2. ライフサイクル（PR → CI → merge → notify）のみ kernel のプロトコルに従う
 # 3. 実装・規約は対象リポジトリに完全に従う
 PROMPT="issue #${ISSUE_NUMBER} を解決してください。まず対象リポジトリの CLAUDE.md を読み、その規約に完全に従ってください。ライフサイクルのみ kernel の Worker Protocol に従います: 実装 → PR作成 → CI確認 → merge。完了したら ${CLAUDE_PLUGIN_ROOT}/scripts/notify-complete.sh ${ISSUE_NUMBER} merged <pr-number> を実行してください。"
-wezterm cli send-text --pane-id "$MAIN_PANE" -- "claude --agent kernel:worker '${PROMPT}'"
+wezterm cli send-text --pane-id "$MAIN_PANE" -- "claude --agent kernel:worker --allowedTools 'Bash' 'Edit' 'Write' 'Read' '${PROMPT}'"
 wezterm cli send-text --pane-id "$MAIN_PANE" --no-paste $'\r'
 
 # ── ライフサイクルイベントをログに記録 ──
