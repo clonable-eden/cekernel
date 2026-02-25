@@ -18,33 +18,49 @@ allowed-tools: Read, Edit, Write, Bash
 
 ## ワークフロー
 
+### SESSION_ID の管理
+
+Bash ツールの各呼び出しは独立したシェルで実行されるため、`SESSION_ID` は自動的には共有されない。
+ワークフロー開始時に `session-id.sh` を source して SESSION_ID を生成し、以降の全コマンドで明示的に渡す:
+
+```bash
+# 1. SESSION_ID を生成（session-id.sh に一元化された生成ロジックを使う）
+source ${CLAUDE_PLUGIN_ROOT}/scripts/session-id.sh && echo $SESSION_ID
+# => glimmer-7861a821
+
+# 2. 以降の全コマンドで SESSION_ID を環境変数として渡す
+export SESSION_ID=glimmer-7861a821 && ${CLAUDE_PLUGIN_ROOT}/scripts/spawn-worker.sh 4
+export SESSION_ID=glimmer-7861a821 && ${CLAUDE_PLUGIN_ROOT}/scripts/watch-workers.sh 4
+export SESSION_ID=glimmer-7861a821 && ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-worktree.sh 4
+```
+
 ### 単一 issue 処理
 
 ```bash
-# SESSION_ID は session-id.sh が自動生成（同一セッション内で共有される）
+# SESSION_ID は事前に生成済み
 
-# 1. Worker を起動（worktree 作成 + ウィンドウ起動）
-FIFO=$(${CLAUDE_PLUGIN_ROOT}/scripts/spawn-worker.sh 4)
+# 1. Worker を起動
+export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/spawn-worker.sh 4
 
-# 2. 完了を待機（ブロッキング）
-RESULT=$(cat "$FIFO")
+# 2. 完了を待機
+export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/watch-workers.sh 4
 
 # 3. クリーンアップ
-${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-worktree.sh 4
+export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-worktree.sh 4
 ```
 
 ### 複数 issue 並列処理
 
 ```bash
-# 全スクリプトが同一 SESSION_ID を共有（環境変数で自動伝播）
+# SESSION_ID は事前に生成済み
 
 # 複数 Worker を同時起動
-${CLAUDE_PLUGIN_ROOT}/scripts/spawn-worker.sh 4
-${CLAUDE_PLUGIN_ROOT}/scripts/spawn-worker.sh 5
-${CLAUDE_PLUGIN_ROOT}/scripts/spawn-worker.sh 6
+export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/spawn-worker.sh 4
+export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/spawn-worker.sh 5
+export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/spawn-worker.sh 6
 
 # 全 Worker の完了を並列監視
-${CLAUDE_PLUGIN_ROOT}/scripts/watch-workers.sh 4 5 6
+export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/watch-workers.sh 4 5 6
 ```
 
 ## スケジューリング
