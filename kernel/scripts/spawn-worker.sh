@@ -3,6 +3,10 @@
 #
 # Usage: spawn-worker.sh <issue-number> [base-branch]
 # Output: FIFO path (stdout last line)
+# Exit codes:
+#   0 — Worker 起動成功
+#   1 — 一般エラー
+#   2 — 同時実行数上限到達 (GLIMMER_MAX_WORKERS)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,6 +15,20 @@ source "${SCRIPT_DIR}/session-id.sh"
 ISSUE_NUMBER="${1:?Usage: spawn-worker.sh <issue-number> [base-branch]}"
 BASE_BRANCH="${2:-main}"
 REPO_ROOT="$(git rev-parse --show-toplevel)"
+
+# ── Concurrency Guard ──
+MAX_WORKERS="${GLIMMER_MAX_WORKERS:-3}"
+
+active_worker_count() {
+  find "$SESSION_IPC_DIR" -maxdepth 1 -name 'worker-*' -type p 2>/dev/null | wc -l | tr -d ' '
+}
+
+mkdir -p "$SESSION_IPC_DIR"
+ACTIVE=$(active_worker_count)
+if [[ "$ACTIVE" -ge "$MAX_WORKERS" ]]; then
+  echo "Error: max workers ($MAX_WORKERS) reached (active: $ACTIVE). Waiting..." >&2
+  exit 2
+fi
 
 # ── Issue 情報取得 ──
 ISSUE_TITLE=$(gh issue view "$ISSUE_NUMBER" --json title -q '.title')
