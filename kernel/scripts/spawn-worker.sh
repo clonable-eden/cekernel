@@ -5,6 +5,9 @@
 # Output: FIFO path (stdout last line)
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/session-id.sh"
+
 ISSUE_NUMBER="${1:?Usage: spawn-worker.sh <issue-number> [base-branch]}"
 BASE_BRANCH="${2:-main}"
 REPO_ROOT="$(git rev-parse --show-toplevel)"
@@ -26,9 +29,8 @@ WORKTREE_DIR="${REPO_ROOT}/.worktrees"
 WORKTREE="${WORKTREE_DIR}/${BRANCH}"
 
 # ── FIFO (named pipe) 作成 ──
-FIFO_DIR="/tmp/glimmer-ipc"
-mkdir -p "$FIFO_DIR"
-FIFO="${FIFO_DIR}/worker-${ISSUE_NUMBER}"
+mkdir -p "$SESSION_IPC_DIR"
+FIFO="${SESSION_IPC_DIR}/worker-${ISSUE_NUMBER}"
 [[ -p "$FIFO" ]] || mkfifo "$FIFO"
 
 # ── Worktree 作成 ──
@@ -48,7 +50,10 @@ echo "branch:   $BRANCH" >&2
 #   │  git log (25%)          │
 #   └─────────────────────────┘
 
+# Worker に SESSION_ID を伝播
 MAIN_PANE=$(wezterm cli spawn --new-window --cwd "$WORKTREE")
+wezterm cli send-text --pane-id "$MAIN_PANE" -- "export SESSION_ID='${SESSION_ID}'"
+wezterm cli send-text --pane-id "$MAIN_PANE" --no-paste $'\r'
 
 # 下部: auto-refresh git log
 wezterm cli split-pane \
@@ -72,6 +77,7 @@ PROMPT="issue #${ISSUE_NUMBER} を解決してください。まず対象リポ�
 wezterm cli send-text --pane-id "$MAIN_PANE" -- "claude '${PROMPT}'"
 wezterm cli send-text --pane-id "$MAIN_PANE" --no-paste $'\r'
 
+echo "session: $SESSION_ID" >&2
 echo "worker spawned: issue #${ISSUE_NUMBER}" >&2
 
 # FIFO パスを返す（orchestrator が読み取りに使う）
