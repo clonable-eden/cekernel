@@ -1,21 +1,20 @@
 #!/usr/bin/env bash
-# cleanup-worktree.sh — Worktree + branch 削除
+# cleanup-worktree.sh — Worktree + branch + WezTerm pane 削除
 #
 # Usage: cleanup-worktree.sh [--force] <issue-number>
 #
-# --force: Worker プロセスと WezTerm pane を強制終了してからクリーンアップ
-#          （kill -9 / SIGKILL 相当）
+# WezTerm pane は常に閉じる（Worker 完了後の残存ウィンドウ対策）。
+# --force は後方互換のため残しているが、現在は通常モードと同じ動作。
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/session-id.sh"
 source "${SCRIPT_DIR}/claude-json-helper.sh"
 
-# ── オプションパース ──
-FORCE=0
+# ── オプションパース（後方互換: --force を受け入れるが動作は同一） ──
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --force) FORCE=1; shift ;;
+    --force) shift ;;
     *) break ;;
   esac
 done
@@ -24,19 +23,19 @@ ISSUE_NUMBER="${1:?Usage: cleanup-worktree.sh [--force] <issue-number>}"
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 WORKTREE_DIR="${REPO_ROOT}/.worktrees"
 
-# ── --force: Worker プロセスを強制終了 ──
-if [[ "$FORCE" -eq 1 ]]; then
-  PANE_FILE="${SESSION_IPC_DIR}/pane-${ISSUE_NUMBER}"
+# ── WezTerm pane を閉じる ──
+# --force: Worker プロセス強制終了のため worktree 削除前に kill
+# 通常:   Worker 完了後の残存ウィンドウを閉じるため worktree 削除前に kill
+# どちらの場合も pane を閉じる（全 pane を閉じればウィンドウも自動的に閉じる）
+PANE_FILE="${SESSION_IPC_DIR}/pane-${ISSUE_NUMBER}"
 
-  # WezTerm pane を kill
-  if [[ -f "$PANE_FILE" ]]; then
-    PANE_ID=$(cat "$PANE_FILE")
-    if command -v wezterm >/dev/null 2>&1; then
-      wezterm cli kill-pane --pane-id "$PANE_ID" 2>/dev/null && \
-        echo "Killed WezTerm pane: ${PANE_ID}" >&2 || true
-    fi
-    rm -f "$PANE_FILE"
+if [[ -f "$PANE_FILE" ]]; then
+  PANE_ID=$(cat "$PANE_FILE")
+  if command -v wezterm >/dev/null 2>&1; then
+    wezterm cli kill-pane --pane-id "$PANE_ID" 2>/dev/null && \
+      echo "Killed WezTerm pane: ${PANE_ID}" >&2 || true
   fi
+  rm -f "$PANE_FILE"
 fi
 
 # issue 番号に一致する worktree を検索
