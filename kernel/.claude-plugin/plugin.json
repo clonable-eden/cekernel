@@ -1,13 +1,19 @@
 {
   "name": "kernel",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Claude Code 並列エージェント基盤。OS のプロセスモデルに倣い、issue を独立した Worker に分配・監視・回収する。",
   "author": {
     "name": "clonable-eden"
   },
   "repository": "https://github.com/clonable-eden/glimmer",
   "license": "MIT",
-  "keywords": ["parallel", "worktree", "orchestrator", "worker", "ipc"],
+  "keywords": [
+    "parallel",
+    "worktree",
+    "orchestrator",
+    "worker",
+    "ipc"
+  ],
   "agents": [
     "./agents/orchestrator.md",
     "./agents/worker.md"
