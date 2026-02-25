@@ -187,8 +187,32 @@ GitHub Actions が `kernel/**` パス変更時に `run-tests.sh` を実行する
 
 ## Versioning
 
-feature 追加時は `.claude-plugin/plugin.json` の `version` を bump する。
-`/plugin update` が version 差分で変更を検知するため、bump を忘れると更新が反映されない。
+`/plugin update` は `plugin.json` の version 文字列で差分を判断する。
+バージョン管理は `/release-kernel` スキルと GitHub Actions で自動化されている。
+
+### セマンティックバージョニングルール
+
+| Bump | 条件 | 例 |
+|------|------|----|
+| **patch** | バグ修正、ドキュメント更新、テスト追加 | `fix:`, `docs:`, `test:`, `refactor:` |
+| **minor** | 新スクリプト/スキル追加、後方互換な機能拡張 | `feat:` |
+| **major** | 破壊的変更: 引数変更、環境変数廃止、スクリプト削除 | 既存の呼び出し元が壊れる変更 |
+
+### リリース手順
+
+```bash
+/release-kernel
+```
+
+スキルが git log を分析し bump レベルを推奨する。確認後 `gh workflow run` で CI をトリガーし、CI が version bump + commit + tag + push を実行する。
+
+### バージョン管理対象
+
+- `kernel/.claude-plugin/plugin.json` — プラグインマニフェスト
+
+### タグ形式
+
+`kernel-v{major}.{minor}.{patch}`（将来の複数プラグイン対応のためプレフィックス付き）
 
 ## Conventions
 
