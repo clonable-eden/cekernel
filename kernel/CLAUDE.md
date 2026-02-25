@@ -56,7 +56,7 @@ FAILED=$((FAILED + 1))
 
 ### 環境変数
 
-`KERNEL_` プレフィックスを使用する。`GLIMMER_*` は anti-pattern（#24 でリネーム予定）。
+`KERNEL_` プレフィックスを使用する。
 
 デフォルト値には `${VAR:-default}` パターンを使う:
 
