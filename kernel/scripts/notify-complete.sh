@@ -10,16 +10,26 @@
 #   notify-complete.sh 4 failed "CI failed 3 times"
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/session-id.sh"
+
 ISSUE_NUMBER="${1:?Usage: notify-complete.sh <issue-number> <status> [detail]}"
 STATUS="${2:?Status required: merged | failed}"
 DETAIL="${3:-}"
 
-FIFO="/tmp/glimmer-ipc/worker-${ISSUE_NUMBER}"
+FIFO="${SESSION_IPC_DIR}/worker-${ISSUE_NUMBER}"
 
+# レガシーフォールバック: セッション FIFO が見つからなければ旧パスを試行
 if [[ ! -p "$FIFO" ]]; then
-  echo "Error: FIFO not found at $FIFO" >&2
-  echo "Orchestrator may not be listening." >&2
-  exit 1
+  LEGACY_FIFO="/tmp/glimmer-ipc/worker-${ISSUE_NUMBER}"
+  if [[ -p "$LEGACY_FIFO" ]]; then
+    echo "Warning: using legacy FIFO path (no session)" >&2
+    FIFO="$LEGACY_FIFO"
+  else
+    echo "Error: FIFO not found at $FIFO" >&2
+    echo "Orchestrator may not be listening." >&2
+    exit 1
+  fi
 fi
 
 # JSON メッセージを FIFO に書き込み

@@ -4,6 +4,9 @@
 # Usage: cleanup-worktree.sh <issue-number>
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/session-id.sh"
+
 ISSUE_NUMBER="${1:?Usage: cleanup-worktree.sh <issue-number>}"
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 WORKTREE_DIR="${REPO_ROOT}/.worktrees"
@@ -32,7 +35,9 @@ if [[ -n "$BRANCH" && "$BRANCH" != "main" ]]; then
   git branch -D "$BRANCH" 2>/dev/null && echo "Deleted branch: $BRANCH" >&2 || true
 fi
 
-# FIFO クリーンアップ
-rm -f "/tmp/glimmer-ipc/worker-${ISSUE_NUMBER}"
+# FIFO クリーンアップ（セッションスコープ）
+rm -f "${SESSION_IPC_DIR}/worker-${ISSUE_NUMBER}"
+# 空のセッションディレクトリを削除
+rmdir "$SESSION_IPC_DIR" 2>/dev/null || true
 
 echo "Cleanup complete for issue #${ISSUE_NUMBER}" >&2

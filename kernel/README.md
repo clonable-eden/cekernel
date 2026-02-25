@@ -27,6 +27,7 @@ Orchestrator (agent1)              Worker (agent2, 3, 4, ...)
 | `fork` + `exec` | `spawn-worker.sh` |
 | address space | git worktree |
 | IPC pipe | named pipe (FIFO) |
+| IPC namespace | session (`SESSION_ID`) |
 | `waitpid` | `watch-workers.sh` |
 | zombie reaping | `cleanup-worktree.sh` |
 | PID | issue number |
@@ -44,10 +45,15 @@ kernel/
     orchestrate/
       SKILL.md               # /kernel:orchestrate スキル
   scripts/
+    session-id.sh            # セッション ID 生成 + IPC ディレクトリ導出
     spawn-worker.sh          # worktree作成 + WezTermウィンドウ起動
     notify-complete.sh       # Worker → Orchestrator 完了通知
     watch-workers.sh         # 複数Workerの完了を並列監視
     cleanup-worktree.sh      # worktree + branch 削除
+  tests/
+    run-tests.sh             # テストランナー
+    helpers.sh               # アサーションヘルパー
+    test-*.sh                # テストスイート
 ```
 
 ## Install
@@ -98,5 +104,18 @@ kernel の権限          対象リポジトリの権限
 
 ## IPC: Named Pipe
 
-Worker 間通信には `/tmp/glimmer-ipc/worker-{issue}` の FIFO を使用。
-daemon 不要、カーネルレベル IPC、`select`/`poll` 対応。
+Worker 間通信には FIFO（named pipe）を使用。daemon 不要、カーネルレベル IPC、`select`/`poll` 対応。
+
+### セッションスコープ
+
+FIFO パスはセッション単位で名前空間が分離される:
+
+```
+/tmp/glimmer-ipc/{SESSION_ID}/worker-{issue}
+```
+
+`SESSION_ID` は `session-id.sh` が自動生成する（形式: `{repo-name}-{hex8}`）。
+環境変数 `SESSION_ID` が設定済みの場合はそれを使用する。
+spawn-worker.sh は WezTerm pane 経由で Worker に `SESSION_ID` を伝播する。
+
+これにより、同一マシンで複数の orchestrate セッションを並行実行しても FIFO が衝突しない。
