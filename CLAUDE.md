@@ -15,6 +15,10 @@
 
 - **kernel** — 並列エージェント基盤。`/kernel:orchestrate` スキルと orchestrator/worker エージェントを提供。開発時は `kernel/CLAUDE.md` を読むこと。
 
+## Principles
+
+- Claude Code の仕様や挙動について不確かな場合は、必ず一次情報（公式ドキュメント、GitHub issue）に当たってから回答する。推測で答えない。
+
 ## Conventions
 
 - ブランチ名: `issue/{number}-{short-description}`
