@@ -7,10 +7,13 @@
 # 全 Worker の完了を待つ。結果を標準出力に JSON Lines で出力する。
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/session-id.sh"
+
 ISSUE_NUMBERS=("$@")
 [[ ${#ISSUE_NUMBERS[@]} -gt 0 ]] || { echo "Usage: watch-workers.sh <issue-number> [...]" >&2; exit 1; }
 
-FIFO_DIR="/tmp/glimmer-ipc"
+FIFO_DIR="$SESSION_IPC_DIR"
 RESULT_DIR=$(mktemp -d)
 PIDS=()
 
