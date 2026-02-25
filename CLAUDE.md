@@ -21,3 +21,10 @@
 - commit message の title は英語、body は日本語 OK
 - PR の body に `closes #{issue-number}` を含める
 - worktree は `.worktrees/` 配下に作成（.gitignore 済み）
+- commit message は conventional commits に従う:
+  - `feat:` 新機能
+  - `fix:` バグ修正
+  - `docs:` ドキュメントのみ
+  - `test:` テストのみ
+  - `refactor:` リファクタリング
+  - `release:` バージョンバンプ（CI 自動生成）

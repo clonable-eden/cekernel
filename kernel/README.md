@@ -96,6 +96,8 @@ kernel/scripts/cleanup-worktree.sh 4    # 後片付け
 export GLIMMER_MAX_WORKERS=5
 ```
 
+バージョン管理とリリース手順については [kernel/CLAUDE.md の Versioning セクション](./CLAUDE.md#versioning) を参照。
+
 ## Worker Permissions
 
 Worker / Orchestrator のエージェント定義には `allowed-tools` が設定されており、
