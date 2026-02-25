@@ -100,13 +100,19 @@ Claude Code のプラグインマーケットプレイスから導入する:
 # スキル経由で Orchestrator ワークフローを実行
 /kernel:orchestrate
 
-# または直接スクリプトを実行
-kernel/scripts/spawn-worker.sh 4        # issue #4 の Worker 起動
-kernel/scripts/worker-status.sh         # 稼働中 Worker の一覧
-kernel/scripts/watch-workers.sh 4 5 6   # 並列監視
-kernel/scripts/watch-logs.sh             # 全 Worker のログ監視
-kernel/scripts/watch-logs.sh 4           # 特定 Worker のログ監視
-kernel/scripts/cleanup-worktree.sh 4    # 後片付け
+# または直接スクリプトを実行（Orchestrator と同じ手順）
+
+# 1. SESSION_ID を生成
+source kernel/scripts/session-id.sh && echo $SESSION_ID
+# => glimmer-7861a821
+
+# 2. 各スクリプトを実行（すべて SESSION_ID が必要。シェルが分かれる場合は毎回 export する）
+export SESSION_ID=glimmer-7861a821 && kernel/scripts/spawn-worker.sh 4
+export SESSION_ID=glimmer-7861a821 && kernel/scripts/worker-status.sh
+export SESSION_ID=glimmer-7861a821 && kernel/scripts/watch-workers.sh 4 5 6
+export SESSION_ID=glimmer-7861a821 && kernel/scripts/watch-logs.sh
+export SESSION_ID=glimmer-7861a821 && kernel/scripts/watch-logs.sh 4
+export SESSION_ID=glimmer-7861a821 && kernel/scripts/cleanup-worktree.sh 4
 
 # 同時実行数を変更（デフォルト: 3）
 export KERNEL_MAX_WORKERS=5
