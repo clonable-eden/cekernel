@@ -40,4 +40,12 @@ cat > "$FIFO" <<EOF
 {"issue":${ISSUE_NUMBER},"status":"${STATUS}","detail":"${DETAIL}","timestamp":"${TIMESTAMP}"}
 EOF
 
+# ── ライフサイクルイベントをログに記録 ──
+LOG_FILE="${SESSION_IPC_DIR}/logs/worker-${ISSUE_NUMBER}.log"
+if [[ -d "${SESSION_IPC_DIR}/logs" ]]; then
+  EVENT="COMPLETE"
+  [[ "$STATUS" == "failed" ]] && EVENT="FAILED"
+  echo "[${TIMESTAMP}] ${EVENT} issue=#${ISSUE_NUMBER} status=${STATUS} detail=${DETAIL}" >> "$LOG_FILE"
+fi
+
 echo "Notified orchestrator: issue #${ISSUE_NUMBER} ${STATUS}" >&2

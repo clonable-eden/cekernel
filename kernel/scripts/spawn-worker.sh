@@ -51,6 +51,11 @@ mkdir -p "$SESSION_IPC_DIR"
 FIFO="${SESSION_IPC_DIR}/worker-${ISSUE_NUMBER}"
 [[ -p "$FIFO" ]] || mkfifo "$FIFO"
 
+# ── ログファイル作成 ──
+LOG_DIR="${SESSION_IPC_DIR}/logs"
+mkdir -p "$LOG_DIR"
+LOG_FILE="${LOG_DIR}/worker-${ISSUE_NUMBER}.log"
+
 # ── Worktree 作成 ──
 mkdir -p "$WORKTREE_DIR"
 git fetch origin "${BASE_BRANCH}" --quiet
@@ -97,6 +102,9 @@ wezterm cli split-pane \
 PROMPT="issue #${ISSUE_NUMBER} を解決してください。まず対象リポジトリの CLAUDE.md を読み、その規約に完全に従ってください。ライフサイクルのみ kernel の Worker Protocol に従います: 実装 → PR作成 → CI確認 → merge。完了したら ${CLAUDE_PLUGIN_ROOT}/scripts/notify-complete.sh ${ISSUE_NUMBER} merged <pr-number> を実行してください。"
 wezterm cli send-text --pane-id "$MAIN_PANE" -- "claude '${PROMPT}'"
 wezterm cli send-text --pane-id "$MAIN_PANE" --no-paste $'\r'
+
+# ── ライフサイクルイベントをログに記録 ──
+echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] SPAWN issue=#${ISSUE_NUMBER} branch=${BRANCH}" >> "$LOG_FILE"
 
 echo "session: $SESSION_ID" >&2
 echo "worker spawned: issue #${ISSUE_NUMBER}" >&2
