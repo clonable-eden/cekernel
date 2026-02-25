@@ -62,6 +62,9 @@ mkdir -p "$SESSION_IPC_DIR"
   export CLAUDE_JSON="$FAKE_CLAUDE_JSON"
   export LOCK_DIR="${FAKE_CLAUDE_JSON}.lock"
 
+  # git コマンドが正しいリポジトリで動作するように cd
+  cd "$FAKE_REPO"
+
   # リソース作成
   ISSUE_NUMBER="100"
   WORKTREE_DIR="${FAKE_REPO}/.worktrees"
@@ -69,7 +72,7 @@ mkdir -p "$SESSION_IPC_DIR"
   WORKTREE="${WORKTREE_DIR}/${BRANCH}"
 
   mkdir -p "$WORKTREE_DIR"
-  git -C "$FAKE_REPO" worktree add -b "$BRANCH" "$WORKTREE" HEAD --quiet
+  git worktree add -b "$BRANCH" "$WORKTREE" HEAD --quiet
 
   FIFO="${SESSION_IPC_DIR}/worker-${ISSUE_NUMBER}"
   mkfifo "$FIFO"

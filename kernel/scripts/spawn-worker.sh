@@ -48,6 +48,34 @@ BRANCH="issue/${ISSUE_NUMBER}-${SLUG}"
 WORKTREE_DIR="${REPO_ROOT}/.worktrees"
 WORKTREE="${WORKTREE_DIR}/${BRANCH}"
 
+# ── Rollback: 途中失敗時のリソースクリーンアップ ──
+rollback() {
+  echo "Error: spawn-worker.sh failed. Rolling back..." >&2
+  # WezTerm pane を kill
+  if [[ -n "${MAIN_PANE:-}" ]]; then
+    wezterm cli kill-pane --pane-id "$MAIN_PANE" 2>/dev/null || true
+  fi
+  rm -f "${SESSION_IPC_DIR}/pane-${ISSUE_NUMBER}"
+  # Trust 登録解除
+  if [[ -n "${WORKTREE:-}" && -d "${WORKTREE:-}" ]]; then
+    unregister_trust "$WORKTREE" 2>/dev/null || true
+  fi
+  # Worktree 削除
+  if [[ -n "${WORKTREE:-}" ]]; then
+    git worktree remove --force "$WORKTREE" 2>/dev/null || true
+  fi
+  # ブランチ削除
+  if [[ -n "${BRANCH:-}" ]]; then
+    git branch -D "$BRANCH" 2>/dev/null || true
+  fi
+  # ログファイル削除
+  rm -f "${LOG_FILE:-}"
+  rmdir "${LOG_DIR:-}" 2>/dev/null || true
+  # FIFO 削除
+  rm -f "${FIFO:-}"
+}
+trap rollback ERR
+
 # ── FIFO (named pipe) 作成 ──
 mkdir -p "$SESSION_IPC_DIR"
 FIFO="${SESSION_IPC_DIR}/worker-${ISSUE_NUMBER}"
