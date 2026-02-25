@@ -1,7 +1,7 @@
 ---
 name: worker
 description: git worktree 内で単一 issue の実装から merge までを担当する Worker エージェント。実装、テスト、PR 作成、CI 確認、merge、完了通知を自律的に行う。
-allowed-tools: Read, Edit, Write, Bash
+tools: Read, Edit, Write, Bash
 ---
 
 # Worker Agent (agent2+)
