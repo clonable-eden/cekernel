@@ -2,10 +2,6 @@
 name: orchestrator
 description: メイン working tree で issue のライフサイクルを管理する Orchestrator エージェント。issue の受け取り、worktree 作成、Worker 起動、完了監視、クリーンアップを担当する。
 tools: Read, Edit, Write, Bash
-# Orchestrator は Task tool 経由の subagent として起動されるため、
-# frontmatter の permissionMode が有効。Worker は --agent（CLI 起動）のため
-# --allowedTools CLI フラグで制御する。
-permissionMode: bypassPermissions
 ---
 
 # Orchestrator Agent (agent1)
