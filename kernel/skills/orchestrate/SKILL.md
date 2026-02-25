@@ -1,5 +1,5 @@
 ---
-description: Issue並列処理ワークフローを開始する
+description: Issue の優先度判断後、Orchestrator エージェントに委譲して並列処理する
 allowed-tools: Bash, Read, Task(kernel:orchestrator)
 ---
 
