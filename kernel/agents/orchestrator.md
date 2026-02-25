@@ -68,8 +68,26 @@ kernel が Worker に対して定義するのはライフサイクル（PR → C
 spawn-worker.sh はデフォルトのブランチ名を生成するが、
 対象リポジトリに命名規則がある場合は Worker がリネームしてよい。
 
+## ログ監視
+
+Worker のライフサイクルイベントは `${SESSION_IPC_DIR}/logs/` に記録される。
+
+```bash
+# 全 Worker のログをリアルタイム監視
+${CLAUDE_PLUGIN_ROOT}/scripts/watch-logs.sh
+
+# 特定 Worker のログを監視
+${CLAUDE_PLUGIN_ROOT}/scripts/watch-logs.sh 4
+
+# ログの最終更新時刻でタイムアウト判定
+stat -f %m "${SESSION_IPC_DIR}/logs/worker-4.log"  # macOS
+stat -c %Y "${SESSION_IPC_DIR}/logs/worker-4.log"  # Linux
+```
+
+ログが長時間更新されない Worker はハング候補として調査する。
+
 ## エラーハンドリング
 
-- Worker が応答しない: WezTerm ウィンドウの状態を確認
+- Worker が応答しない: ログの最終更新時刻を確認し、WezTerm ウィンドウの状態を確認
 - merge コンフリクト: Worker が自力で解決を試みる。不可能な場合は FIFO にエラー通知
 - CI 失敗: Worker が修正を試みる。3 回失敗で人間にエスカレーション

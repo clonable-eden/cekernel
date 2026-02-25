@@ -37,6 +37,12 @@ fi
 
 # FIFO クリーンアップ（セッションスコープ）
 rm -f "${SESSION_IPC_DIR}/worker-${ISSUE_NUMBER}"
+
+# ログファイル クリーンアップ
+rm -f "${SESSION_IPC_DIR}/logs/worker-${ISSUE_NUMBER}.log"
+# 空の logs ディレクトリを削除
+rmdir "${SESSION_IPC_DIR}/logs" 2>/dev/null || true
+
 # 空のセッションディレクトリを削除
 rmdir "$SESSION_IPC_DIR" 2>/dev/null || true
 
