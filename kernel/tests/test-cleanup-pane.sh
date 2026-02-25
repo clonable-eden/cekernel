@@ -132,6 +132,120 @@ else
   TESTS_PASSED=$((TESTS_PASSED + 1))
 fi
 
+# ── wezterm モック (enhanced): cli list --format json にも応答 ──
+setup_wezterm_mock_with_list() {
+  local log_file="$1"
+  local json_file="$2"
+  local mock_bin="${TEST_TMP}/mock-bin"
+  mkdir -p "$mock_bin"
+  cat > "${mock_bin}/wezterm" <<MOCK_SCRIPT
+#!/usr/bin/env bash
+echo "wezterm \$*" >> "${log_file}"
+if [[ "\${1:-}" == "cli" && "\${2:-}" == "list" ]]; then
+  cat "${json_file}"
+fi
+MOCK_SCRIPT
+  chmod +x "${mock_bin}/wezterm"
+  export PATH="${mock_bin}:${PATH}"
+}
+
+# ── Test 4: 同一ウィンドウの全ペインが kill される ──
+rm -rf "$SESSION_IPC_DIR"
+> "$WEZTERM_LOG"
+
+# wezterm cli list --format json のモックデータ
+PANE_LIST_JSON="${TEST_TMP}/pane-list.json"
+cat > "$PANE_LIST_JSON" <<'JSONEOF'
+[
+  {"window_id": 5, "tab_id": 10, "pane_id": 42, "workspace": "default", "title": "claude", "cwd": "/tmp"},
+  {"window_id": 5, "tab_id": 10, "pane_id": 43, "workspace": "default", "title": "terminal", "cwd": "/tmp"},
+  {"window_id": 5, "tab_id": 10, "pane_id": 44, "workspace": "default", "title": "watch", "cwd": "/tmp"},
+  {"window_id": 99, "tab_id": 20, "pane_id": 100, "workspace": "other", "title": "other", "cwd": "/tmp"}
+]
+JSONEOF
+
+setup_wezterm_mock_with_list "$WEZTERM_LOG" "$PANE_LIST_JSON"
+
+ISSUE="203"
+WORKTREE=$(setup_worktree "$ISSUE" "$FAKE_REPO")
+
+mkdir -p "$SESSION_IPC_DIR"
+mkfifo "${SESSION_IPC_DIR}/worker-${ISSUE}"
+echo "42" > "${SESSION_IPC_DIR}/pane-${ISSUE}"
+
+cd "$FAKE_REPO"
+bash "${KERNEL_DIR}/scripts/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
+
+# 同一ウィンドウの全ペイン (42, 43, 44) が kill されること
+if grep -q "kill-pane.*--pane-id 42" "$WEZTERM_LOG" 2>/dev/null; then
+  echo "  PASS: Main pane 42 killed"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+else
+  echo "  FAIL: Main pane 42 NOT killed"
+  echo "    wezterm calls: $(cat "$WEZTERM_LOG" 2>/dev/null || echo '(none)')"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+
+if grep -q "kill-pane.*--pane-id 43" "$WEZTERM_LOG" 2>/dev/null; then
+  echo "  PASS: Sibling pane 43 killed"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+else
+  echo "  FAIL: Sibling pane 43 NOT killed"
+  echo "    wezterm calls: $(cat "$WEZTERM_LOG" 2>/dev/null || echo '(none)')"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+
+if grep -q "kill-pane.*--pane-id 44" "$WEZTERM_LOG" 2>/dev/null; then
+  echo "  PASS: Sibling pane 44 killed"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+else
+  echo "  FAIL: Sibling pane 44 NOT killed"
+  echo "    wezterm calls: $(cat "$WEZTERM_LOG" 2>/dev/null || echo '(none)')"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+
+# 別ウィンドウのペイン (100) は kill されないこと
+if grep -q "kill-pane.*--pane-id 100" "$WEZTERM_LOG" 2>/dev/null; then
+  echo "  FAIL: Pane 100 from different window was killed"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+else
+  echo "  PASS: Pane 100 from different window NOT killed"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+fi
+
+# ── Test 5: cli list が失敗 → メインペインのみ kill (フォールバック) ──
+rm -rf "$SESSION_IPC_DIR"
+> "$WEZTERM_LOG"
+
+# cli list が空 JSON を返すモック
+EMPTY_JSON="${TEST_TMP}/empty-list.json"
+echo "[]" > "$EMPTY_JSON"
+setup_wezterm_mock_with_list "$WEZTERM_LOG" "$EMPTY_JSON"
+
+ISSUE="204"
+WORKTREE=$(setup_worktree "$ISSUE" "$FAKE_REPO")
+
+mkdir -p "$SESSION_IPC_DIR"
+mkfifo "${SESSION_IPC_DIR}/worker-${ISSUE}"
+echo "55" > "${SESSION_IPC_DIR}/pane-${ISSUE}"
+
+cd "$FAKE_REPO"
+bash "${KERNEL_DIR}/scripts/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
+
+# メインペインは kill される
+if grep -q "kill-pane.*--pane-id 55" "$WEZTERM_LOG" 2>/dev/null; then
+  echo "  PASS: Main pane 55 killed as fallback"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+else
+  echo "  FAIL: Main pane 55 NOT killed as fallback"
+  echo "    wezterm calls: $(cat "$WEZTERM_LOG" 2>/dev/null || echo '(none)')"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+
+# kill-pane の呼び出し回数は 1 回のみ
+KILL_COUNT=$(grep -c "kill-pane" "$WEZTERM_LOG" 2>/dev/null || echo "0")
+assert_eq "Fallback: only 1 kill-pane call" "1" "$KILL_COUNT"
+
 # ── クリーンアップ ──
 rm -rf "$SESSION_IPC_DIR"
 
