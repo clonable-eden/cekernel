@@ -1,5 +1,6 @@
 ---
 description: Issue並列処理ワークフローを開始する
+allowed-tools: Bash
 ---
 
 # /orchestrate
