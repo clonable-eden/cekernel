@@ -13,7 +13,7 @@
 
 ## Plugins
 
-- **kernel** — 並列エージェント基盤。`/kernel:orchestrate` スキルと orchestrator/worker エージェントを提供。
+- **kernel** — 並列エージェント基盤。`/kernel:orchestrate` スキルと orchestrator/worker エージェントを提供。開発時は `kernel/CLAUDE.md` を読むこと。
 
 ## Conventions
 
