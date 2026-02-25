@@ -13,6 +13,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
 source "${SCRIPT_DIR}/session-id.sh"
 source "${SCRIPT_DIR}/claude-json-helper.sh"
+source "${SCRIPT_DIR}/resolve-workspace.sh"
 
 ISSUE_NUMBER="${1:?Usage: spawn-worker.sh <issue-number> [base-branch]}"
 BASE_BRANCH="${2:-main}"
@@ -79,7 +80,13 @@ echo "branch:   $BRANCH" >&2
 #   └─────────────────────────┘
 
 # Worker に SESSION_ID を伝播
-MAIN_PANE=$(wezterm cli spawn --new-window --cwd "$WORKTREE")
+# Orchestrator と同じ workspace に Worker を作成
+WORKSPACE=$(resolve_workspace)
+WORKSPACE_ARGS=()
+if [[ -n "$WORKSPACE" ]]; then
+  WORKSPACE_ARGS=(--workspace "$WORKSPACE")
+fi
+MAIN_PANE=$(wezterm cli spawn --new-window "${WORKSPACE_ARGS[@]}" --cwd "$WORKTREE")
 
 # Pane ID を保存（health-check / cleanup --force で使用）
 echo "$MAIN_PANE" > "${SESSION_IPC_DIR}/pane-${ISSUE_NUMBER}"
