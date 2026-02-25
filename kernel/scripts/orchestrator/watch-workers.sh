@@ -11,7 +11,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/session-id.sh"
+source "${SCRIPT_DIR}/../shared/session-id.sh"
 
 ISSUE_NUMBERS=("$@")
 [[ ${#ISSUE_NUMBERS[@]} -gt 0 ]] || { echo "Usage: watch-workers.sh <issue-number> [...]" >&2; exit 1; }

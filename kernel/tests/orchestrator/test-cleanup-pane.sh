@@ -6,16 +6,16 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/helpers.sh"
+source "${SCRIPT_DIR}/../helpers.sh"
 
-KERNEL_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+KERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 echo "test: cleanup-pane"
 
 # ── テスト用セッション ──
 export SESSION_ID="test-cleanup-pane-00000001"
-source "${KERNEL_DIR}/scripts/session-id.sh"
-source "${KERNEL_DIR}/scripts/claude-json-helper.sh"
+source "${KERNEL_DIR}/scripts/shared/session-id.sh"
+source "${KERNEL_DIR}/scripts/shared/claude-json-helper.sh"
 
 # ── テスト用の一時 Git リポジトリを作成 ──
 TEST_TMP=$(mktemp -d)
@@ -69,7 +69,7 @@ mkfifo "${SESSION_IPC_DIR}/worker-${ISSUE}"
 echo "42" > "${SESSION_IPC_DIR}/pane-${ISSUE}"
 
 cd "$FAKE_REPO"
-bash "${KERNEL_DIR}/scripts/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
+bash "${KERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
 
 # pane が kill されたことを確認
 if grep -q "kill-pane.*42" "$WEZTERM_LOG" 2>/dev/null; then
@@ -94,7 +94,7 @@ mkdir -p "$SESSION_IPC_DIR"
 mkfifo "${SESSION_IPC_DIR}/worker-${ISSUE}"
 echo "99" > "${SESSION_IPC_DIR}/pane-${ISSUE}"
 
-bash "${KERNEL_DIR}/scripts/cleanup-worktree.sh" --force "$ISSUE" 2>/dev/null
+bash "${KERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" --force "$ISSUE" 2>/dev/null
 
 if grep -q "kill-pane.*99" "$WEZTERM_LOG" 2>/dev/null; then
   echo "  PASS: Pane killed with --force"
@@ -118,7 +118,7 @@ mkdir -p "$SESSION_IPC_DIR"
 mkfifo "${SESSION_IPC_DIR}/worker-${ISSUE}"
 # pane ファイルは作成しない
 
-bash "${KERNEL_DIR}/scripts/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
+bash "${KERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
 RESULT=$?
 
 assert_eq "Cleanup succeeds without pane file" "0" "$RESULT"
@@ -174,7 +174,7 @@ mkfifo "${SESSION_IPC_DIR}/worker-${ISSUE}"
 echo "42" > "${SESSION_IPC_DIR}/pane-${ISSUE}"
 
 cd "$FAKE_REPO"
-bash "${KERNEL_DIR}/scripts/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
+bash "${KERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
 
 # 同一ウィンドウの全ペイン (42, 43, 44) が kill されること
 if grep -q "kill-pane.*--pane-id 42" "$WEZTERM_LOG" 2>/dev/null; then
@@ -230,7 +230,7 @@ mkfifo "${SESSION_IPC_DIR}/worker-${ISSUE}"
 echo "55" > "${SESSION_IPC_DIR}/pane-${ISSUE}"
 
 cd "$FAKE_REPO"
-bash "${KERNEL_DIR}/scripts/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
+bash "${KERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
 
 # メインペインは kill される
 if grep -q "kill-pane.*--pane-id 55" "$WEZTERM_LOG" 2>/dev/null; then

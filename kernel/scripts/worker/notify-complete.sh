@@ -11,7 +11,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/session-id.sh"
+source "${SCRIPT_DIR}/../shared/session-id.sh"
 
 ISSUE_NUMBER="${1:?Usage: notify-complete.sh <issue-number> <status> [detail]}"
 STATUS="${2:?Status required: merged | failed}"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run-tests.sh — kernel/tests/test-*.sh を順次実行するテストランナー
+# run-tests.sh — kernel/tests/{shared,orchestrator,worker}/test-*.sh を順次実行するテストランナー
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -10,19 +10,27 @@ FAILED_FILES=()
 echo "=== kernel test runner ==="
 echo ""
 
-for test_file in "${SCRIPT_DIR}"/test-*.sh; do
-  [[ -f "$test_file" ]] || continue
+for category in shared orchestrator worker; do
+  category_dir="${SCRIPT_DIR}/${category}"
+  [[ -d "$category_dir" ]] || continue
 
-  test_name=$(basename "$test_file")
-  echo "--- ${test_name} ---"
-
-  if bash "$test_file"; then
-    echo "  => OK"
-  else
-    echo "  => FAILED"
-    FAILED_FILES+=("$test_name")
-  fi
+  echo "=== ${category} ==="
   echo ""
+
+  for test_file in "${category_dir}"/test-*.sh; do
+    [[ -f "$test_file" ]] || continue
+
+    test_name="${category}/$(basename "$test_file")"
+    echo "--- ${test_name} ---"
+
+    if bash "$test_file"; then
+      echo "  => OK"
+    else
+      echo "  => FAILED"
+      FAILED_FILES+=("$test_name")
+    fi
+    echo ""
+  done
 done
 
 echo "==========================="

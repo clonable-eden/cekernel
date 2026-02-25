@@ -10,10 +10,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
-source "${SCRIPT_DIR}/session-id.sh"
-source "${SCRIPT_DIR}/claude-json-helper.sh"
-source "${SCRIPT_DIR}/resolve-workspace.sh"
+CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
+source "${SCRIPT_DIR}/../shared/session-id.sh"
+source "${SCRIPT_DIR}/../shared/claude-json-helper.sh"
+source "${SCRIPT_DIR}/../shared/resolve-workspace.sh"
 
 ISSUE_NUMBER="${1:?Usage: spawn-worker.sh <issue-number> [base-branch]}"
 BASE_BRANCH="${2:-main}"
@@ -164,7 +164,7 @@ wezterm cli split-pane \
 # 1. 対象リポジトリの CLAUDE.md を最優先で読む
 # 2. ライフサイクル（PR → CI → merge → notify）のみ kernel のプロトコルに従う
 # 3. 実装・規約は対象リポジトリに完全に従う
-PROMPT="issue #${ISSUE_NUMBER} を解決してください。まず対象リポジトリの CLAUDE.md を読み、その規約に完全に従ってください。ライフサイクルのみ kernel の Worker Protocol に従います: 実装 → PR作成 → CI確認 → merge。完了したら ${CLAUDE_PLUGIN_ROOT}/scripts/notify-complete.sh ${ISSUE_NUMBER} merged <pr-number> を実行してください。"
+PROMPT="issue #${ISSUE_NUMBER} を解決してください。まず対象リポジトリの CLAUDE.md を読み、その規約に完全に従ってください。ライフサイクルのみ kernel の Worker Protocol に従います: 実装 → PR作成 → CI確認 → merge。完了したら ${CLAUDE_PLUGIN_ROOT}/scripts/worker/notify-complete.sh ${ISSUE_NUMBER} merged <pr-number> を実行してください。"
 wezterm cli send-text --pane-id "$MAIN_PANE" -- "claude --agent kernel:worker --allowedTools 'Bash' 'Edit' 'Write' 'Read' '${PROMPT}'"
 wezterm cli send-text --pane-id "$MAIN_PANE" --no-paste $'\r'
 

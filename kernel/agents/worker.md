@@ -155,7 +155,7 @@ EOF
 )"
 
 # SESSION_ID は Orchestrator から環境変数で伝播されている
-${CLAUDE_PLUGIN_ROOT}/scripts/notify-complete.sh <issue-number> merged <pr-number>
+${CLAUDE_PLUGIN_ROOT}/scripts/worker/notify-complete.sh <issue-number> merged <pr-number>
 ```
 
 ## エラー時
@@ -167,7 +167,7 @@ CI が失敗した場合:
 3. 再度 CI 待ち
 4. 3 回失敗:
    1. Result を issue にコメントとして投稿（Status: failed、失敗理由を Summary に記載）
-   2. `${CLAUDE_PLUGIN_ROOT}/scripts/notify-complete.sh <issue-number> failed "理由"` で通知
+   2. `${CLAUDE_PLUGIN_ROOT}/scripts/worker/notify-complete.sh <issue-number> failed "理由"` で通知
 
 ## 制約
 

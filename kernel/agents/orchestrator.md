@@ -39,13 +39,13 @@ Bash ツールの各呼び出しは独立したシェルで実行されるため
 
 ```bash
 # 1. SESSION_ID を生成（session-id.sh に一元化された生成ロジックを使う）
-source ${CLAUDE_PLUGIN_ROOT}/scripts/session-id.sh && echo $SESSION_ID
+source ${CLAUDE_PLUGIN_ROOT}/scripts/shared/session-id.sh && echo $SESSION_ID
 # => glimmer-7861a821
 
 # 2. 以降の全コマンドで SESSION_ID を環境変数として渡す
-export SESSION_ID=glimmer-7861a821 && ${CLAUDE_PLUGIN_ROOT}/scripts/spawn-worker.sh 4
-export SESSION_ID=glimmer-7861a821 && ${CLAUDE_PLUGIN_ROOT}/scripts/watch-workers.sh 4
-export SESSION_ID=glimmer-7861a821 && ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-worktree.sh 4
+export SESSION_ID=glimmer-7861a821 && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 4
+export SESSION_ID=glimmer-7861a821 && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-workers.sh 4
+export SESSION_ID=glimmer-7861a821 && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/cleanup-worktree.sh 4
 ```
 
 ### 単一 issue 処理
@@ -54,13 +54,13 @@ export SESSION_ID=glimmer-7861a821 && ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-work
 # SESSION_ID は事前に生成済み
 
 # 1. Worker を起動
-export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/spawn-worker.sh 4
+export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 4
 
 # 2. 完了を待機
-export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/watch-workers.sh 4
+export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-workers.sh 4
 
 # 3. クリーンアップ
-export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-worktree.sh 4
+export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/cleanup-worktree.sh 4
 ```
 
 ### 複数 issue 並列処理
@@ -69,17 +69,17 @@ export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-worktree.sh 4
 # SESSION_ID は事前に生成済み
 
 # 複数 Worker を同時起動
-export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/spawn-worker.sh 4
-export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/spawn-worker.sh 5
-export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/spawn-worker.sh 6
+export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 4
+export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 5
+export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 6
 
 # 全 Worker の完了を並列監視
-export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/watch-workers.sh 4 5 6
+export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-workers.sh 4 5 6
 
 # クリーンアップ
-export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-worktree.sh 4
-export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-worktree.sh 5
-export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-worktree.sh 6
+export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/cleanup-worktree.sh 4
+export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/cleanup-worktree.sh 5
+export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/cleanup-worktree.sh 6
 ```
 
 ## スケジューリング
@@ -109,21 +109,21 @@ ISSUES=(4 5 6 7 8 9)
 BATCH=()
 
 for issue in "${ISSUES[@]}"; do
-  ${CLAUDE_PLUGIN_ROOT}/scripts/spawn-worker.sh "$issue"
+  ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh "$issue"
   if [[ $? -eq 2 ]]; then
     # 上限到達 — 先行 Worker の完了を待つ
-    ${CLAUDE_PLUGIN_ROOT}/scripts/watch-workers.sh "${BATCH[@]}"
+    ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-workers.sh "${BATCH[@]}"
     for done_issue in "${BATCH[@]}"; do
-      ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-worktree.sh "$done_issue"
+      ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/cleanup-worktree.sh "$done_issue"
     done
     BATCH=()
-    ${CLAUDE_PLUGIN_ROOT}/scripts/spawn-worker.sh "$issue"
+    ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh "$issue"
   fi
   BATCH+=("$issue")
 done
 
 # 残りの Worker を監視
-[[ ${#BATCH[@]} -gt 0 ]] && ${CLAUDE_PLUGIN_ROOT}/scripts/watch-workers.sh "${BATCH[@]}"
+[[ ${#BATCH[@]} -gt 0 ]] && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-workers.sh "${BATCH[@]}"
 ```
 
 ### Worker 状態の確認
@@ -131,7 +131,7 @@ done
 `worker-status.sh` でセッション内の稼働中 Worker を確認できる。
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/worker-status.sh
+${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/worker-status.sh
 # 出力例 (JSON Lines):
 # {"issue":4,"worktree":"/path/.worktrees/issue/4-...","fifo":"/tmp/glimmer-ipc/.../worker-4","uptime":"12m"}
 # {"issue":5,"worktree":"/path/.worktrees/issue/5-...","fifo":"/tmp/glimmer-ipc/.../worker-5","uptime":"8m"}
@@ -170,10 +170,10 @@ Worker のライフサイクルイベントは `${SESSION_IPC_DIR}/logs/` に記
 
 ```bash
 # 全 Worker のログをリアルタイム監視
-${CLAUDE_PLUGIN_ROOT}/scripts/watch-logs.sh
+${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-logs.sh
 
 # 特定 Worker のログを監視
-${CLAUDE_PLUGIN_ROOT}/scripts/watch-logs.sh 4
+${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-logs.sh 4
 
 # ログの最終更新時刻でタイムアウト判定
 stat -f %m "${SESSION_IPC_DIR}/logs/worker-4.log"  # macOS
@@ -191,7 +191,7 @@ stat -c %Y "${SESSION_IPC_DIR}/logs/worker-4.log"  # Linux
 ```bash
 # タイムアウトを30分に設定
 export KERNEL_WORKER_TIMEOUT=1800
-${CLAUDE_PLUGIN_ROOT}/scripts/watch-workers.sh 4 5 6
+${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-workers.sh 4 5 6
 ```
 
 タイムアウト時、以下の JSON が返る:
@@ -204,17 +204,17 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/watch-workers.sh 4 5 6
 
 ```bash
 # 特定 Worker の状態を確認
-${CLAUDE_PLUGIN_ROOT}/scripts/health-check.sh 4
+${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/health-check.sh 4
 
 # セッション内の全 Worker を検査
-${CLAUDE_PLUGIN_ROOT}/scripts/health-check.sh
+${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/health-check.sh
 ```
 
 ### 強制クリーンアップ（SIGKILL 相当）
 
 ```bash
 # --force: WezTerm pane を kill してから worktree を削除
-${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-worktree.sh --force 4
+${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/cleanup-worktree.sh --force 4
 ```
 
 ### OS アナロジー

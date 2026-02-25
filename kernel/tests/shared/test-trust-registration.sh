@@ -3,10 +3,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/helpers.sh"
+source "${SCRIPT_DIR}/../helpers.sh"
 
-KERNEL_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-HELPER_SCRIPT="${KERNEL_DIR}/scripts/claude-json-helper.sh"
+KERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+HELPER_SCRIPT="${KERNEL_DIR}/scripts/shared/claude-json-helper.sh"
 
 echo "test: claude-json-helper.sh"
 

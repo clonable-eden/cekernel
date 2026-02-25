@@ -15,7 +15,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/session-id.sh"
+source "${SCRIPT_DIR}/../shared/session-id.sh"
 
 # issue 番号が指定されていれば、それだけ検査。なければセッション内全 FIFO を検査
 if [[ $# -gt 0 ]]; then

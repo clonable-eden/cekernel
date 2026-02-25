@@ -3,16 +3,16 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/helpers.sh"
+source "${SCRIPT_DIR}/../helpers.sh"
 
-KERNEL_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-STATUS_SCRIPT="${KERNEL_DIR}/scripts/worker-status.sh"
+KERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+STATUS_SCRIPT="${KERNEL_DIR}/scripts/orchestrator/worker-status.sh"
 
 echo "test: worker-status"
 
 # テスト用セッション
 export SESSION_ID="test-wstatus-00000001"
-source "${KERNEL_DIR}/scripts/session-id.sh"
+source "${KERNEL_DIR}/scripts/shared/session-id.sh"
 
 # ── セットアップ ──
 rm -rf "$SESSION_IPC_DIR"

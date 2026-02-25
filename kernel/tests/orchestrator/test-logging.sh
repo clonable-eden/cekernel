@@ -3,15 +3,15 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/helpers.sh"
+source "${SCRIPT_DIR}/../helpers.sh"
 
-KERNEL_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+KERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 echo "test: logging"
 
 # テスト用セッション
 export SESSION_ID="test-logging-00000001"
-source "${KERNEL_DIR}/scripts/session-id.sh"
+source "${KERNEL_DIR}/scripts/shared/session-id.sh"
 
 LOG_DIR="${SESSION_IPC_DIR}/logs"
 ISSUE_NUMBER=80
@@ -52,7 +52,7 @@ mkfifo "$FIFO"
 READER_PID=$!
 
 # notify-complete.sh を実行
-bash "${KERNEL_DIR}/scripts/notify-complete.sh" "$ISSUE_NUMBER" merged 99
+bash "${KERNEL_DIR}/scripts/worker/notify-complete.sh" "$ISSUE_NUMBER" merged 99
 
 wait "$READER_PID" || true
 
@@ -74,7 +74,7 @@ mkfifo "$FIFO_FAIL"
 (cat "$FIFO_FAIL" > /dev/null) &
 READER_PID=$!
 
-bash "${KERNEL_DIR}/scripts/notify-complete.sh" "$ISSUE_FAIL" failed "CI failed 3 times"
+bash "${KERNEL_DIR}/scripts/worker/notify-complete.sh" "$ISSUE_FAIL" failed "CI failed 3 times"
 
 wait "$READER_PID" || true
 
@@ -86,7 +86,7 @@ assert_match "FAILED has detail" 'detail=CI failed 3 times' "$FAILED_LINE"
 # ── Test 5: watch-logs.sh が存在しないログディレクトリでエラーを返す ──
 SAVE_SESSION_ID="$SESSION_ID"
 export SESSION_ID="nonexistent-session-00000000"
-if bash "${KERNEL_DIR}/scripts/watch-logs.sh" 2>/dev/null; then
+if bash "${KERNEL_DIR}/scripts/orchestrator/watch-logs.sh" 2>/dev/null; then
   echo "  FAIL: watch-logs.sh should fail with no log dir"
   ((TESTS_FAILED++)) || true
 else
@@ -94,10 +94,10 @@ else
   ((TESTS_PASSED++)) || true
 fi
 export SESSION_ID="$SAVE_SESSION_ID"
-source "${KERNEL_DIR}/scripts/session-id.sh"
+source "${KERNEL_DIR}/scripts/shared/session-id.sh"
 
 # ── Test 5b: watch-logs.sh が存在しない issue でエラーを返す ──
-if bash "${KERNEL_DIR}/scripts/watch-logs.sh" 999 2>/dev/null; then
+if bash "${KERNEL_DIR}/scripts/orchestrator/watch-logs.sh" 999 2>/dev/null; then
   echo "  FAIL: watch-logs.sh should fail for nonexistent issue"
   ((TESTS_FAILED++)) || true
 else

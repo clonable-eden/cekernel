@@ -5,18 +5,18 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/helpers.sh"
+source "${SCRIPT_DIR}/../helpers.sh"
 
-KERNEL_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+KERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 echo "test: workspace-resolution"
 
 # ── テスト用セッション ──
 export SESSION_ID="test-workspace-00000001"
-source "${KERNEL_DIR}/scripts/session-id.sh"
+source "${KERNEL_DIR}/scripts/shared/session-id.sh"
 
 # ── resolve_workspace 関数をロード ──
-source "${KERNEL_DIR}/scripts/resolve-workspace.sh"
+source "${KERNEL_DIR}/scripts/shared/resolve-workspace.sh"
 
 # ── Test 1: WEZTERM_PANE が未設定の場合、空文字を返す ──
 unset WEZTERM_PANE 2>/dev/null || true

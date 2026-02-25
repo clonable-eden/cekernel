@@ -9,7 +9,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/session-id.sh"
+source "${SCRIPT_DIR}/../shared/session-id.sh"
 
 LOG_DIR="${SESSION_IPC_DIR}/logs"
 
