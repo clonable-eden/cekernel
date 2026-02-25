@@ -1,6 +1,6 @@
 ---
 description: Issue並列処理ワークフローを開始する
-allowed-tools: Bash, Read
+allowed-tools: Bash, Read, Task(kernel:orchestrator)
 ---
 
 # /orchestrate
