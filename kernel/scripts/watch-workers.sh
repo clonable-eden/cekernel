@@ -4,7 +4,7 @@
 # Usage: watch-workers.sh <issue-number> [issue-number...]
 #
 # Environment:
-#   GLIMMER_WORKER_TIMEOUT — Worker のタイムアウト秒数（デフォルト: 3600）
+#   KERNEL_WORKER_TIMEOUT — Worker のタイムアウト秒数（デフォルト: 3600）
 #
 # 各 Worker の FIFO をバックグラウンドで並列監視し、
 # 全 Worker の完了を待つ。結果を標準出力に JSON Lines で出力する。
@@ -19,7 +19,7 @@ ISSUE_NUMBERS=("$@")
 FIFO_DIR="$SESSION_IPC_DIR"
 RESULT_DIR=$(mktemp -d)
 PIDS=()
-TIMEOUT="${GLIMMER_WORKER_TIMEOUT:-3600}"
+TIMEOUT="${KERNEL_WORKER_TIMEOUT:-3600}"
 
 # 各 FIFO を並列監視
 watch_one() {
