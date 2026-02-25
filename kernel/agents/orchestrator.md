@@ -71,6 +71,11 @@ export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/spawn-worker.sh 6
 
 # 全 Worker の完了を並列監視
 export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/watch-workers.sh 4 5 6
+
+# クリーンアップ
+export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-worktree.sh 4
+export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-worktree.sh 5
+export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-worktree.sh 6
 ```
 
 ## スケジューリング
