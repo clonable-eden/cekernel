@@ -1,4 +1,4 @@
-name: kernel release
+name: plugin release
 
 on:
   workflow_dispatch:
