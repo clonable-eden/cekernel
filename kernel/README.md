@@ -96,6 +96,24 @@ kernel/scripts/cleanup-worktree.sh 4    # 後片付け
 export GLIMMER_MAX_WORKERS=5
 ```
 
+## Worker Permissions
+
+Worker / Orchestrator のエージェント定義には `allowed-tools` が設定されており、
+パーミッションプロンプトなしで以下のツールを使用できる:
+
+| Tool | 用途 |
+|------|------|
+| `Read` | ファイル読み取り |
+| `Edit` | ファイル編集 |
+| `Write` | ファイル書き込み |
+| `Bash(git *)` | git 操作 |
+| `Bash(gh *)` | GitHub CLI（PR 作成、CI 確認、merge） |
+| `Bash(bash *)` | シェルスクリプト実行 |
+
+`spawn-worker.sh` は `claude --agent kernel:worker` で Worker を起動する。
+`--agent` フラグによりエージェント定義の `allowed-tools` が自動適用され、
+Worker は人手の介入なしに自律的にライフサイクルを完遂できる。
+
 ## Constraint: 権限の分離
 
 kernel が定義するのは**ライフサイクル**（spawn → PR → CI → merge → notify → cleanup）だけである。

@@ -1,6 +1,7 @@
 ---
 name: orchestrator
 description: メイン working tree で issue のライフサイクルを管理する Orchestrator エージェント。issue の受け取り、worktree 作成、Worker 起動、完了監視、クリーンアップを担当する。
+allowed-tools: Read, Edit, Write, Bash(git *), Bash(gh *), Bash(bash *)
 ---
 
 # Orchestrator Agent (agent1)
@@ -120,6 +121,10 @@ kernel が Worker に対して定義するのはライフサイクル（PR → C
 - commit message / PR テンプレートの形式
 - merge strategy（`--merge`, `--squash`, `--rebase`）
 - ブランチ命名規則
+
+spawn-worker.sh は `claude --agent kernel:worker` で Worker を起動する。
+`--agent` フラグにより Worker エージェント定義の `allowed-tools` が適用され、
+パーミッションプロンプトなしで自律実行できる。
 
 spawn-worker.sh はデフォルトのブランチ名を生成するが、
 対象リポジトリに命名規則がある場合は Worker がリネームしてよい。
