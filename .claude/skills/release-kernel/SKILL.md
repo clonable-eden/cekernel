@@ -58,7 +58,7 @@ conventional commits の prefix を参考にしつつ、コミット内容も考
 ### Step 6: CI をトリガー
 
 ```bash
-gh workflow run kernel-release.yml -f version=<new-version> -f plugin=kernel
+gh workflow run plugin-release.yml -f version=<new-version> -f plugin=kernel
 ```
 
 ### Step 7: 結果を確認
@@ -66,5 +66,5 @@ gh workflow run kernel-release.yml -f version=<new-version> -f plugin=kernel
 ワークフローの実行状況を確認し、結果をユーザーに報告する:
 
 ```bash
-gh run list --workflow=kernel-release.yml --limit=1
+gh run list --workflow=plugin-release.yml --limit=1
 ```
