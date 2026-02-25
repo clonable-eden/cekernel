@@ -24,7 +24,7 @@ trap 'rm -rf "$TEST_TMP"' EXIT
 FAKE_REPO="${TEST_TMP}/repo"
 mkdir -p "$FAKE_REPO"
 git -C "$FAKE_REPO" init --quiet
-git -C "$FAKE_REPO" commit --allow-empty -m "initial" --quiet
+git -C "$FAKE_REPO" -c user.name="test" -c user.email="test@test" commit --allow-empty -m "initial" --quiet
 
 # テスト用の ~/.claude.json
 FAKE_CLAUDE_JSON="${TEST_TMP}/claude.json"
