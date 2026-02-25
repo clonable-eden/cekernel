@@ -9,6 +9,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/session-id.sh"
+source "${SCRIPT_DIR}/claude-json-helper.sh"
 
 # ── オプションパース ──
 FORCE=0
@@ -53,6 +54,9 @@ fi
 
 # ブランチ名を取得
 BRANCH=$(git -C "$WORKTREE" rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+
+# ── Trust 登録解除（worktree 削除前に実行、パスが必要なため） ──
+unregister_trust "$WORKTREE"
 
 echo "Removing worktree: $WORKTREE" >&2
 git worktree remove --force "$WORKTREE"

@@ -12,6 +12,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
 source "${SCRIPT_DIR}/session-id.sh"
+source "${SCRIPT_DIR}/claude-json-helper.sh"
 
 ISSUE_NUMBER="${1:?Usage: spawn-worker.sh <issue-number> [base-branch]}"
 BASE_BRANCH="${2:-main}"
@@ -61,6 +62,9 @@ LOG_FILE="${LOG_DIR}/worker-${ISSUE_NUMBER}.log"
 mkdir -p "$WORKTREE_DIR"
 git fetch origin "${BASE_BRANCH}" --quiet
 git worktree add -b "$BRANCH" "$WORKTREE" "origin/${BASE_BRANCH}"
+
+# ── Trust 登録（Worker が trust プロンプトなしで起動できるように） ──
+register_trust "$WORKTREE"
 
 echo "worktree: $WORKTREE" >&2
 echo "branch:   $BRANCH" >&2
