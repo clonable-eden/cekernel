@@ -54,6 +54,7 @@ kernel/
       SKILL.md               # /kernel:orchestrate スキル
   scripts/
     session-id.sh            # セッション ID 生成 + IPC ディレクトリ導出
+    claude-json-helper.sh    # ~/.claude.json trust エントリの読み書きヘルパー
     spawn-worker.sh          # worktree作成 + WezTermウィンドウ起動（concurrency guard 付き）
     worker-status.sh         # 稼働中 Worker の一覧表示
     notify-complete.sh       # Worker → Orchestrator 完了通知
@@ -77,6 +78,21 @@ Claude Code のプラグインマーケットプレイスから導入する:
 # 2. kernel プラグインをインストール
 /plugin install kernel@clonable-eden-glimmer
 ```
+
+### Update
+
+```bash
+# 1. マーケットプレイスのリポジトリを最新化
+/plugin marketplace update
+
+# 2. プラグインを更新
+/plugin update
+
+# 3. Claude Code を再起動して反映
+```
+
+> **Note**: `/plugin update` 単体では marketplace のローカルクローンが更新されない場合がある。
+> 必ず `/plugin marketplace update` を先に実行すること。
 
 ## Usage
 
