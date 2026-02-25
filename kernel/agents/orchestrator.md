@@ -51,17 +51,17 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/watch-workers.sh 4 5 6
 
 ### 同時実行数の制限
 
-`GLIMMER_MAX_WORKERS` 環境変数（デフォルト: 3）で同時 Worker 数を制限する。
+`KERNEL_MAX_WORKERS` 環境変数（デフォルト: 3）で同時 Worker 数を制限する。
 `spawn-worker.sh` はセッション内のアクティブ FIFO 数をカウントし、上限到達時に exit 2 を返す。
 
 ```bash
 # 例: 最大 5 Worker に設定
-export GLIMMER_MAX_WORKERS=5
+export KERNEL_MAX_WORKERS=5
 ```
 
 ### キューイングルール
 
-issue 数が `GLIMMER_MAX_WORKERS` を超える場合、Orchestrator は以下の手順でスケジューリングする:
+issue 数が `KERNEL_MAX_WORKERS` を超える場合、Orchestrator は以下の手順でスケジューリングする:
 
 1. 先頭 `MAX_WORKERS` 件の独立した issue を同時起動
 2. `watch-workers.sh` でいずれかの Worker 完了を検知
@@ -104,9 +104,9 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/worker-status.sh
 
 ## 判断基準
 
-- 依存関係のない issue は並列処理（`GLIMMER_MAX_WORKERS` の範囲内）
+- 依存関係のない issue は並列処理（`KERNEL_MAX_WORKERS` の範囲内）
 - 依存関係のある issue は直列処理（先行 issue の完了を待つ）
-- `GLIMMER_MAX_WORKERS` を超える場合はキューイング（先行完了を待って次を起動）
+- `KERNEL_MAX_WORKERS` を超える場合はキューイング（先行完了を待って次を起動）
 - Worker 失敗時: PR の状態を確認し、再試行 or エスカレーション
 
 ## Worker と対象リポジトリの関係
@@ -151,11 +151,11 @@ stat -c %Y "${SESSION_IPC_DIR}/logs/worker-4.log"  # Linux
 
 ### タイムアウト（SIGALRM 相当）
 
-`watch-workers.sh` は環境変数 `GLIMMER_WORKER_TIMEOUT` でタイムアウトを制御する（デフォルト: 3600秒 = 1時間）。
+`watch-workers.sh` は環境変数 `KERNEL_WORKER_TIMEOUT` でタイムアウトを制御する（デフォルト: 3600秒 = 1時間）。
 
 ```bash
 # タイムアウトを30分に設定
-export GLIMMER_WORKER_TIMEOUT=1800
+export KERNEL_WORKER_TIMEOUT=1800
 ${CLAUDE_PLUGIN_ROOT}/scripts/watch-workers.sh 4 5 6
 ```
 
@@ -186,7 +186,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-worktree.sh --force 4
 
 | Unix Concept | Kernel Implementation |
 |---|---|
-| `SIGALRM` / watchdog | `GLIMMER_WORKER_TIMEOUT` |
+| `SIGALRM` / watchdog | `KERNEL_WORKER_TIMEOUT` |
 | `kill -9` (SIGKILL) | `cleanup-worktree.sh --force` |
 | zombie reaping (`waitpid` + `WNOHANG`) | `health-check.sh` |
 

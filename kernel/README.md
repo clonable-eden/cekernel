@@ -35,7 +35,7 @@ Orchestrator (agent1)              Worker (agent2, 3, 4, ...)
 | `syslog` | ライフサイクルイベントのログ書き込み |
 | `tail -f` / `journalctl` | `watch-logs.sh` |
 | log rotation | `cleanup-worktree.sh` でログも削除 |
-| `ulimit -u` (max processes) | `GLIMMER_MAX_WORKERS` |
+| `ulimit -u` (max processes) | `KERNEL_MAX_WORKERS` |
 | `ps aux` | `worker-status.sh` |
 | process scheduler | Orchestrator のキューイングロジック |
 | semaphore | FIFO 数による concurrency guard |
@@ -93,7 +93,7 @@ kernel/scripts/watch-logs.sh 4           # 特定 Worker のログ監視
 kernel/scripts/cleanup-worktree.sh 4    # 後片付け
 
 # 同時実行数を変更（デフォルト: 3）
-export GLIMMER_MAX_WORKERS=5
+export KERNEL_MAX_WORKERS=5
 ```
 
 バージョン管理とリリース手順については [kernel/CLAUDE.md の Versioning セクション](./CLAUDE.md#versioning) を参照。
@@ -191,7 +191,7 @@ kernel/scripts/watch-logs.sh 4           # 特定 Worker
 
 ### 同時実行数制限
 
-`GLIMMER_MAX_WORKERS` 環境変数で同時 Worker 数を制限する（デフォルト: 3）。
+`KERNEL_MAX_WORKERS` 環境変数で同時 Worker 数を制限する（デフォルト: 3）。
 `spawn-worker.sh` はセッション内のアクティブ FIFO 数をカウントし、上限に達している場合 exit 2 を返す。
 Orchestrator はこの exit code を受けてキューイングを行う。
 
