@@ -1,61 +1,46 @@
 ---
-description: Issue並列処理ワークフローを開始する
-allowed-tools: Bash
+description: Issue の優先度判断後、Orchestrator エージェントに委譲して並列処理する
+allowed-tools: Bash, Read, Task(kernel:orchestrator)
 ---
 
 # /orchestrate
 
-指定された issue を git worktree + WezTerm ウィンドウで並列処理するワークフローを管理する。
+指定された issue を Orchestrator エージェントに委譲し、git worktree + WezTerm ウィンドウで並列処理する。
 
 ## Usage
 
-ユーザーから issue 番号（単数または複数）を受け取り、Orchestrator として振る舞う。
-詳細なプロトコルは `${CLAUDE_PLUGIN_ROOT}/agents/orchestrator.md` を参照。
+ユーザーから issue 番号（単数または複数）を受け取る。
 
 ## Workflow
 
-### Step 1: Issue 確認
+### Step 1: Issue のトリアージと優先度判断
 
-```bash
-gh issue view <number>
-```
+各 issue の内容を `gh issue view` で確認し、以下を検証する:
 
-issue の内容を確認し、以下を判断:
-- 要件が明確か（AI-ready か）
-- 依存関係があるか
-- base branch は main でよいか
+1. **要件の明確さ**: 何を変更すべきか具体的に記述されているか
+2. **スコープ**: 実装範囲が特定できるか
 
-不明点があればユーザーに確認する。
+要件が曖昧または不十分な issue がある場合は、ユーザーに報告して対応を確認する（issue の修正、スキップ、続行など）。
 
-### Step 2: Worker 起動
+複数 issue の場合はさらに:
 
-```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/spawn-worker.sh <issue-number> [base-branch]
-```
+3. issue 間の依存関係を分析（A の完了が B の前提になるか）
+4. 依存関係がある場合はフェーズ分けし、実行順序をユーザーに提示して確認を取る
 
-ユーザーに起動する issue 番号と base branch を確認してから実行する。
-複数 issue の場合は順次 spawn する。
+### Step 2: Orchestrator エージェント起動
 
-### Step 3: 並列監視
+Task tool で `kernel:orchestrator` サブエージェントを起動する:
 
-```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/watch-workers.sh <issue-numbers...>
-```
+- `subagent_type`: `kernel:orchestrator`
+- `prompt`: issue 番号、base branch（指定があれば）、実行順序（Step 1 で決定した場合）を含める
 
-全 Worker の完了を待機する。完了・失敗の結果をユーザーに報告する。
+Orchestrator が自律的に以下を実行する:
 
-### Step 4: クリーンアップ
+1. issue 確認・トリアージ（曖昧な issue は FAIL）
+2. Worker 起動
+3. 完了監視
+4. クリーンアップ
 
-```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-worktree.sh <issue-number>
-```
+### Step 3: 結果報告
 
-merge が完了した worktree を削除する。
-
-## Notes
-
-- 複数 issue を同時に処理する場合、依存関係のチェックを先に行う
-- Worker 起動前に必ずユーザーの確認を取る
-- エラー発生時はユーザーにエスカレーションする
-- 各 orchestrate セッションは固有の `SESSION_ID` を持ち、IPC パスが分離される。
-  同一マシンで複数セッションを並行実行しても FIFO が衝突しない。
+Orchestrator の結果をユーザーに報告する。
