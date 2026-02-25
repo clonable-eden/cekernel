@@ -24,19 +24,19 @@ ISSUE_NUMBER="${1:?Usage: cleanup-worktree.sh [--force] <issue-number>}"
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 WORKTREE_DIR="${REPO_ROOT}/.worktrees"
 
-# ── --force: Worker プロセスを強制終了 ──
-if [[ "$FORCE" -eq 1 ]]; then
-  PANE_FILE="${SESSION_IPC_DIR}/pane-${ISSUE_NUMBER}"
+# ── WezTerm pane を閉じる ──
+# --force: Worker プロセス強制終了のため worktree 削除前に kill
+# 通常:   Worker 完了後の残存ウィンドウを閉じるため worktree 削除前に kill
+# どちらの場合も pane を閉じる（全 pane を閉じればウィンドウも自動的に閉じる）
+PANE_FILE="${SESSION_IPC_DIR}/pane-${ISSUE_NUMBER}"
 
-  # WezTerm pane を kill
-  if [[ -f "$PANE_FILE" ]]; then
-    PANE_ID=$(cat "$PANE_FILE")
-    if command -v wezterm >/dev/null 2>&1; then
-      wezterm cli kill-pane --pane-id "$PANE_ID" 2>/dev/null && \
-        echo "Killed WezTerm pane: ${PANE_ID}" >&2 || true
-    fi
-    rm -f "$PANE_FILE"
+if [[ -f "$PANE_FILE" ]]; then
+  PANE_ID=$(cat "$PANE_FILE")
+  if command -v wezterm >/dev/null 2>&1; then
+    wezterm cli kill-pane --pane-id "$PANE_ID" 2>/dev/null && \
+      echo "Killed WezTerm pane: ${PANE_ID}" >&2 || true
   fi
+  rm -f "$PANE_FILE"
 fi
 
 # issue 番号に一致する worktree を検索
