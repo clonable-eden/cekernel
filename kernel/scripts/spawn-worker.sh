@@ -10,6 +10,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
 source "${SCRIPT_DIR}/session-id.sh"
 
 ISSUE_NUMBER="${1:?Usage: spawn-worker.sh <issue-number> [base-branch]}"
