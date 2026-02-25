@@ -124,8 +124,52 @@ kernel が Worker に対して定義するのはライフサイクル（PR → C
 spawn-worker.sh はデフォルトのブランチ名を生成するが、
 対象リポジトリに命名規則がある場合は Worker がリネームしてよい。
 
+## タイムアウトとゾンビ管理
+
+### タイムアウト（SIGALRM 相当）
+
+`watch-workers.sh` は環境変数 `GLIMMER_WORKER_TIMEOUT` でタイムアウトを制御する（デフォルト: 3600秒 = 1時間）。
+
+```bash
+# タイムアウトを30分に設定
+export GLIMMER_WORKER_TIMEOUT=1800
+${CLAUDE_PLUGIN_ROOT}/scripts/watch-workers.sh 4 5 6
+```
+
+タイムアウト時、以下の JSON が返る:
+
+```json
+{"issue":4,"status":"timeout","detail":"No response within 1800s"}
+```
+
+### ゾンビ検知（waitpid + WNOHANG 相当）
+
+```bash
+# 特定 Worker の状態を確認
+${CLAUDE_PLUGIN_ROOT}/scripts/health-check.sh 4
+
+# セッション内の全 Worker を検査
+${CLAUDE_PLUGIN_ROOT}/scripts/health-check.sh
+```
+
+### 強制クリーンアップ（SIGKILL 相当）
+
+```bash
+# --force: WezTerm pane を kill してから worktree を削除
+${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-worktree.sh --force 4
+```
+
+### OS アナロジー
+
+| Unix Concept | Kernel Implementation |
+|---|---|
+| `SIGALRM` / watchdog | `GLIMMER_WORKER_TIMEOUT` |
+| `kill -9` (SIGKILL) | `cleanup-worktree.sh --force` |
+| zombie reaping (`waitpid` + `WNOHANG`) | `health-check.sh` |
+
 ## エラーハンドリング
 
-- Worker が応答しない: WezTerm ウィンドウの状態を確認
+- Worker が応答しない: `health-check.sh` でゾンビ検知 → `cleanup-worktree.sh --force` で強制終了
 - merge コンフリクト: Worker が自力で解決を試みる。不可能な場合は FIFO にエラー通知
 - CI 失敗: Worker が修正を試みる。3 回失敗で人間にエスカレーション
+- タイムアウト: `watch-workers.sh` が自動で検知し、`timeout` ステータスを返す

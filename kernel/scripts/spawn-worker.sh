@@ -70,6 +70,9 @@ echo "branch:   $BRANCH" >&2
 
 # Worker に SESSION_ID を伝播
 MAIN_PANE=$(wezterm cli spawn --new-window --cwd "$WORKTREE")
+
+# Pane ID を保存（health-check / cleanup --force で使用）
+echo "$MAIN_PANE" > "${SESSION_IPC_DIR}/pane-${ISSUE_NUMBER}"
 wezterm cli send-text --pane-id "$MAIN_PANE" -- "export SESSION_ID='${SESSION_ID}'"
 wezterm cli send-text --pane-id "$MAIN_PANE" --no-paste $'\r'
 

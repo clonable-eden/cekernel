@@ -3,6 +3,9 @@
 #
 # Usage: watch-workers.sh <issue-number> [issue-number...]
 #
+# Environment:
+#   GLIMMER_WORKER_TIMEOUT — Worker のタイムアウト秒数（デフォルト: 3600）
+#
 # 各 Worker の FIFO をバックグラウンドで並列監視し、
 # 全 Worker の完了を待つ。結果を標準出力に JSON Lines で出力する。
 set -euo pipefail
@@ -16,6 +19,7 @@ ISSUE_NUMBERS=("$@")
 FIFO_DIR="$SESSION_IPC_DIR"
 RESULT_DIR=$(mktemp -d)
 PIDS=()
+TIMEOUT="${GLIMMER_WORKER_TIMEOUT:-3600}"
 
 # 各 FIFO を並列監視
 watch_one() {
@@ -27,17 +31,23 @@ watch_one() {
     return 1
   fi
 
-  echo "Watching issue #${issue}..." >&2
+  echo "Watching issue #${issue} (timeout: ${TIMEOUT}s)..." >&2
 
-  # ブロッキング読み取り — Worker が書き込むまで待機
+  # FIFO を read-write で開いて open() のブロッキングを回避（SIGALRM 相当）
   local result
-  result=$(cat "$fifo")
-  echo "$result" > "${RESULT_DIR}/${issue}"
-
-  # FIFO を即座にクリーンアップ
-  rm -f "$fifo"
-
-  echo "Issue #${issue} completed." >&2
+  exec 3<>"$fifo"
+  if read -t "$TIMEOUT" result <&3; then
+    exec 3>&-
+    echo "$result" > "${RESULT_DIR}/${issue}"
+    rm -f "$fifo"
+    echo "Issue #${issue} completed." >&2
+  else
+    exec 3>&-
+    echo "{\"issue\":${issue},\"status\":\"timeout\",\"detail\":\"No response within ${TIMEOUT}s\"}" > "${RESULT_DIR}/${issue}"
+    rm -f "$fifo"
+    echo "Issue #${issue} timed out after ${TIMEOUT}s." >&2
+    return 1
+  fi
 }
 
 for issue in "${ISSUE_NUMBERS[@]}"; do
@@ -45,12 +55,12 @@ for issue in "${ISSUE_NUMBERS[@]}"; do
   PIDS+=($!)
 done
 
-echo "Watching ${#ISSUE_NUMBERS[@]} workers..." >&2
+echo "Watching ${#ISSUE_NUMBERS[@]} workers (timeout: ${TIMEOUT}s)..." >&2
 
 # 全バックグラウンドプロセスの完了を待機
 FAILED=0
 for pid in "${PIDS[@]}"; do
-  wait "$pid" || ((FAILED++))
+  wait "$pid" || FAILED=$((FAILED + 1))
 done
 
 # 結果を出力
