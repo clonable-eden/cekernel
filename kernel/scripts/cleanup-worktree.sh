@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# cleanup-worktree.sh — Worktree + branch + WezTerm pane 削除
+# cleanup-worktree.sh — Worktree + branch + WezTerm ウィンドウ削除
 #
 # Usage: cleanup-worktree.sh [--force] <issue-number>
 #
-# WezTerm pane は常に閉じる（Worker 完了後の残存ウィンドウ対策）。
+# WezTerm はウィンドウ単位で閉じる（メインペインと同一ウィンドウの全ペインを kill）。
 # --force は後方互換のため残しているが、現在は通常モードと同じ動作。
 set -euo pipefail
 
