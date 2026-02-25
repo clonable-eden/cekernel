@@ -122,6 +122,10 @@ kernel が Worker に対して定義するのはライフサイクル（PR → C
 - merge strategy（`--merge`, `--squash`, `--rebase`）
 - ブランチ命名規則
 
+spawn-worker.sh は `claude --agent kernel:worker` で Worker を起動する。
+`--agent` フラグにより Worker エージェント定義の `allowed-tools` が適用され、
+パーミッションプロンプトなしで自律実行できる。
+
 spawn-worker.sh はデフォルトのブランチ名を生成するが、
 対象リポジトリに命名規則がある場合は Worker がリネームしてよい。
 
