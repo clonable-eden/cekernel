@@ -118,7 +118,6 @@ BASE_BRANCH="${2:-main}"
 name: <agent-name>
 description: <description>
 tools: Read, Edit, Write, Bash
-permissionMode: bypassPermissions
 ```
 
 ### 権限の分離
