@@ -41,6 +41,18 @@ set -euo pipefail
 source "$(dirname "$0")/session-id.sh"
 ```
 
+### claude-json-helper.sh
+
+`~/.claude.json` の trust エントリを安全に読み書きするヘルパー。`spawn-worker.sh` と `cleanup-worktree.sh` で共有する。
+
+```bash
+source "$(dirname "$0")/claude-json-helper.sh"
+register_trust "$WORKTREE"    # worktree パスの trust を登録
+unregister_trust "$WORKTREE"  # worktree パスの trust を解除
+```
+
+mkdir ベースのファイルロック（`acquire_claude_json_lock` / `release_claude_json_lock`）で並行書き込みを防止する。テスト時は `CLAUDE_JSON` / `LOCK_DIR` 環境変数でパスをオーバーライドできる。
+
 ### 既知の罠
 
 `((var++))` は `var=0` のとき exit 1 を返す（bash の算術式で 0 は falsy）。
