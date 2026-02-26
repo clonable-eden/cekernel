@@ -89,7 +89,11 @@ check_worker() {
     fi
   fi
 
-  echo "{\"issue\":${issue},\"status\":\"${status}\",\"detail\":\"${detail}\"}"
+  jq -cn \
+    --argjson issue "$issue" \
+    --arg status "$status" \
+    --arg detail "$detail" \
+    '{issue: $issue, status: $status, detail: $detail}'
 
   if [[ "$status" == "zombie" ]]; then
     return 1

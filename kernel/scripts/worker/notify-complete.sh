@@ -36,9 +36,13 @@ fi
 # この書き込みが orchestrator のブロッキング読み取りを解放する
 TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-cat > "$FIFO" <<EOF
-{"issue":${ISSUE_NUMBER},"status":"${STATUS}","detail":"${DETAIL}","timestamp":"${TIMESTAMP}"}
-EOF
+JSON=$(jq -cn \
+  --argjson issue "$ISSUE_NUMBER" \
+  --arg status "$STATUS" \
+  --arg detail "$DETAIL" \
+  --arg timestamp "$TIMESTAMP" \
+  '{issue: $issue, status: $status, detail: $detail, timestamp: $timestamp}')
+echo "$JSON" > "$FIFO"
 
 # ── ライフサイクルイベントをログに記録 ──
 LOG_FILE="${SESSION_IPC_DIR}/logs/worker-${ISSUE_NUMBER}.log"

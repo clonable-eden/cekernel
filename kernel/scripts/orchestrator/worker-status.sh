@@ -60,7 +60,11 @@ find "$SESSION_IPC_DIR" -maxdepth 1 -name 'worker-*' -type p 2>/dev/null | sort 
     fi
   fi
 
-  # JSON 出力（jq 不要）
-  printf '{"issue":%s,"worktree":"%s","fifo":"%s","uptime":"%s"}\n' \
-    "$issue" "$worktree" "$fifo" "$uptime"
+  # JSON 出力
+  jq -cn \
+    --argjson issue "$issue" \
+    --arg worktree "$worktree" \
+    --arg fifo "$fifo" \
+    --arg uptime "$uptime" \
+    '{issue: $issue, worktree: $worktree, fifo: $fifo, uptime: $uptime}'
 done
