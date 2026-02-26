@@ -5,18 +5,18 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../helpers.sh"
 
-KERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+CEKERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 echo "test: ipc-lifecycle (session-scoped)"
 
 # テスト用セッション
-export SESSION_ID="test-lifecycle-00000001"
-source "${KERNEL_DIR}/scripts/shared/session-id.sh"
+export CEKERNEL_SESSION_ID="test-lifecycle-00000001"
+source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
 
 # セットアップ: セッションディレクトリと FIFO を作成
 ISSUE_NUMBER=42
-mkdir -p "$SESSION_IPC_DIR"
-FIFO="${SESSION_IPC_DIR}/worker-${ISSUE_NUMBER}"
+mkdir -p "$CEKERNEL_IPC_DIR"
+FIFO="${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}"
 mkfifo "$FIFO"
 
 assert_fifo_exists "FIFO created in session dir" "$FIFO"
@@ -28,7 +28,7 @@ RESULT_FILE=$(mktemp)
 READER_PID=$!
 
 # notify-complete.sh で書き込み
-bash "${KERNEL_DIR}/scripts/worker/notify-complete.sh" "$ISSUE_NUMBER" merged 99
+bash "${CEKERNEL_DIR}/scripts/worker/notify-complete.sh" "$ISSUE_NUMBER" merged 99
 
 # 読み取り完了を待機
 wait "$READER_PID" || true
@@ -44,6 +44,6 @@ assert_match "Result contains timestamp" '"timestamp":"[0-9]{4}-[0-9]{2}-[0-9]{2
 
 # クリーンアップ
 rm -f "$FIFO"
-rmdir "$SESSION_IPC_DIR" 2>/dev/null || true
+rmdir "$CEKERNEL_IPC_DIR" 2>/dev/null || true
 
 report_results

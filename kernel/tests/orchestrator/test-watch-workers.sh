@@ -5,34 +5,34 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../helpers.sh"
 
-KERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+CEKERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 echo "test: watch-workers (session-scoped)"
 
-export SESSION_ID="test-watch-00000001"
-source "${KERNEL_DIR}/scripts/shared/session-id.sh"
+export CEKERNEL_SESSION_ID="test-watch-00000001"
+source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
 
 ISSUES=(20 21)
 
 cleanup() {
   for issue in "${ISSUES[@]}"; do
-    rm -f "${SESSION_IPC_DIR}/worker-${issue}"
+    rm -f "${CEKERNEL_IPC_DIR}/worker-${issue}"
   done
-  rmdir "$SESSION_IPC_DIR" 2>/dev/null || true
+  rmdir "$CEKERNEL_IPC_DIR" 2>/dev/null || true
 }
 trap cleanup EXIT
 
 # セットアップ: セッションディレクトリに FIFO を作成
-mkdir -p "$SESSION_IPC_DIR"
+mkdir -p "$CEKERNEL_IPC_DIR"
 for issue in "${ISSUES[@]}"; do
-  mkfifo "${SESSION_IPC_DIR}/worker-${issue}"
+  mkfifo "${CEKERNEL_IPC_DIR}/worker-${issue}"
 done
 
 # ── Test: watch-workers.sh がセッションスコープの FIFO を並列監視 ──
 RESULT_FILE=$(mktemp)
 
 # バックグラウンドで watch-workers を起動
-bash "${KERNEL_DIR}/scripts/orchestrator/watch-workers.sh" "${ISSUES[@]}" > "$RESULT_FILE" 2>/dev/null &
+bash "${CEKERNEL_DIR}/scripts/orchestrator/watch-workers.sh" "${ISSUES[@]}" > "$RESULT_FILE" 2>/dev/null &
 WATCH_PID=$!
 
 # watch-workers が FIFO を開くのを待つ
@@ -41,7 +41,7 @@ sleep 0.5
 # 各 FIFO に書き込み
 WRITER_PIDS=()
 for issue in "${ISSUES[@]}"; do
-  bash -c "echo '{\"issue\":${issue},\"status\":\"merged\",\"detail\":\"PR-${issue}\"}' > '${SESSION_IPC_DIR}/worker-${issue}'" &
+  bash -c "echo '{\"issue\":${issue},\"status\":\"merged\",\"detail\":\"PR-${issue}\"}' > '${CEKERNEL_IPC_DIR}/worker-${issue}'" &
   WRITER_PIDS+=($!)
 done
 
@@ -61,7 +61,7 @@ for pid in "${WRITER_PIDS[@]}"; do
 done
 # kill 後に FIFO を削除して open() をアンブロック
 for issue in "${ISSUES[@]}"; do
-  rm -f "${SESSION_IPC_DIR}/worker-${issue}"
+  rm -f "${CEKERNEL_IPC_DIR}/worker-${issue}"
 done
 for pid in "${WRITER_PIDS[@]}"; do
   wait "$pid" 2>/dev/null || true

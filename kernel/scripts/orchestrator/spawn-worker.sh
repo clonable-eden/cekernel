@@ -23,10 +23,10 @@ REPO_ROOT="$(git rev-parse --show-toplevel)"
 MAX_WORKERS="${CEKERNEL_MAX_WORKERS:-3}"
 
 active_worker_count() {
-  find "$SESSION_IPC_DIR" -maxdepth 1 -name 'worker-*' -type p 2>/dev/null | wc -l | tr -d ' '
+  find "$CEKERNEL_IPC_DIR" -maxdepth 1 -name 'worker-*' -type p 2>/dev/null | wc -l | tr -d ' '
 }
 
-mkdir -p "$SESSION_IPC_DIR"
+mkdir -p "$CEKERNEL_IPC_DIR"
 ACTIVE=$(active_worker_count)
 if [[ "$ACTIVE" -ge "$MAX_WORKERS" ]]; then
   echo "Error: max workers ($MAX_WORKERS) reached (active: $ACTIVE). Waiting..." >&2
@@ -56,7 +56,7 @@ rollback() {
   if [[ -n "${MAIN_PANE:-}" ]]; then
     terminal_kill_pane "$MAIN_PANE"
   fi
-  rm -f "${SESSION_IPC_DIR}/pane-${ISSUE_NUMBER}"
+  rm -f "${CEKERNEL_IPC_DIR}/pane-${ISSUE_NUMBER}"
   # Trust 登録解除
   if [[ -n "${WORKTREE:-}" && -d "${WORKTREE:-}" ]]; then
     unregister_trust "$WORKTREE" 2>/dev/null || true
@@ -78,12 +78,12 @@ rollback() {
 trap rollback ERR
 
 # ── FIFO (named pipe) 作成 ──
-mkdir -p "$SESSION_IPC_DIR"
-FIFO="${SESSION_IPC_DIR}/worker-${ISSUE_NUMBER}"
+mkdir -p "$CEKERNEL_IPC_DIR"
+FIFO="${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}"
 [[ -p "$FIFO" ]] || mkfifo "$FIFO"
 
 # ── ログファイル作成 ──
-LOG_DIR="${SESSION_IPC_DIR}/logs"
+LOG_DIR="${CEKERNEL_IPC_DIR}/logs"
 mkdir -p "$LOG_DIR"
 LOG_FILE="${LOG_DIR}/worker-${ISSUE_NUMBER}.log"
 
@@ -131,15 +131,15 @@ echo "branch:   $BRANCH" >&2
 #   │  git log (25%)          │
 #   └─────────────────────────┘
 
-# Worker に SESSION_ID を伝播
+# Worker に CEKERNEL_SESSION_ID を伝播
 # Orchestrator と同じ workspace に Worker を作成
 WORKSPACE=$(terminal_resolve_workspace)
 MAIN_PANE=$(terminal_spawn_window "$WORKTREE" "$WORKSPACE")
 
 # Pane ID を保存（health-check / cleanup で使用）
-echo "$MAIN_PANE" > "${SESSION_IPC_DIR}/pane-${ISSUE_NUMBER}"
+echo "$MAIN_PANE" > "${CEKERNEL_IPC_DIR}/pane-${ISSUE_NUMBER}"
 # --cwd が確実に反映されないケースに備え、明示的に cd する
-terminal_run_command "$MAIN_PANE" "cd '${WORKTREE}' && export SESSION_ID='${SESSION_ID}'"
+terminal_run_command "$MAIN_PANE" "cd '${WORKTREE}' && export CEKERNEL_SESSION_ID='${CEKERNEL_SESSION_ID}'"
 
 # 下部: auto-refresh git log
 terminal_split_pane bottom 25 "$MAIN_PANE" "$WORKTREE" \
@@ -159,7 +159,7 @@ terminal_run_command "$MAIN_PANE" "claude --agent kernel:worker '${PROMPT}'"
 # ── ライフサイクルイベントをログに記録 ──
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] SPAWN issue=#${ISSUE_NUMBER} branch=${BRANCH}" >> "$LOG_FILE"
 
-echo "session: $SESSION_ID" >&2
+echo "session: $CEKERNEL_SESSION_ID" >&2
 echo "worker spawned: issue #${ISSUE_NUMBER}" >&2
 
 # FIFO パスを返す（orchestrator が読み取りに使う）

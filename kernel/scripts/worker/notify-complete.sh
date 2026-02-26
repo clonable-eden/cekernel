@@ -17,7 +17,7 @@ ISSUE_NUMBER="${1:?Usage: notify-complete.sh <issue-number> <status> [detail]}"
 STATUS="${2:?Status required: merged | failed}"
 DETAIL="${3:-}"
 
-FIFO="${SESSION_IPC_DIR}/worker-${ISSUE_NUMBER}"
+FIFO="${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}"
 
 if [[ ! -p "$FIFO" ]]; then
   echo "Error: FIFO not found at $FIFO" >&2
@@ -38,8 +38,8 @@ JSON=$(jq -cn \
 echo "$JSON" > "$FIFO"
 
 # ── ライフサイクルイベントをログに記録 ──
-LOG_FILE="${SESSION_IPC_DIR}/logs/worker-${ISSUE_NUMBER}.log"
-if [[ -d "${SESSION_IPC_DIR}/logs" ]]; then
+LOG_FILE="${CEKERNEL_IPC_DIR}/logs/worker-${ISSUE_NUMBER}.log"
+if [[ -d "${CEKERNEL_IPC_DIR}/logs" ]]; then
   EVENT="COMPLETE"
   [[ "$STATUS" == "failed" ]] && EVENT="FAILED"
   echo "[${TIMESTAMP}] ${EVENT} issue=#${ISSUE_NUMBER} status=${STATUS} detail=${DETAIL}" >> "$LOG_FILE"

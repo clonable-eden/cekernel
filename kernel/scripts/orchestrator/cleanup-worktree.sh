@@ -27,7 +27,7 @@ WORKTREE_DIR="${REPO_ROOT}/.worktrees"
 # ── ターミナルウィンドウを閉じる ──
 # メインペインが属するウィンドウの全ペインを kill する。
 # 全ペインが閉じればウィンドウも自動的に閉じる。
-PANE_FILE="${SESSION_IPC_DIR}/pane-${ISSUE_NUMBER}"
+PANE_FILE="${CEKERNEL_IPC_DIR}/pane-${ISSUE_NUMBER}"
 
 if [[ -f "$PANE_FILE" ]]; then
   PANE_ID=$(cat "$PANE_FILE")
@@ -65,16 +65,16 @@ if [[ -n "$BRANCH" && "$BRANCH" != "main" ]]; then
 fi
 
 # FIFO クリーンアップ（セッションスコープ）
-rm -f "${SESSION_IPC_DIR}/worker-${ISSUE_NUMBER}"
+rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}"
 # Pane ID ファイルのクリーンアップ
-rm -f "${SESSION_IPC_DIR}/pane-${ISSUE_NUMBER}"
+rm -f "${CEKERNEL_IPC_DIR}/pane-${ISSUE_NUMBER}"
 
 # ログファイル クリーンアップ
-rm -f "${SESSION_IPC_DIR}/logs/worker-${ISSUE_NUMBER}.log"
+rm -f "${CEKERNEL_IPC_DIR}/logs/worker-${ISSUE_NUMBER}.log"
 # 空の logs ディレクトリを削除
-rmdir "${SESSION_IPC_DIR}/logs" 2>/dev/null || true
+rmdir "${CEKERNEL_IPC_DIR}/logs" 2>/dev/null || true
 
 # 空のセッションディレクトリを削除
-rmdir "$SESSION_IPC_DIR" 2>/dev/null || true
+rmdir "$CEKERNEL_IPC_DIR" 2>/dev/null || true
 
 echo "Cleanup complete for issue #${ISSUE_NUMBER}" >&2

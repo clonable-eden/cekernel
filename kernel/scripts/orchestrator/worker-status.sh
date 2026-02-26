@@ -3,7 +3,7 @@
 #
 # Usage: worker-status.sh
 # Output: JSON Lines (1 行 = 1 Worker)
-#   {"issue": 4, "worktree": "/path/to/.worktrees/issue/4-...", "fifo": "/tmp/glimmer-ipc/.../worker-4", "uptime": "12m"}
+#   {"issue": 4, "worktree": "/path/to/.worktrees/issue/4-...", "fifo": "/tmp/cekernel-ipc/.../worker-4", "uptime": "12m"}
 #
 # Exit codes:
 #   0 — 正常終了
@@ -13,15 +13,15 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../shared/session-id.sh"
 
-if [[ ! -d "$SESSION_IPC_DIR" ]]; then
-  echo "No active session: ${SESSION_IPC_DIR}" >&2
+if [[ ! -d "$CEKERNEL_IPC_DIR" ]]; then
+  echo "No active session: ${CEKERNEL_IPC_DIR}" >&2
   exit 1
 fi
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"
 
 # FIFO 一覧から Worker 情報を収集
-find "$SESSION_IPC_DIR" -maxdepth 1 -name 'worker-*' -type p 2>/dev/null | sort | while read -r fifo; do
+find "$CEKERNEL_IPC_DIR" -maxdepth 1 -name 'worker-*' -type p 2>/dev/null | sort | while read -r fifo; do
   basename_fifo=$(basename "$fifo")
   issue="${basename_fifo#worker-}"
 

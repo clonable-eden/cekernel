@@ -8,7 +8,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../helpers.sh"
 
-KERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+CEKERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 echo "test: spawn-retry"
 
@@ -23,7 +23,7 @@ git -C "$FAKE_REPO" -c user.name="test" -c user.email="test@test" commit --allow
 
 # ── cleanup_stale_worktree 関数を spawn-worker.sh から抽出 ──
 source_cleanup_stale() {
-  local script="${KERNEL_DIR}/scripts/orchestrator/spawn-worker.sh"
+  local script="${CEKERNEL_DIR}/scripts/orchestrator/spawn-worker.sh"
   local func_body
   func_body=$(sed -n '/^cleanup_stale_worktree()/,/^}/p' "$script")
   if [[ -z "$func_body" ]]; then

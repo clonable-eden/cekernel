@@ -5,7 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../helpers.sh"
 
-KERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+CEKERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 echo "test: session-isolation"
 
@@ -13,14 +13,14 @@ ISSUE_NUMBER=10
 
 # ── セッション A ──
 SESSION_A="test-isolation-aaaaaaaa"
-SESSION_A_DIR="/tmp/glimmer-ipc/${SESSION_A}"
+SESSION_A_DIR="/tmp/cekernel-ipc/${SESSION_A}"
 mkdir -p "$SESSION_A_DIR"
 FIFO_A="${SESSION_A_DIR}/worker-${ISSUE_NUMBER}"
 mkfifo "$FIFO_A"
 
 # ── セッション B（同じ issue 番号） ──
 SESSION_B="test-isolation-bbbbbbbb"
-SESSION_B_DIR="/tmp/glimmer-ipc/${SESSION_B}"
+SESSION_B_DIR="/tmp/cekernel-ipc/${SESSION_B}"
 mkdir -p "$SESSION_B_DIR"
 FIFO_B="${SESSION_B_DIR}/worker-${ISSUE_NUMBER}"
 mkfifo "$FIFO_B"

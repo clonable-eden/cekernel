@@ -7,16 +7,16 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../helpers.sh"
 
-KERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+CEKERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 echo "test: terminal-adapter"
 
 # ── テスト用セッション ──
-export SESSION_ID="test-terminal-adapter-001"
-source "${KERNEL_DIR}/scripts/shared/session-id.sh"
+export CEKERNEL_SESSION_ID="test-terminal-adapter-001"
+source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
 
 # ── terminal-adapter.sh をロード ──
-source "${KERNEL_DIR}/scripts/shared/terminal-adapter.sh"
+source "${CEKERNEL_DIR}/scripts/shared/terminal-adapter.sh"
 
 # ── Test 1: terminal_available — wezterm がある場合 ──
 wezterm() { return 0; }
@@ -221,6 +221,6 @@ fi
 # ── クリーンアップ ──
 unset -f wezterm 2>/dev/null || true
 unset WEZTERM_PANE 2>/dev/null || true
-rm -rf "$SESSION_IPC_DIR"
+rm -rf "$CEKERNEL_IPC_DIR"
 
 report_results

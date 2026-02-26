@@ -16,7 +16,7 @@ source "${SCRIPT_DIR}/../shared/session-id.sh"
 ISSUE_NUMBERS=("$@")
 [[ ${#ISSUE_NUMBERS[@]} -gt 0 ]] || { echo "Usage: watch-workers.sh <issue-number> [...]" >&2; exit 1; }
 
-FIFO_DIR="$SESSION_IPC_DIR"
+FIFO_DIR="$CEKERNEL_IPC_DIR"
 RESULT_DIR=$(mktemp -d)
 PIDS=()
 TIMEOUT="${CEKERNEL_WORKER_TIMEOUT:-3600}"
