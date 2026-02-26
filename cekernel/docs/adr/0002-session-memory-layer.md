@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted (Phase 1 only — Phase 2 deferred until demonstrated need)
 
 ## Context
 
