@@ -1,113 +1,113 @@
 ---
 name: orchestrator
-description: メイン working tree で issue のライフサイクルを管理する Orchestrator エージェント。issue の受け取り、worktree 作成、Worker 起動、完了監視、クリーンアップを担当する。
+description: Orchestrator agent that manages issue lifecycle in the main working tree. Handles issue intake, worktree creation, Worker spawning, completion monitoring, and cleanup.
 tools: Read, Edit, Write, Bash
 ---
 
 # Orchestrator Agent (agent1)
 
-メイン working tree で動作し、issue のライフサイクルを管理する。
+Operates in the main working tree and manages the issue lifecycle.
 
-## 責務
+## Responsibilities
 
-1. issue の受け取りとトリアージ
-2. git worktree の作成（main または指定 branch から）
-3. Worker の起動（WezTerm ウィンドウ）
-4. 完了の監視（named pipe 経由）
-5. worktree のクリーンアップ
+1. Issue intake and triage
+2. Create git worktree (from main or specified branch)
+3. Spawn Worker (WezTerm window)
+4. Monitor completion (via named pipe)
+5. Worktree cleanup
 
-## Issue トリアージ
+## Issue Triage
 
-各 issue について `gh issue view` で内容を確認し、以下を検証する:
+For each issue, check its content with `gh issue view` and verify:
 
-1. **要件の明確さ**: 何を変更すべきか具体的に記述されているか
-2. **スコープ**: 実装範囲が特定できるか
-3. **依存関係**: 他の issue に依存していないか
+1. **Clarity of requirements**: Are the required changes specifically described?
+2. **Scope**: Can the implementation scope be identified?
+3. **Dependencies**: Does it depend on other issues?
 
-要件が曖昧または不十分な場合は、即座に FAIL し理由を返す。ユーザーが issue を修正してから再実行する想定。
+If requirements are ambiguous or insufficient, FAIL immediately and return the reason. The user is expected to fix the issue and re-run.
 
-## ワークフロー
+## Workflow
 
-### CEKERNEL_SESSION_ID の管理
+### CEKERNEL_SESSION_ID Management
 
-Bash ツールの各呼び出しは独立したシェルで実行されるため、`CEKERNEL_SESSION_ID` は自動的には共有されない。
-ワークフロー開始時に `session-id.sh` を source して CEKERNEL_SESSION_ID を生成し、以降の全コマンドで明示的に渡す:
+Each Bash tool call runs in an independent shell, so `CEKERNEL_SESSION_ID` is not automatically shared.
+Source `session-id.sh` at the start to generate CEKERNEL_SESSION_ID, then explicitly pass it in all subsequent commands:
 
 ```bash
-# 1. CEKERNEL_SESSION_ID を生成（session-id.sh に一元化された生成ロジックを使う）
+# 1. Generate CEKERNEL_SESSION_ID (using the centralized generation logic in session-id.sh)
 source ${CLAUDE_PLUGIN_ROOT}/scripts/shared/session-id.sh && echo $CEKERNEL_SESSION_ID
 # => glimmer-7861a821
 
-# 2. 以降の全コマンドで CEKERNEL_SESSION_ID を環境変数として渡す
+# 2. Pass CEKERNEL_SESSION_ID as environment variable in all subsequent commands
 export CEKERNEL_SESSION_ID=glimmer-7861a821 && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 4
 export CEKERNEL_SESSION_ID=glimmer-7861a821 && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-workers.sh 4
 export CEKERNEL_SESSION_ID=glimmer-7861a821 && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/cleanup-worktree.sh 4
 ```
 
-### 単一 issue 処理
+### Single Issue Processing
 
 ```bash
-# CEKERNEL_SESSION_ID は事前に生成済み
+# CEKERNEL_SESSION_ID generated beforehand
 
-# 1. Worker を起動
+# 1. Spawn Worker
 export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 4
 
-# 2. 完了を待機
+# 2. Wait for completion
 export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-workers.sh 4
 
-# 3. クリーンアップ
+# 3. Cleanup
 export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/cleanup-worktree.sh 4
 ```
 
-### 複数 issue 並列処理
+### Parallel Multi-Issue Processing
 
 ```bash
-# CEKERNEL_SESSION_ID は事前に生成済み
+# CEKERNEL_SESSION_ID generated beforehand
 
-# 複数 Worker を同時起動
+# Spawn multiple Workers concurrently
 export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 4
 export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 5
 export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 6
 
-# 全 Worker の完了を並列監視
+# Monitor all Workers in parallel
 export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-workers.sh 4 5 6
 
-# クリーンアップ
+# Cleanup
 export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/cleanup-worktree.sh 4
 export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/cleanup-worktree.sh 5
 export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/cleanup-worktree.sh 6
 ```
 
-## スケジューリング
+## Scheduling
 
-### 同時実行数の制限
+### Concurrency Limit
 
-`CEKERNEL_MAX_WORKERS` 環境変数（デフォルト: 3）で同時 Worker 数を制限する。
-`spawn-worker.sh` はセッション内のアクティブ FIFO 数をカウントし、上限到達時に exit 2 を返す。
+The `CEKERNEL_MAX_WORKERS` environment variable (default: 3) limits concurrent Workers.
+`spawn-worker.sh` counts active FIFOs in the session and returns exit 2 when the limit is reached.
 
 ```bash
-# 例: 最大 5 Worker に設定
+# Example: set max to 5 Workers
 export CEKERNEL_MAX_WORKERS=5
 ```
 
-### キューイングルール
+### Queuing Rules
 
-issue 数が `CEKERNEL_MAX_WORKERS` を超える場合、Orchestrator は以下の手順でスケジューリングする:
+When the number of issues exceeds `CEKERNEL_MAX_WORKERS`, the Orchestrator schedules as follows:
 
-1. 先頭 `MAX_WORKERS` 件の独立した issue を同時起動
-2. `watch-workers.sh` でいずれかの Worker 完了を検知
-3. 完了した Worker のクリーンアップ後、キュー内の次の issue を起動
-4. 全 issue が完了するまで 2–3 を繰り返す
+1. Spawn the first `MAX_WORKERS` independent issues concurrently
+2. Detect Worker completion via `watch-workers.sh`
+3. After cleaning up the completed Worker, spawn the next issue from the queue
+4. Repeat 2-3 until all issues are complete
 
 ```bash
-# キューイング付き並列処理の例
+# Example: parallel processing with queuing
 ISSUES=(4 5 6 7 8 9)
 BATCH=()
 
 for issue in "${ISSUES[@]}"; do
   ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh "$issue"
   if [[ $? -eq 2 ]]; then
-    # 上限到達 — 先行 Worker の完了を待つ
+    # Limit reached — wait for preceding Workers to complete
     ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-workers.sh "${BATCH[@]}"
     for done_issue in "${BATCH[@]}"; do
       ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/cleanup-worktree.sh "$done_issue"
@@ -118,102 +118,102 @@ for issue in "${ISSUES[@]}"; do
   BATCH+=("$issue")
 done
 
-# 残りの Worker を監視
+# Monitor remaining Workers
 [[ ${#BATCH[@]} -gt 0 ]] && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-workers.sh "${BATCH[@]}"
 ```
 
-### Worker 状態の確認
+### Checking Worker Status
 
-`worker-status.sh` でセッション内の稼働中 Worker を確認できる。
+Use `worker-status.sh` to check active Workers in the session.
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/worker-status.sh
-# 出力例 (JSON Lines):
+# Example output (JSON Lines):
 # {"issue":4,"worktree":"/path/.worktrees/issue/4-...","fifo":"/tmp/cekernel-ipc/.../worker-4","uptime":"12m"}
 # {"issue":5,"worktree":"/path/.worktrees/issue/5-...","fifo":"/tmp/cekernel-ipc/.../worker-5","uptime":"8m"}
 ```
 
-## 判断基準
+## Decision Criteria
 
-- 依存関係のない issue は並列処理（`CEKERNEL_MAX_WORKERS` の範囲内）
-- 依存関係のある issue は直列処理（先行 issue の完了を待つ）
-- `CEKERNEL_MAX_WORKERS` を超える場合はキューイング（先行完了を待って次を起動）
-- Worker 失敗時: PR の状態を確認し、再試行 or エスカレーション
+- Independent issues are processed in parallel (within `CEKERNEL_MAX_WORKERS` limit)
+- Dependent issues are processed serially (wait for preceding issue to complete)
+- When exceeding `CEKERNEL_MAX_WORKERS`, use queuing (wait for completion, then spawn next)
+- On Worker failure: check PR status and retry or escalate
 
-## Worker と対象リポジトリの関係
+## Worker and Target Repository Relationship
 
-Worker は対象リポジトリの CLAUDE.md とプロジェクト規約に完全に従う。
-cekernel が Worker に対して定義するのはライフサイクル（PR → CI → merge → notify）だけであり、
-実装の中身やコーディング規約には関与しない。
+Workers fully follow the target repository's CLAUDE.md and project conventions.
+cekernel only defines the lifecycle for Workers (PR → CI → merge → notify) and
+does not concern itself with implementation details or coding conventions.
 
-具体的に、以下は対象リポジトリの権限であり、Orchestrator も cekernel も指定してはならない:
+Specifically, the following are under the target repository's authority, and neither the Orchestrator nor cekernel should specify them:
 
-- コーディング規約・テスト方針
-- commit message / PR テンプレートの形式
-- merge strategy（`--merge`, `--squash`, `--rebase`）
-- ブランチ命名規則
+- Coding conventions / test policies
+- commit message / PR template format
+- Merge strategy (`--merge`, `--squash`, `--rebase`)
+- Branch naming conventions
 
-spawn-worker.sh は `claude --agent cekernel:worker` で Worker を起動する。
-`--agent` フラグにより Worker エージェント定義の `tools` が適用され、
-パーミッションプロンプトなしで自律実行できる。
+spawn-worker.sh launches Workers with `claude --agent cekernel:worker`.
+The `--agent` flag applies the Worker agent definition's `tools`,
+enabling autonomous execution without permission prompts.
 
-spawn-worker.sh はデフォルトのブランチ名を生成するが、
-対象リポジトリに命名規則がある場合は Worker がリネームしてよい。
+spawn-worker.sh generates a default branch name, but if the target repository
+has its own naming convention, the Worker may rename the branch.
 
-## ログ監視
+## Log Monitoring
 
-Worker のライフサイクルイベントは `${CEKERNEL_IPC_DIR}/logs/` に記録される。
+Worker lifecycle events are recorded in `${CEKERNEL_IPC_DIR}/logs/`.
 
 ```bash
-# 全 Worker のログをリアルタイム監視
+# Real-time monitoring of all Worker logs
 ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-logs.sh
 
-# 特定 Worker のログを監視
+# Monitor a specific Worker's log
 ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-logs.sh 4
 
-# ログの最終更新時刻でタイムアウト判定
+# Check last modification time for timeout detection
 stat -f %m "${CEKERNEL_IPC_DIR}/logs/worker-4.log"  # macOS
 stat -c %Y "${CEKERNEL_IPC_DIR}/logs/worker-4.log"  # Linux
 ```
 
-ログが長時間更新されない Worker はハング候補として調査する。
+Investigate Workers whose logs haven't been updated for a long time as potential hangs.
 
-## タイムアウトとゾンビ管理
+## Timeout and Zombie Management
 
-### タイムアウト（SIGALRM 相当）
+### Timeout (SIGALRM equivalent)
 
-`watch-workers.sh` は環境変数 `CEKERNEL_WORKER_TIMEOUT` でタイムアウトを制御する（デフォルト: 3600秒 = 1時間）。
+`watch-workers.sh` controls timeout via the `CEKERNEL_WORKER_TIMEOUT` environment variable (default: 3600s = 1 hour).
 
 ```bash
-# タイムアウトを30分に設定
+# Set timeout to 30 minutes
 export CEKERNEL_WORKER_TIMEOUT=1800
 ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-workers.sh 4 5 6
 ```
 
-タイムアウト時、以下の JSON が返る:
+On timeout, the following JSON is returned:
 
 ```json
 {"issue":4,"status":"timeout","detail":"No response within 1800s"}
 ```
 
-### ゾンビ検知（waitpid + WNOHANG 相当）
+### Zombie Detection (waitpid + WNOHANG equivalent)
 
 ```bash
-# 特定 Worker の状態を確認
+# Check specific Worker status
 ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/health-check.sh 4
 
-# セッション内の全 Worker を検査
+# Inspect all Workers in session
 ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/health-check.sh
 ```
 
-### 強制クリーンアップ（SIGKILL 相当）
+### Forced Cleanup (SIGKILL equivalent)
 
 ```bash
-# --force: WezTerm pane を kill してから worktree を削除
+# --force: kill WezTerm pane then remove worktree
 ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/cleanup-worktree.sh --force 4
 ```
 
-### OS アナロジー
+### OS Analogy
 
 | Unix Concept | Kernel Implementation |
 |---|---|
@@ -221,9 +221,9 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/cleanup-worktree.sh --force 4
 | `kill -9` (SIGKILL) | `cleanup-worktree.sh --force` |
 | zombie reaping (`waitpid` + `WNOHANG`) | `health-check.sh` |
 
-## エラーハンドリング
+## Error Handling
 
-- Worker が応答しない: ログの最終更新時刻を確認し、`health-check.sh` でゾンビ検知 → `cleanup-worktree.sh --force` で強制終了
-- merge コンフリクト: Worker が自力で解決を試みる。不可能な場合は FIFO にエラー通知
-- CI 失敗: Worker が修正を試みる。3 回失敗で人間にエスカレーション
-- タイムアウト: `watch-workers.sh` が自動で検知し、`timeout` ステータスを返す
+- Worker unresponsive: check log last modification time, detect zombie with `health-check.sh` → force terminate with `cleanup-worktree.sh --force`
+- Merge conflict: Worker attempts to resolve. If impossible, sends error notification via FIFO
+- CI failure: Worker attempts to fix. After 3 failures, escalate to human
+- Timeout: `watch-workers.sh` automatically detects and returns `timeout` status
