@@ -16,6 +16,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../shared/session-id.sh"
+source "${SCRIPT_DIR}/../shared/terminal-adapter.sh"
 
 # issue 番号が指定されていれば、それだけ検査。なければセッション内全 FIFO を検査
 if [[ $# -gt 0 ]]; then
@@ -51,17 +52,17 @@ check_worker() {
     return 0
   fi
 
-  # 1. WezTerm pane チェック（pane ID ファイルがあれば）
+  # 1. ターミナル pane チェック（pane ID ファイルがあれば）
   if [[ -f "$pane_file" ]]; then
     local pane_id
     pane_id=$(cat "$pane_file")
-    if command -v wezterm >/dev/null 2>&1; then
-      if wezterm cli list --format json 2>/dev/null | grep -q "\"pane_id\":${pane_id}[,}]"; then
+    if terminal_available; then
+      if terminal_pane_alive "$pane_id"; then
         status="healthy"
-        detail="WezTerm pane ${pane_id} alive"
+        detail="pane ${pane_id} alive"
       else
         status="zombie"
-        detail="WezTerm pane ${pane_id} dead"
+        detail="pane ${pane_id} dead"
       fi
     fi
   fi

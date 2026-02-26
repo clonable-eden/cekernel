@@ -65,7 +65,7 @@ kernel/
     shared/
       session-id.sh          # セッション ID 生成 + IPC ディレクトリ導出
       claude-json-helper.sh  # ~/.claude.json trust エントリの読み書きヘルパー
-      resolve-workspace.sh   # WezTerm workspace 解決ヘルパー
+      terminal-adapter.sh    # ターミナルマルチプレクサ抽象化レイヤー
   tests/
     run-tests.sh             # テストランナー
     helpers.sh               # アサーションヘルパー

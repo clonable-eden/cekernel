@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
-# cleanup-worktree.sh — Worktree + branch + WezTerm ウィンドウ削除
+# cleanup-worktree.sh — Worktree + branch + ターミナルウィンドウ削除
 #
 # Usage: cleanup-worktree.sh [--force] <issue-number>
 #
-# WezTerm はウィンドウ単位で閉じる（メインペインと同一ウィンドウの全ペインを kill）。
+# ターミナルはウィンドウ単位で閉じる（メインペインと同一ウィンドウの全ペインを kill）。
 # --force は後方互換のため残しているが、現在は通常モードと同じ動作。
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../shared/session-id.sh"
 source "${SCRIPT_DIR}/../shared/claude-json-helper.sh"
+source "${SCRIPT_DIR}/../shared/terminal-adapter.sh"
 
 # ── オプションパース（後方互換: --force を受け入れるが動作は同一） ──
 while [[ $# -gt 0 ]]; do
@@ -23,32 +24,15 @@ ISSUE_NUMBER="${1:?Usage: cleanup-worktree.sh [--force] <issue-number>}"
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 WORKTREE_DIR="${REPO_ROOT}/.worktrees"
 
-# ── WezTerm ウィンドウを閉じる ──
+# ── ターミナルウィンドウを閉じる ──
 # メインペインが属するウィンドウの全ペインを kill する。
 # 全ペインが閉じればウィンドウも自動的に閉じる。
 PANE_FILE="${SESSION_IPC_DIR}/pane-${ISSUE_NUMBER}"
 
 if [[ -f "$PANE_FILE" ]]; then
   PANE_ID=$(cat "$PANE_FILE")
-  if command -v wezterm >/dev/null 2>&1; then
-    # メインペインが属するウィンドウの全ペインを取得
-    WINDOW_PANES=$(wezterm cli list --format json 2>/dev/null \
-      | jq -r --argjson target "$PANE_ID" '
-          (map(select(.pane_id == $target)) | first | .window_id) as $win
-          | map(select(.window_id == $win)) | .[].pane_id
-        ' 2>/dev/null) || true
-
-    if [[ -n "$WINDOW_PANES" ]]; then
-      # ウィンドウ内の全ペインを kill
-      while IFS= read -r pane; do
-        wezterm cli kill-pane --pane-id "$pane" 2>/dev/null || true
-      done <<< "$WINDOW_PANES"
-      echo "Killed WezTerm window panes for pane: ${PANE_ID}" >&2
-    else
-      # フォールバック: リスト取得失敗時はメインペインのみ kill
-      wezterm cli kill-pane --pane-id "$PANE_ID" 2>/dev/null && \
-        echo "Killed WezTerm pane: ${PANE_ID}" >&2 || true
-    fi
+  if terminal_available; then
+    terminal_kill_window "$PANE_ID"
   fi
   rm -f "$PANE_FILE"
 fi
