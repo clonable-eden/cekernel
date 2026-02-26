@@ -248,7 +248,7 @@ The skill analyzes git log and recommends a bump level. After confirmation, it t
 Inherits from the root [CLAUDE.md](../CLAUDE.md):
 
 - Branch names: `issue/{number}-{short-description}`
-- Commit message titles in English, body may be in Japanese
+- Commit message titles in English, body preferably in English
 - PR body must include `closes #{issue-number}`
 
 ## Self-hosting

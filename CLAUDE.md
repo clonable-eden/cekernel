@@ -22,7 +22,7 @@ This repository also serves as a Claude Code plugin marketplace.
 ## Conventions
 
 - Branch names: `issue/{number}-{short-description}`
-- Commit message titles in English, body may be in Japanese
+- Commit message titles in English, body preferably in English
 - PR body must include `closes #{issue-number}`
 - Worktrees are created under `.worktrees/` (already in .gitignore)
 - Commit messages follow conventional commits:
