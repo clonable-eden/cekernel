@@ -4,7 +4,7 @@ description: Orchestrator agent that manages issue lifecycle in the main working
 tools: Read, Edit, Write, Bash
 ---
 
-# Orchestrator Agent (agent1)
+# Orchestrator Agent
 
 Operates in the main working tree and manages the issue lifecycle.
 

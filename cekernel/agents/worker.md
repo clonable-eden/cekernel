@@ -4,7 +4,7 @@ description: Worker agent that handles implementation through merge for a single
 tools: Read, Edit, Write, Bash
 ---
 
-# Worker Agent (agent2+)
+# Worker Agent
 
 Operates within a git worktree and handles a single issue from implementation through merge.
 
