@@ -6,7 +6,7 @@
 # Exit codes:
 #   0 — Worker 起動成功
 #   1 — 一般エラー
-#   2 — 同時実行数上限到達 (KERNEL_MAX_WORKERS)
+#   2 — 同時実行数上限到達 (CEKERNEL_MAX_WORKERS)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -20,7 +20,7 @@ BASE_BRANCH="${2:-main}"
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 
 # ── Concurrency Guard ──
-MAX_WORKERS="${KERNEL_MAX_WORKERS:-3}"
+MAX_WORKERS="${CEKERNEL_MAX_WORKERS:-3}"
 
 active_worker_count() {
   find "$SESSION_IPC_DIR" -maxdepth 1 -name 'worker-*' -type p 2>/dev/null | wc -l | tr -d ' '

@@ -27,7 +27,7 @@ mkfifo "${SESSION_IPC_DIR}/worker-${ISSUE}"
 RESULT_FILE=$(mktemp)
 
 # 2秒タイムアウトで watch-workers を起動（Writer は書き込まない）
-KERNEL_WORKER_TIMEOUT=2 \
+CEKERNEL_WORKER_TIMEOUT=2 \
   bash "${KERNEL_DIR}/scripts/orchestrator/watch-workers.sh" "$ISSUE" > "$RESULT_FILE" 2>/dev/null &
 WATCH_PID=$!
 
@@ -58,7 +58,7 @@ mkfifo "${SESSION_IPC_DIR}/worker-${ISSUE}"
 
 RESULT_FILE=$(mktemp)
 
-KERNEL_WORKER_TIMEOUT=10 \
+CEKERNEL_WORKER_TIMEOUT=10 \
   bash "${KERNEL_DIR}/scripts/orchestrator/watch-workers.sh" "$ISSUE" > "$RESULT_FILE" 2>/dev/null &
 WATCH_PID=$!
 
