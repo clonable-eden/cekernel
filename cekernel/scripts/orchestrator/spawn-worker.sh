@@ -39,7 +39,7 @@ ISSUE_TITLE=$(gh issue view "$ISSUE_NUMBER" --json title -q '.title')
 
 # ── ブランチ名・パス生成 ──
 # デフォルトの命名規則。対象リポジトリに独自の命名規則がある場合、
-# Worker がリネームしてよい（kernel はブランチ名を強制しない）。
+# Worker がリネームしてよい（cekernel はブランチ名を強制しない）。
 SLUG=$(echo "$ISSUE_TITLE" \
   | sed 's/[^a-zA-Z0-9]/-/g' \
   | tr '[:upper:]' '[:lower:]' \
@@ -154,7 +154,7 @@ terminal_split_pane right 40 "$MAIN_PANE" "$WORKTREE"
 # 2. ライフサイクル（PR → CI → merge → notify）のみ kernel のプロトコルに従う
 # 3. 実装・規約は対象リポジトリに完全に従う
 PROMPT="issue #${ISSUE_NUMBER} を解決してください。まず対象リポジトリの CLAUDE.md を読み、その規約に完全に従ってください。ライフサイクルのみ kernel の Worker Protocol に従います: 実装 → PR作成 → CI確認 → merge。完了したら ${CLAUDE_PLUGIN_ROOT}/scripts/worker/notify-complete.sh ${ISSUE_NUMBER} merged <pr-number> を実行してください。"
-terminal_run_command "$MAIN_PANE" "claude --agent kernel:worker '${PROMPT}'"
+terminal_run_command "$MAIN_PANE" "claude --agent cekernel:worker '${PROMPT}'"
 
 # ── ライフサイクルイベントをログに記録 ──
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] SPAWN issue=#${ISSUE_NUMBER} branch=${BRANCH}" >> "$LOG_FILE"

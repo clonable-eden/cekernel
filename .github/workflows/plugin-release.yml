@@ -9,7 +9,7 @@ on:
       plugin:
         description: 'Plugin name'
         required: true
-        default: 'kernel'
+        default: 'cekernel'
 
 jobs:
   release:

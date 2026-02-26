@@ -1,5 +1,5 @@
 {
-  "name": "kernel",
+  "name": "cekernel",
   "version": "0.7.1",
   "description": "Claude Code 並列エージェント基盤。OS のプロセスモデルに倣い、issue を独立した Worker に分配・監視・回収する。",
   "author": {

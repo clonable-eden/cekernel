@@ -1,6 +1,6 @@
 ---
 description: Issue の優先度判断後、Orchestrator エージェントに委譲して並列処理する
-allowed-tools: Bash, Read, Task(kernel:orchestrator)
+allowed-tools: Bash, Read, Task(cekernel:orchestrator)
 ---
 
 # /orchestrate
@@ -31,7 +31,7 @@ allowed-tools: Bash, Read, Task(kernel:orchestrator)
 
 Task tool で `kernel:orchestrator` サブエージェントを起動する:
 
-- `subagent_type`: `kernel:orchestrator`
+- `subagent_type`: `cekernel:orchestrator`
 - `prompt`: issue 番号、base branch（指定があれば）、実行順序（Step 1 で決定した場合）を含める
 
 Orchestrator が自律的に以下を実行する:

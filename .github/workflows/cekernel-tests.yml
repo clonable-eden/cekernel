@@ -1,18 +1,18 @@
-name: kernel tests
+name: cekernel tests
 
 on:
   push:
     branches: [main]
     paths:
-      - 'kernel/**'
+      - 'cekernel/**'
   pull_request:
     paths:
-      - 'kernel/**'
+      - 'cekernel/**'
 
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Run kernel tests
-        run: bash kernel/tests/run-tests.sh
+      - name: Run cekernel tests
+        run: bash cekernel/tests/run-tests.sh
