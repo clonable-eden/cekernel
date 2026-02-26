@@ -78,6 +78,7 @@ kernel/
 
 | ツール | 用途 | 必須 |
 |--------|------|------|
+| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | Worker エージェントの実行基盤 | Yes |
 | [jq](https://jqlang.github.io/jq/) | `~/.claude.json` の trust エントリ操作、JSON パース | Yes |
 | [gh](https://cli.github.com/) | issue 取得、PR 作成・merge | Yes |
 | [WezTerm](https://wezfurlong.org/wezterm/) | Worker ウィンドウの起動・管理 | Yes |
