@@ -5,19 +5,19 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../helpers.sh"
 
-KERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+CEKERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 echo "test: logging"
 
 # テスト用セッション
-export SESSION_ID="test-logging-00000001"
-source "${KERNEL_DIR}/scripts/shared/session-id.sh"
+export CEKERNEL_SESSION_ID="test-logging-00000001"
+source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
 
-LOG_DIR="${SESSION_IPC_DIR}/logs"
+LOG_DIR="${CEKERNEL_IPC_DIR}/logs"
 ISSUE_NUMBER=80
 
 cleanup() {
-  rm -rf "$SESSION_IPC_DIR" 2>/dev/null || true
+  rm -rf "$CEKERNEL_IPC_DIR" 2>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -25,7 +25,7 @@ trap cleanup EXIT
 cleanup
 
 # ── Test 1: ログディレクトリとファイルの作成 ──
-mkdir -p "$SESSION_IPC_DIR"
+mkdir -p "$CEKERNEL_IPC_DIR"
 mkdir -p "$LOG_DIR"
 LOG_FILE="${LOG_DIR}/worker-${ISSUE_NUMBER}.log"
 
@@ -44,7 +44,7 @@ assert_match "SPAWN has branch" 'branch=' "$SPAWN_LINE"
 
 # ── Test 3: notify-complete.sh がログに COMPLETE を記録する ──
 # FIFO をセットアップ（notify-complete.sh が必要とする）
-FIFO="${SESSION_IPC_DIR}/worker-${ISSUE_NUMBER}"
+FIFO="${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}"
 mkfifo "$FIFO"
 
 # バックグラウンドで FIFO を読み取り（ブロック解除のため）
@@ -52,7 +52,7 @@ mkfifo "$FIFO"
 READER_PID=$!
 
 # notify-complete.sh を実行
-bash "${KERNEL_DIR}/scripts/worker/notify-complete.sh" "$ISSUE_NUMBER" merged 99
+bash "${CEKERNEL_DIR}/scripts/worker/notify-complete.sh" "$ISSUE_NUMBER" merged 99
 
 wait "$READER_PID" || true
 
@@ -65,7 +65,7 @@ assert_match "COMPLETE has detail" 'detail=99' "$COMPLETE_LINE"
 # ── Test 4: FAILED イベントの記録 ──
 ISSUE_FAIL=81
 LOG_FILE_FAIL="${LOG_DIR}/worker-${ISSUE_FAIL}.log"
-FIFO_FAIL="${SESSION_IPC_DIR}/worker-${ISSUE_FAIL}"
+FIFO_FAIL="${CEKERNEL_IPC_DIR}/worker-${ISSUE_FAIL}"
 
 # ログファイルとFIFOを準備
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] SPAWN issue=#${ISSUE_FAIL} branch=issue/${ISSUE_FAIL}-fail" >> "$LOG_FILE_FAIL"
@@ -74,7 +74,7 @@ mkfifo "$FIFO_FAIL"
 (cat "$FIFO_FAIL" > /dev/null) &
 READER_PID=$!
 
-bash "${KERNEL_DIR}/scripts/worker/notify-complete.sh" "$ISSUE_FAIL" failed "CI failed 3 times"
+bash "${CEKERNEL_DIR}/scripts/worker/notify-complete.sh" "$ISSUE_FAIL" failed "CI failed 3 times"
 
 wait "$READER_PID" || true
 
@@ -84,20 +84,20 @@ assert_match "FAILED has status" 'status=failed' "$FAILED_LINE"
 assert_match "FAILED has detail" 'detail=CI failed 3 times' "$FAILED_LINE"
 
 # ── Test 5: watch-logs.sh が存在しないログディレクトリでエラーを返す ──
-SAVE_SESSION_ID="$SESSION_ID"
-export SESSION_ID="nonexistent-session-00000000"
-if bash "${KERNEL_DIR}/scripts/orchestrator/watch-logs.sh" 2>/dev/null; then
+SAVE_CEKERNEL_SESSION_ID="$CEKERNEL_SESSION_ID"
+export CEKERNEL_SESSION_ID="nonexistent-session-00000000"
+if bash "${CEKERNEL_DIR}/scripts/orchestrator/watch-logs.sh" 2>/dev/null; then
   echo "  FAIL: watch-logs.sh should fail with no log dir"
   ((TESTS_FAILED++)) || true
 else
   echo "  PASS: watch-logs.sh fails with no log dir"
   ((TESTS_PASSED++)) || true
 fi
-export SESSION_ID="$SAVE_SESSION_ID"
-source "${KERNEL_DIR}/scripts/shared/session-id.sh"
+export CEKERNEL_SESSION_ID="$SAVE_CEKERNEL_SESSION_ID"
+source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
 
 # ── Test 5b: watch-logs.sh が存在しない issue でエラーを返す ──
-if bash "${KERNEL_DIR}/scripts/orchestrator/watch-logs.sh" 999 2>/dev/null; then
+if bash "${CEKERNEL_DIR}/scripts/orchestrator/watch-logs.sh" 999 2>/dev/null; then
   echo "  FAIL: watch-logs.sh should fail for nonexistent issue"
   ((TESTS_FAILED++)) || true
 else

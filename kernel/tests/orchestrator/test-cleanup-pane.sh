@@ -8,18 +8,18 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../helpers.sh"
 
-KERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+CEKERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 echo "test: cleanup-pane"
 
 # ── テスト用セッション ──
-export SESSION_ID="test-cleanup-pane-00000001"
-source "${KERNEL_DIR}/scripts/shared/session-id.sh"
-source "${KERNEL_DIR}/scripts/shared/claude-json-helper.sh"
+export CEKERNEL_SESSION_ID="test-cleanup-pane-00000001"
+source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
+source "${CEKERNEL_DIR}/scripts/shared/claude-json-helper.sh"
 
 # ── テスト用の一時 Git リポジトリを作成 ──
 TEST_TMP=$(mktemp -d)
-trap 'rm -rf "$TEST_TMP" "$SESSION_IPC_DIR" 2>/dev/null || true' EXIT
+trap 'rm -rf "$TEST_TMP" "$CEKERNEL_IPC_DIR" 2>/dev/null || true' EXIT
 
 FAKE_REPO="${TEST_TMP}/repo"
 mkdir -p "$FAKE_REPO"
@@ -64,12 +64,12 @@ setup_wezterm_mock "$WEZTERM_LOG"
 ISSUE="200"
 WORKTREE=$(setup_worktree "$ISSUE" "$FAKE_REPO")
 
-mkdir -p "$SESSION_IPC_DIR"
-mkfifo "${SESSION_IPC_DIR}/worker-${ISSUE}"
-echo "42" > "${SESSION_IPC_DIR}/pane-${ISSUE}"
+mkdir -p "$CEKERNEL_IPC_DIR"
+mkfifo "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
+echo "42" > "${CEKERNEL_IPC_DIR}/pane-${ISSUE}"
 
 cd "$FAKE_REPO"
-bash "${KERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
+bash "${CEKERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
 
 # pane が kill されたことを確認
 if grep -q "kill-pane.*42" "$WEZTERM_LOG" 2>/dev/null; then
@@ -81,20 +81,20 @@ else
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-assert_not_exists "Pane file removed after cleanup" "${SESSION_IPC_DIR}/pane-${ISSUE}"
+assert_not_exists "Pane file removed after cleanup" "${CEKERNEL_IPC_DIR}/pane-${ISSUE}"
 
 # ── Test 2: --force ありで cleanup → pane が kill される ──
-rm -rf "$SESSION_IPC_DIR"
+rm -rf "$CEKERNEL_IPC_DIR"
 > "$WEZTERM_LOG"
 
 ISSUE="201"
 WORKTREE=$(setup_worktree "$ISSUE" "$FAKE_REPO")
 
-mkdir -p "$SESSION_IPC_DIR"
-mkfifo "${SESSION_IPC_DIR}/worker-${ISSUE}"
-echo "99" > "${SESSION_IPC_DIR}/pane-${ISSUE}"
+mkdir -p "$CEKERNEL_IPC_DIR"
+mkfifo "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
+echo "99" > "${CEKERNEL_IPC_DIR}/pane-${ISSUE}"
 
-bash "${KERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" --force "$ISSUE" 2>/dev/null
+bash "${CEKERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" --force "$ISSUE" 2>/dev/null
 
 if grep -q "kill-pane.*99" "$WEZTERM_LOG" 2>/dev/null; then
   echo "  PASS: Pane killed with --force"
@@ -105,20 +105,20 @@ else
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-assert_not_exists "Pane file removed after --force cleanup" "${SESSION_IPC_DIR}/pane-${ISSUE}"
+assert_not_exists "Pane file removed after --force cleanup" "${CEKERNEL_IPC_DIR}/pane-${ISSUE}"
 
 # ── Test 3: pane ファイルが存在しない場合 → エラーなしでスキップ ──
-rm -rf "$SESSION_IPC_DIR"
+rm -rf "$CEKERNEL_IPC_DIR"
 > "$WEZTERM_LOG"
 
 ISSUE="202"
 WORKTREE=$(setup_worktree "$ISSUE" "$FAKE_REPO")
 
-mkdir -p "$SESSION_IPC_DIR"
-mkfifo "${SESSION_IPC_DIR}/worker-${ISSUE}"
+mkdir -p "$CEKERNEL_IPC_DIR"
+mkfifo "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
 # pane ファイルは作成しない
 
-bash "${KERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
+bash "${CEKERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
 RESULT=$?
 
 assert_eq "Cleanup succeeds without pane file" "0" "$RESULT"
@@ -150,7 +150,7 @@ MOCK_SCRIPT
 }
 
 # ── Test 4: 同一ウィンドウの全ペインが kill される ──
-rm -rf "$SESSION_IPC_DIR"
+rm -rf "$CEKERNEL_IPC_DIR"
 > "$WEZTERM_LOG"
 
 # wezterm cli list --format json のモックデータ
@@ -169,12 +169,12 @@ setup_wezterm_mock_with_list "$WEZTERM_LOG" "$PANE_LIST_JSON"
 ISSUE="203"
 WORKTREE=$(setup_worktree "$ISSUE" "$FAKE_REPO")
 
-mkdir -p "$SESSION_IPC_DIR"
-mkfifo "${SESSION_IPC_DIR}/worker-${ISSUE}"
-echo "42" > "${SESSION_IPC_DIR}/pane-${ISSUE}"
+mkdir -p "$CEKERNEL_IPC_DIR"
+mkfifo "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
+echo "42" > "${CEKERNEL_IPC_DIR}/pane-${ISSUE}"
 
 cd "$FAKE_REPO"
-bash "${KERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
+bash "${CEKERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
 
 # 同一ウィンドウの全ペイン (42, 43, 44) が kill されること
 if grep -q "kill-pane.*--pane-id 42" "$WEZTERM_LOG" 2>/dev/null; then
@@ -214,7 +214,7 @@ else
 fi
 
 # ── Test 5: cli list が失敗 → メインペインのみ kill (フォールバック) ──
-rm -rf "$SESSION_IPC_DIR"
+rm -rf "$CEKERNEL_IPC_DIR"
 > "$WEZTERM_LOG"
 
 # cli list が空 JSON を返すモック
@@ -225,12 +225,12 @@ setup_wezterm_mock_with_list "$WEZTERM_LOG" "$EMPTY_JSON"
 ISSUE="204"
 WORKTREE=$(setup_worktree "$ISSUE" "$FAKE_REPO")
 
-mkdir -p "$SESSION_IPC_DIR"
-mkfifo "${SESSION_IPC_DIR}/worker-${ISSUE}"
-echo "55" > "${SESSION_IPC_DIR}/pane-${ISSUE}"
+mkdir -p "$CEKERNEL_IPC_DIR"
+mkfifo "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
+echo "55" > "${CEKERNEL_IPC_DIR}/pane-${ISSUE}"
 
 cd "$FAKE_REPO"
-bash "${KERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
+bash "${CEKERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
 
 # メインペインは kill される
 if grep -q "kill-pane.*--pane-id 55" "$WEZTERM_LOG" 2>/dev/null; then
@@ -247,6 +247,6 @@ KILL_COUNT=$(grep -c "kill-pane" "$WEZTERM_LOG" 2>/dev/null || echo "0")
 assert_eq "Fallback: only 1 kill-pane call" "1" "$KILL_COUNT"
 
 # ── クリーンアップ ──
-rm -rf "$SESSION_IPC_DIR"
+rm -rf "$CEKERNEL_IPC_DIR"
 
 report_results

@@ -8,21 +8,21 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../helpers.sh"
 
-KERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+CEKERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 echo "test: concurrency-guard"
 
 # テスト用セッション
-export SESSION_ID="test-concurrency-00000001"
-source "${KERNEL_DIR}/scripts/shared/session-id.sh"
+export CEKERNEL_SESSION_ID="test-concurrency-00000001"
+source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
 
 # ── セットアップ: クリーンな状態を保証 ──
-rm -rf "$SESSION_IPC_DIR"
-mkdir -p "$SESSION_IPC_DIR"
+rm -rf "$CEKERNEL_IPC_DIR"
+mkdir -p "$CEKERNEL_IPC_DIR"
 
 # active_worker_count 関数を再定義（spawn-worker.sh からの抽出）
 active_worker_count() {
-  find "$SESSION_IPC_DIR" -maxdepth 1 -name 'worker-*' -type p 2>/dev/null | wc -l | tr -d ' '
+  find "$CEKERNEL_IPC_DIR" -maxdepth 1 -name 'worker-*' -type p 2>/dev/null | wc -l | tr -d ' '
 }
 
 # ── Test 1: Worker 0 体でカウントが 0 ──
@@ -30,13 +30,13 @@ COUNT=$(active_worker_count)
 assert_eq "No workers: count is 0" "0" "$COUNT"
 
 # ── Test 2: FIFO を 1 つ作成 → カウント 1 ──
-mkfifo "${SESSION_IPC_DIR}/worker-10"
+mkfifo "${CEKERNEL_IPC_DIR}/worker-10"
 COUNT=$(active_worker_count)
 assert_eq "One worker FIFO: count is 1" "1" "$COUNT"
 
 # ── Test 3: FIFO を 3 つまで増やす → カウント 3 ──
-mkfifo "${SESSION_IPC_DIR}/worker-11"
-mkfifo "${SESSION_IPC_DIR}/worker-12"
+mkfifo "${CEKERNEL_IPC_DIR}/worker-11"
+mkfifo "${CEKERNEL_IPC_DIR}/worker-12"
 COUNT=$(active_worker_count)
 assert_eq "Three worker FIFOs: count is 3" "3" "$COUNT"
 
@@ -52,7 +52,7 @@ fi
 assert_eq "Guard triggers at MAX_WORKERS=3 with 3 active" "yes" "$GUARD_TRIGGERED"
 
 # ── Test 5: FIFO を 1 つ削除 → ガード解除 ──
-rm -f "${SESSION_IPC_DIR}/worker-12"
+rm -f "${CEKERNEL_IPC_DIR}/worker-12"
 ACTIVE=$(active_worker_count)
 if [[ "$ACTIVE" -ge "$MAX_WORKERS" ]]; then
   GUARD_TRIGGERED="yes"
@@ -72,11 +72,11 @@ fi
 assert_eq "Guard not triggered: 2 active < MAX_WORKERS=5" "no" "$GUARD_TRIGGERED"
 
 # ── Test 7: 通常ファイル (非 FIFO) はカウントされない ──
-touch "${SESSION_IPC_DIR}/worker-99"
+touch "${CEKERNEL_IPC_DIR}/worker-99"
 COUNT=$(active_worker_count)
 assert_eq "Regular file not counted as worker" "2" "$COUNT"
 
 # ── クリーンアップ ──
-rm -rf "$SESSION_IPC_DIR"
+rm -rf "$CEKERNEL_IPC_DIR"
 
 report_results

@@ -11,7 +11,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../shared/session-id.sh"
 
-LOG_DIR="${SESSION_IPC_DIR}/logs"
+LOG_DIR="${CEKERNEL_IPC_DIR}/logs"
 
 if [[ ! -d "$LOG_DIR" ]]; then
   echo "No log directory found at ${LOG_DIR}" >&2

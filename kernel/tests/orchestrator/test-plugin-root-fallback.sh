@@ -8,8 +8,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../helpers.sh"
 
-KERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-SCRIPTS_DIR="${KERNEL_DIR}/scripts/orchestrator"
+CEKERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+SCRIPTS_DIR="${CEKERNEL_DIR}/scripts/orchestrator"
 
 echo "test: plugin-root-fallback"
 
@@ -29,7 +29,7 @@ RESULT=$(
     echo \"\$CLAUDE_PLUGIN_ROOT\"
   "
 )
-assert_eq "Fallback derives CLAUDE_PLUGIN_ROOT from SCRIPT_DIR/../.." "$KERNEL_DIR" "$RESULT"
+assert_eq "Fallback derives CLAUDE_PLUGIN_ROOT from SCRIPT_DIR/../.." "$CEKERNEL_DIR" "$RESULT"
 
 # ── Test 2: CLAUDE_PLUGIN_ROOT が既に設定されていれば上書きしない ──
 RESULT=$(

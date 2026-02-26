@@ -8,14 +8,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../helpers.sh"
 
-KERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+CEKERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 echo "test: rollback"
 
 # テスト用セッション
-export SESSION_ID="test-rollback-00000001"
-source "${KERNEL_DIR}/scripts/shared/session-id.sh"
-source "${KERNEL_DIR}/scripts/shared/claude-json-helper.sh"
+export CEKERNEL_SESSION_ID="test-rollback-00000001"
+source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
+source "${CEKERNEL_DIR}/scripts/shared/claude-json-helper.sh"
 
 # ── テスト用の一時 Git リポジトリを作成 ──
 TEST_TMP=$(mktemp -d)
@@ -42,7 +42,7 @@ export -f wezterm
 source_rollback() {
   # spawn-worker.sh から rollback 関数だけを抽出
   # これは spawn-worker.sh の rollback() と同一であることを前提とする
-  local script="${KERNEL_DIR}/scripts/orchestrator/spawn-worker.sh"
+  local script="${CEKERNEL_DIR}/scripts/orchestrator/spawn-worker.sh"
   # rollback 関数を抽出して eval する
   local func_body
   func_body=$(sed -n '/^rollback()/,/^}/p' "$script")
@@ -54,8 +54,8 @@ source_rollback() {
 }
 
 # ── セットアップ: クリーンな状態を保証 ──
-rm -rf "$SESSION_IPC_DIR"
-mkdir -p "$SESSION_IPC_DIR"
+rm -rf "$CEKERNEL_IPC_DIR"
+mkdir -p "$CEKERNEL_IPC_DIR"
 
 # ── Test 1: 全リソースが存在する状態でロールバック → すべてクリーンアップされる ──
 (
@@ -74,15 +74,15 @@ mkdir -p "$SESSION_IPC_DIR"
   mkdir -p "$WORKTREE_DIR"
   git worktree add -b "$BRANCH" "$WORKTREE" HEAD --quiet
 
-  FIFO="${SESSION_IPC_DIR}/worker-${ISSUE_NUMBER}"
+  FIFO="${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}"
   mkfifo "$FIFO"
 
-  LOG_DIR="${SESSION_IPC_DIR}/logs"
+  LOG_DIR="${CEKERNEL_IPC_DIR}/logs"
   mkdir -p "$LOG_DIR"
   LOG_FILE="${LOG_DIR}/worker-${ISSUE_NUMBER}.log"
   echo "test log" > "$LOG_FILE"
 
-  echo "fake-pane-id" > "${SESSION_IPC_DIR}/pane-${ISSUE_NUMBER}"
+  echo "fake-pane-id" > "${CEKERNEL_IPC_DIR}/pane-${ISSUE_NUMBER}"
 
   # trust 登録
   register_trust "$WORKTREE"
@@ -93,7 +93,7 @@ mkdir -p "$SESSION_IPC_DIR"
 
   # 検証
   assert_not_exists "FIFO removed after rollback" "$FIFO"
-  assert_not_exists "Pane file removed after rollback" "${SESSION_IPC_DIR}/pane-${ISSUE_NUMBER}"
+  assert_not_exists "Pane file removed after rollback" "${CEKERNEL_IPC_DIR}/pane-${ISSUE_NUMBER}"
   assert_not_exists "Worktree removed after rollback" "$WORKTREE"
   assert_not_exists "Log file removed after rollback" "$LOG_FILE"
 
@@ -119,8 +119,8 @@ mkdir -p "$SESSION_IPC_DIR"
 )
 
 # ── Test 2: 部分的なリソース（FIFO のみ）でロールバック → エラーなし ──
-rm -rf "$SESSION_IPC_DIR"
-mkdir -p "$SESSION_IPC_DIR"
+rm -rf "$CEKERNEL_IPC_DIR"
+mkdir -p "$CEKERNEL_IPC_DIR"
 rm -f "$FAKE_CLAUDE_JSON"
 
 (
@@ -129,7 +129,7 @@ rm -f "$FAKE_CLAUDE_JSON"
 
   # FIFO のみ作成（worktree、pane 未作成）
   ISSUE_NUMBER="101"
-  FIFO="${SESSION_IPC_DIR}/worker-${ISSUE_NUMBER}"
+  FIFO="${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}"
   mkfifo "$FIFO"
 
   # WORKTREE, BRANCH, MAIN_PANE は未定義のまま
@@ -143,8 +143,8 @@ rm -f "$FAKE_CLAUDE_JSON"
 )
 
 # ── Test 3: リソースが何もない状態でロールバック → エラーなし ──
-rm -rf "$SESSION_IPC_DIR"
-mkdir -p "$SESSION_IPC_DIR"
+rm -rf "$CEKERNEL_IPC_DIR"
+mkdir -p "$CEKERNEL_IPC_DIR"
 
 (
   export CLAUDE_JSON="$FAKE_CLAUDE_JSON"
@@ -163,4 +163,4 @@ mkdir -p "$SESSION_IPC_DIR"
 )
 
 # ── クリーンアップ ──
-rm -rf "$SESSION_IPC_DIR"
+rm -rf "$CEKERNEL_IPC_DIR"

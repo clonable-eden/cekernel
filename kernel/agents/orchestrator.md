@@ -28,71 +28,71 @@ tools: Read, Edit, Write, Bash
 
 ## ワークフロー
 
-### SESSION_ID の管理
+### CEKERNEL_SESSION_ID の管理
 
-Bash ツールの各呼び出しは独立したシェルで実行されるため、`SESSION_ID` は自動的には共有されない。
-ワークフロー開始時に `session-id.sh` を source して SESSION_ID を生成し、以降の全コマンドで明示的に渡す:
+Bash ツールの各呼び出しは独立したシェルで実行されるため、`CEKERNEL_SESSION_ID` は自動的には共有されない。
+ワークフロー開始時に `session-id.sh` を source して CEKERNEL_SESSION_ID を生成し、以降の全コマンドで明示的に渡す:
 
 ```bash
-# 1. SESSION_ID を生成（session-id.sh に一元化された生成ロジックを使う）
-source ${CLAUDE_PLUGIN_ROOT}/scripts/shared/session-id.sh && echo $SESSION_ID
+# 1. CEKERNEL_SESSION_ID を生成（session-id.sh に一元化された生成ロジックを使う）
+source ${CLAUDE_PLUGIN_ROOT}/scripts/shared/session-id.sh && echo $CEKERNEL_SESSION_ID
 # => glimmer-7861a821
 
-# 2. 以降の全コマンドで SESSION_ID を環境変数として渡す
-export SESSION_ID=glimmer-7861a821 && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 4
-export SESSION_ID=glimmer-7861a821 && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-workers.sh 4
-export SESSION_ID=glimmer-7861a821 && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/cleanup-worktree.sh 4
+# 2. 以降の全コマンドで CEKERNEL_SESSION_ID を環境変数として渡す
+export CEKERNEL_SESSION_ID=glimmer-7861a821 && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 4
+export CEKERNEL_SESSION_ID=glimmer-7861a821 && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-workers.sh 4
+export CEKERNEL_SESSION_ID=glimmer-7861a821 && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/cleanup-worktree.sh 4
 ```
 
 ### 単一 issue 処理
 
 ```bash
-# SESSION_ID は事前に生成済み
+# CEKERNEL_SESSION_ID は事前に生成済み
 
 # 1. Worker を起動
-export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 4
+export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 4
 
 # 2. 完了を待機
-export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-workers.sh 4
+export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-workers.sh 4
 
 # 3. クリーンアップ
-export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/cleanup-worktree.sh 4
+export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/cleanup-worktree.sh 4
 ```
 
 ### 複数 issue 並列処理
 
 ```bash
-# SESSION_ID は事前に生成済み
+# CEKERNEL_SESSION_ID は事前に生成済み
 
 # 複数 Worker を同時起動
-export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 4
-export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 5
-export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 6
+export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 4
+export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 5
+export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 6
 
 # 全 Worker の完了を並列監視
-export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-workers.sh 4 5 6
+export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-workers.sh 4 5 6
 
 # クリーンアップ
-export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/cleanup-worktree.sh 4
-export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/cleanup-worktree.sh 5
-export SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/cleanup-worktree.sh 6
+export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/cleanup-worktree.sh 4
+export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/cleanup-worktree.sh 5
+export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/cleanup-worktree.sh 6
 ```
 
 ## スケジューリング
 
 ### 同時実行数の制限
 
-`KERNEL_MAX_WORKERS` 環境変数（デフォルト: 3）で同時 Worker 数を制限する。
+`CEKERNEL_MAX_WORKERS` 環境変数（デフォルト: 3）で同時 Worker 数を制限する。
 `spawn-worker.sh` はセッション内のアクティブ FIFO 数をカウントし、上限到達時に exit 2 を返す。
 
 ```bash
 # 例: 最大 5 Worker に設定
-export KERNEL_MAX_WORKERS=5
+export CEKERNEL_MAX_WORKERS=5
 ```
 
 ### キューイングルール
 
-issue 数が `KERNEL_MAX_WORKERS` を超える場合、Orchestrator は以下の手順でスケジューリングする:
+issue 数が `CEKERNEL_MAX_WORKERS` を超える場合、Orchestrator は以下の手順でスケジューリングする:
 
 1. 先頭 `MAX_WORKERS` 件の独立した issue を同時起動
 2. `watch-workers.sh` でいずれかの Worker 完了を検知
@@ -129,15 +129,15 @@ done
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/worker-status.sh
 # 出力例 (JSON Lines):
-# {"issue":4,"worktree":"/path/.worktrees/issue/4-...","fifo":"/tmp/glimmer-ipc/.../worker-4","uptime":"12m"}
-# {"issue":5,"worktree":"/path/.worktrees/issue/5-...","fifo":"/tmp/glimmer-ipc/.../worker-5","uptime":"8m"}
+# {"issue":4,"worktree":"/path/.worktrees/issue/4-...","fifo":"/tmp/cekernel-ipc/.../worker-4","uptime":"12m"}
+# {"issue":5,"worktree":"/path/.worktrees/issue/5-...","fifo":"/tmp/cekernel-ipc/.../worker-5","uptime":"8m"}
 ```
 
 ## 判断基準
 
-- 依存関係のない issue は並列処理（`KERNEL_MAX_WORKERS` の範囲内）
+- 依存関係のない issue は並列処理（`CEKERNEL_MAX_WORKERS` の範囲内）
 - 依存関係のある issue は直列処理（先行 issue の完了を待つ）
-- `KERNEL_MAX_WORKERS` を超える場合はキューイング（先行完了を待って次を起動）
+- `CEKERNEL_MAX_WORKERS` を超える場合はキューイング（先行完了を待って次を起動）
 - Worker 失敗時: PR の状態を確認し、再試行 or エスカレーション
 
 ## Worker と対象リポジトリの関係
@@ -162,7 +162,7 @@ spawn-worker.sh はデフォルトのブランチ名を生成するが、
 
 ## ログ監視
 
-Worker のライフサイクルイベントは `${SESSION_IPC_DIR}/logs/` に記録される。
+Worker のライフサイクルイベントは `${CEKERNEL_IPC_DIR}/logs/` に記録される。
 
 ```bash
 # 全 Worker のログをリアルタイム監視
@@ -172,8 +172,8 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-logs.sh
 ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-logs.sh 4
 
 # ログの最終更新時刻でタイムアウト判定
-stat -f %m "${SESSION_IPC_DIR}/logs/worker-4.log"  # macOS
-stat -c %Y "${SESSION_IPC_DIR}/logs/worker-4.log"  # Linux
+stat -f %m "${CEKERNEL_IPC_DIR}/logs/worker-4.log"  # macOS
+stat -c %Y "${CEKERNEL_IPC_DIR}/logs/worker-4.log"  # Linux
 ```
 
 ログが長時間更新されない Worker はハング候補として調査する。
@@ -182,11 +182,11 @@ stat -c %Y "${SESSION_IPC_DIR}/logs/worker-4.log"  # Linux
 
 ### タイムアウト（SIGALRM 相当）
 
-`watch-workers.sh` は環境変数 `KERNEL_WORKER_TIMEOUT` でタイムアウトを制御する（デフォルト: 3600秒 = 1時間）。
+`watch-workers.sh` は環境変数 `CEKERNEL_WORKER_TIMEOUT` でタイムアウトを制御する（デフォルト: 3600秒 = 1時間）。
 
 ```bash
 # タイムアウトを30分に設定
-export KERNEL_WORKER_TIMEOUT=1800
+export CEKERNEL_WORKER_TIMEOUT=1800
 ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-workers.sh 4 5 6
 ```
 
@@ -217,7 +217,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/cleanup-worktree.sh --force 4
 
 | Unix Concept | Kernel Implementation |
 |---|---|
-| `SIGALRM` / watchdog | `KERNEL_WORKER_TIMEOUT` |
+| `SIGALRM` / watchdog | `CEKERNEL_WORKER_TIMEOUT` |
 | `kill -9` (SIGKILL) | `cleanup-worktree.sh --force` |
 | zombie reaping (`waitpid` + `WNOHANG`) | `health-check.sh` |
 

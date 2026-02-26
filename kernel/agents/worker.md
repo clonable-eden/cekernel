@@ -135,7 +135,7 @@ gh issue comment <issue-number> --body "$(cat <<'EOF'
 EOF
 )"
 
-# SESSION_ID は Orchestrator から環境変数で伝播されている
+# CEKERNEL_SESSION_ID は Orchestrator から環境変数で伝播されている
 ${CLAUDE_PLUGIN_ROOT}/scripts/worker/notify-complete.sh <issue-number> merged <pr-number>
 ```
 

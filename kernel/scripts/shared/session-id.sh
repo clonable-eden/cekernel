@@ -4,16 +4,16 @@
 # Usage: source session-id.sh
 #
 # 環境変数:
-#   SESSION_ID      — 未設定なら {repo-name}-{random-hex-8} を自動生成
-#   SESSION_IPC_DIR — /tmp/glimmer-ipc/${SESSION_ID} を export
+#   CEKERNEL_SESSION_ID — 未設定なら {repo-name}-{random-hex-8} を自動生成
+#   CEKERNEL_IPC_DIR    — /tmp/cekernel-ipc/${CEKERNEL_SESSION_ID} を export
 
-if [[ -z "${SESSION_ID:-}" ]]; then
+if [[ -z "${CEKERNEL_SESSION_ID:-}" ]]; then
   # リポジトリ名を取得（git 外なら "glimmer" をフォールバック）
   _repo_name=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null || echo "glimmer")
   # ランダム 8 桁 hex
   _hex=$(od -An -tx1 -N4 /dev/urandom | tr -d ' \n')
-  export SESSION_ID="${_repo_name}-${_hex}"
+  export CEKERNEL_SESSION_ID="${_repo_name}-${_hex}"
   unset _repo_name _hex
 fi
 
-export SESSION_IPC_DIR="/tmp/glimmer-ipc/${SESSION_ID}"
+export CEKERNEL_IPC_DIR="/tmp/cekernel-ipc/${CEKERNEL_SESSION_ID}"

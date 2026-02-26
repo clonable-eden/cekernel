@@ -23,8 +23,8 @@ if [[ $# -gt 0 ]]; then
   ISSUES=("$@")
 else
   ISSUES=()
-  if [[ -d "$SESSION_IPC_DIR" ]]; then
-    for fifo in "${SESSION_IPC_DIR}"/worker-*; do
+  if [[ -d "$CEKERNEL_IPC_DIR" ]]; then
+    for fifo in "${CEKERNEL_IPC_DIR}"/worker-*; do
       [[ -p "$fifo" ]] || continue
       issue=$(basename "$fifo" | sed 's/^worker-//')
       ISSUES+=("$issue")
@@ -33,7 +33,7 @@ else
 fi
 
 if [[ ${#ISSUES[@]} -eq 0 ]]; then
-  echo "No active workers found in session ${SESSION_ID}" >&2
+  echo "No active workers found in session ${CEKERNEL_SESSION_ID}" >&2
   exit 0
 fi
 
@@ -41,8 +41,8 @@ ZOMBIES=0
 
 check_worker() {
   local issue="$1"
-  local fifo="${SESSION_IPC_DIR}/worker-${issue}"
-  local pane_file="${SESSION_IPC_DIR}/pane-${issue}"
+  local fifo="${CEKERNEL_IPC_DIR}/worker-${issue}"
+  local pane_file="${CEKERNEL_IPC_DIR}/pane-${issue}"
   local status="unknown"
   local detail=""
 
