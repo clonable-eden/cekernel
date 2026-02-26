@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# watch-workers.sh — 複数 Worker の完了を並列監視
+# watch-workers.sh — Monitor multiple Worker completions in parallel
 #
 # Usage: watch-workers.sh <issue-number> [issue-number...]
 #
 # Environment:
-#   CEKERNEL_WORKER_TIMEOUT — Worker のタイムアウト秒数（デフォルト: 3600）
+#   CEKERNEL_WORKER_TIMEOUT — Worker timeout in seconds (default: 3600)
 #
-# 各 Worker の FIFO をバックグラウンドで並列監視し、
-# 全 Worker の完了を待つ。結果を標準出力に JSON Lines で出力する。
+# Monitors each Worker's FIFO in background, waits for all Workers to complete.
+# Outputs results to stdout as JSON Lines.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -21,7 +21,7 @@ RESULT_DIR=$(mktemp -d)
 PIDS=()
 TIMEOUT="${CEKERNEL_WORKER_TIMEOUT:-3600}"
 
-# 各 FIFO を並列監視
+# Monitor each FIFO in parallel
 watch_one() {
   local issue="$1"
   local fifo="${FIFO_DIR}/worker-${issue}"
@@ -33,7 +33,7 @@ watch_one() {
 
   echo "Watching issue #${issue} (timeout: ${TIMEOUT}s)..." >&2
 
-  # FIFO を read-write で開いて open() のブロッキングを回避（SIGALRM 相当）
+  # Open FIFO read-write to avoid blocking on open() (SIGALRM equivalent)
   local result
   exec 3<>"$fifo"
   if read -r -t "$TIMEOUT" result <&3; then
@@ -57,13 +57,13 @@ done
 
 echo "Watching ${#ISSUE_NUMBERS[@]} workers (timeout: ${TIMEOUT}s)..." >&2
 
-# 全バックグラウンドプロセスの完了を待機
+# Wait for all background processes to complete
 FAILED=0
 for pid in "${PIDS[@]}"; do
   wait "$pid" || FAILED=$((FAILED + 1))
 done
 
-# 結果を出力
+# Output results
 echo "---" >&2
 echo "All workers finished. (failed: ${FAILED})" >&2
 echo "---" >&2
@@ -74,7 +74,7 @@ for issue in "${ISSUE_NUMBERS[@]}"; do
   fi
 done
 
-# クリーンアップ
+# Cleanup
 rm -rf "$RESULT_DIR"
 
 exit "$FAILED"

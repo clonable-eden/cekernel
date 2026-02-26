@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# watch-logs.sh — Worker ログのリアルタイム監視
+# watch-logs.sh — Real-time monitoring of Worker logs
 #
 # Usage: watch-logs.sh [issue-number]
-#   引数なし: 全 Worker のログを監視
-#   引数あり: 指定 Worker のログのみ監視
+#   No argument: monitor all Worker logs
+#   With argument: monitor specified Worker's log only
 #
 # OS analogy: tail -f / journalctl
 set -euo pipefail
@@ -29,7 +29,7 @@ if [[ $# -gt 0 ]]; then
   echo "Watching worker #${ISSUE_NUMBER} logs..." >&2
   tail -f "$LOG_FILE"
 else
-  # 全ワーカーのログを監視
+  # Monitor all worker logs
   LOG_FILES=("${LOG_DIR}"/worker-*.log)
   if [[ ! -f "${LOG_FILES[0]}" ]]; then
     echo "No worker log files found in ${LOG_DIR}" >&2

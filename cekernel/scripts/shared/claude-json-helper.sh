@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# claude-json-helper.sh — ~/.claude.json の trust エントリを安全に読み書きするヘルパー
+# claude-json-helper.sh — Safely read/write trust entries in ~/.claude.json
 #
 # Usage: source claude-json-helper.sh
 #
-# 関数:
-#   acquire_claude_json_lock  — mkdir ベースのロック取得（最大10秒待機）
-#   release_claude_json_lock  — ロック解放
-#   register_trust <path>     — worktree パスの trust エントリを追加
-#   unregister_trust <path>   — worktree パスの trust エントリを削除
+# Functions:
+#   acquire_claude_json_lock  — Acquire mkdir-based lock (up to 10s wait)
+#   release_claude_json_lock  — Release lock
+#   register_trust <path>     — Add trust entry for worktree path
+#   unregister_trust <path>   — Remove trust entry for worktree path
 #
-# 環境変数（テスト用にオーバーライド可能）:
-#   CLAUDE_JSON — ~/.claude.json のパス（デフォルト: ${HOME}/.claude.json）
-#   LOCK_DIR    — ロックディレクトリ（デフォルト: ${CLAUDE_JSON}.lock）
+# Environment variables (overridable for testing):
+#   CLAUDE_JSON — Path to ~/.claude.json (default: ${HOME}/.claude.json)
+#   LOCK_DIR    — Lock directory (default: ${CLAUDE_JSON}.lock)
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "Error: jq is required but not found. Install it: https://jqlang.github.io/jq/download/" >&2
@@ -44,7 +44,7 @@ register_trust() {
   acquire_claude_json_lock || return 1
   trap 'release_claude_json_lock' RETURN
 
-  # ファイルが存在しない場合は空の JSON を用意
+  # Create empty JSON if file does not exist
   if [[ ! -f "$CLAUDE_JSON" ]]; then
     echo '{}' > "$CLAUDE_JSON"
   fi
@@ -64,7 +64,7 @@ register_trust() {
 unregister_trust() {
   local worktree_path="$1"
 
-  # ファイルが存在しない場合は何もしない
+  # Do nothing if file does not exist
   if [[ ! -f "$CLAUDE_JSON" ]]; then
     return 0
   fi

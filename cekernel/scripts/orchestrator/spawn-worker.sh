@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# spawn-worker.sh — Worktree 作成 + ターミナルウィンドウで Worker 起動
+# spawn-worker.sh — Create worktree + launch Worker in terminal window
 #
 # Usage: spawn-worker.sh <issue-number> [base-branch]
 # Output: FIFO path (stdout last line)
 # Exit codes:
-#   0 — Worker 起動成功
-#   1 — 一般エラー
-#   2 — 同時実行数上限到達 (CEKERNEL_MAX_WORKERS)
+#   0 — Worker spawned successfully
+#   1 — General error
+#   2 — Max concurrent workers reached (CEKERNEL_MAX_WORKERS)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -33,13 +33,13 @@ if [[ "$ACTIVE" -ge "$MAX_WORKERS" ]]; then
   exit 2
 fi
 
-# ── Issue 情報取得 ──
+# ── Fetch issue info ──
 ISSUE_TITLE=$(gh issue view "$ISSUE_NUMBER" --json title -q '.title')
 [[ -n "$ISSUE_TITLE" ]] || { echo "Error: issue #${ISSUE_NUMBER} not found" >&2; exit 1; }
 
-# ── ブランチ名・パス生成 ──
-# デフォルトの命名規則。対象リポジトリに独自の命名規則がある場合、
-# Worker がリネームしてよい（cekernel はブランチ名を強制しない）。
+# ── Branch name / path generation ──
+# Default naming convention. If the target repository has its own convention,
+# the Worker may rename the branch (cekernel does not enforce branch names).
 SLUG=$(echo "$ISSUE_TITLE" \
   | sed 's/[^a-zA-Z0-9]/-/g' \
   | tr '[:upper:]' '[:lower:]' \
@@ -49,80 +49,80 @@ BRANCH="issue/${ISSUE_NUMBER}-${SLUG}"
 WORKTREE_DIR="${REPO_ROOT}/.worktrees"
 WORKTREE="${WORKTREE_DIR}/${BRANCH}"
 
-# ── Rollback: 途中失敗時のリソースクリーンアップ ──
+# ── Rollback: clean up resources on failure ──
 rollback() {
   echo "Error: spawn-worker.sh failed. Rolling back..." >&2
-  # ターミナル pane を kill
+  # Kill terminal pane
   if [[ -n "${MAIN_PANE:-}" ]]; then
     terminal_kill_pane "$MAIN_PANE"
   fi
   rm -f "${CEKERNEL_IPC_DIR}/pane-${ISSUE_NUMBER}"
-  # Trust 登録解除
+  # Unregister trust
   if [[ -n "${WORKTREE:-}" && -d "${WORKTREE:-}" ]]; then
     unregister_trust "$WORKTREE" 2>/dev/null || true
   fi
-  # Worktree 削除
+  # Remove worktree
   if [[ -n "${WORKTREE:-}" ]]; then
     git worktree remove --force "$WORKTREE" 2>/dev/null || true
   fi
-  # ブランチ削除
+  # Delete branch
   if [[ -n "${BRANCH:-}" ]]; then
     git branch -D "$BRANCH" 2>/dev/null || true
   fi
-  # ログファイル削除
+  # Delete log file
   rm -f "${LOG_FILE:-}"
   rmdir "${LOG_DIR:-}" 2>/dev/null || true
-  # FIFO 削除
+  # Delete FIFO
   rm -f "${FIFO:-}"
 }
 trap rollback ERR
 
-# ── FIFO (named pipe) 作成 ──
+# ── Create FIFO (named pipe) ──
 mkdir -p "$CEKERNEL_IPC_DIR"
 FIFO="${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}"
 [[ -p "$FIFO" ]] || mkfifo "$FIFO"
 
-# ── ログファイル作成 ──
+# ── Create log file ──
 LOG_DIR="${CEKERNEL_IPC_DIR}/logs"
 mkdir -p "$LOG_DIR"
 LOG_FILE="${LOG_DIR}/worker-${ISSUE_NUMBER}.log"
 
 # ── Stale worktree/branch cleanup (retry safety) ──
-# 前回の spawn 失敗 + 不完全な rollback で worktree や branch が残っている場合、
-# 再作成前にクリーンアップする。
+# If a previous spawn failure + incomplete rollback left stale worktree or branch,
+# clean them up before creating new ones.
 cleanup_stale_worktree() {
   local worktree="$1" branch="$2"
-  # git worktree として登録されている場合（.git ファイルが worktree 参照を持つ）
+  # Registered as git worktree (.git file holds worktree reference)
   if [[ -f "${worktree}/.git" ]]; then
     echo "Warning: stale worktree found at ${worktree}, removing..." >&2
     git worktree remove --force "$worktree" 2>/dev/null || true
   fi
-  # git worktree list に登録されていないが、ディレクトリだけ残っている場合
+  # Not registered in git worktree list, but directory still exists
   if [[ -d "$worktree" ]]; then
     echo "Warning: orphaned worktree directory found at ${worktree}, removing..." >&2
     rm -rf "$worktree"
     git worktree prune 2>/dev/null || true
   fi
-  # stale branch を削除
+  # Delete stale branch
   if git rev-parse --verify "$branch" >/dev/null 2>&1; then
     echo "Warning: stale branch found: ${branch}, deleting..." >&2
     git branch -D "$branch" 2>/dev/null || true
   fi
 }
 
-# ── Worktree 作成 ──
+# ── Create worktree ──
 mkdir -p "$WORKTREE_DIR"
 git fetch origin "${BASE_BRANCH}" --quiet
 cleanup_stale_worktree "$WORKTREE" "$BRANCH"
 git worktree add -b "$BRANCH" "$WORKTREE" "origin/${BASE_BRANCH}"
 
-# ── Trust 登録（Worker が trust プロンプトなしで起動できるように） ──
+# ── Register trust (so Worker can start without trust prompt) ──
 register_trust "$WORKTREE"
 
 echo "worktree: $WORKTREE" >&2
 echo "branch:   $BRANCH" >&2
 
-# ── ターミナルウィンドウ起動 (project_layout 相当) ──
+# ── Launch terminal window (project_layout equivalent) ──
 #
 #   ┌──────────────┬──────────┐
 #   │  Claude Code │ Terminal │
@@ -131,36 +131,36 @@ echo "branch:   $BRANCH" >&2
 #   │  git log (25%)          │
 #   └─────────────────────────┘
 
-# Worker に CEKERNEL_SESSION_ID を伝播
-# Orchestrator と同じ workspace に Worker を作成
+# Propagate CEKERNEL_SESSION_ID to Worker
+# Create Worker in the same workspace as Orchestrator
 WORKSPACE=$(terminal_resolve_workspace)
 MAIN_PANE=$(terminal_spawn_window "$WORKTREE" "$WORKSPACE")
 
-# Pane ID を保存（health-check / cleanup で使用）
+# Save pane ID (used by health-check / cleanup)
 echo "$MAIN_PANE" > "${CEKERNEL_IPC_DIR}/pane-${ISSUE_NUMBER}"
-# --cwd が確実に反映されないケースに備え、明示的に cd する
+# Explicit cd in case --cwd doesn't take effect reliably
 terminal_run_command "$MAIN_PANE" "cd '${WORKTREE}' && export CEKERNEL_SESSION_ID='${CEKERNEL_SESSION_ID}'"
 
-# 下部: auto-refresh git log
+# Bottom: auto-refresh git log
 terminal_split_pane bottom 25 "$MAIN_PANE" "$WORKTREE" \
   watch -n3 -t -c "git --no-pager log --oneline --graph --color=always"
 
-# 右側: 汎用ターミナル
+# Right: general-purpose terminal
 terminal_split_pane right 40 "$MAIN_PANE" "$WORKTREE"
 
-# メイン pane で Claude Code 起動
-# Worker への初期プロンプト:
-# 1. 対象リポジトリの CLAUDE.md を最優先で読む
-# 2. ライフサイクル（PR → CI → merge → notify）のみ kernel のプロトコルに従う
-# 3. 実装・規約は対象リポジトリに完全に従う
-PROMPT="issue #${ISSUE_NUMBER} を解決してください。まず対象リポジトリの CLAUDE.md を読み、その規約に完全に従ってください。ライフサイクルのみ kernel の Worker Protocol に従います: 実装 → PR作成 → CI確認 → merge。完了したら ${CLAUDE_PLUGIN_ROOT}/scripts/worker/notify-complete.sh ${ISSUE_NUMBER} merged <pr-number> を実行してください。"
+# Launch Claude Code in main pane
+# Initial prompt for Worker:
+# 1. Read the target repository's CLAUDE.md first
+# 2. Follow kernel's protocol only for lifecycle (PR → CI → merge → notify)
+# 3. Follow the target repository's conventions for implementation
+PROMPT="Resolve issue #${ISSUE_NUMBER}. First read the target repository's CLAUDE.md and fully follow its conventions. Follow only the kernel Worker Protocol for lifecycle: implement → create PR → verify CI → merge. When done, run ${CLAUDE_PLUGIN_ROOT}/scripts/worker/notify-complete.sh ${ISSUE_NUMBER} merged <pr-number>."
 terminal_run_command "$MAIN_PANE" "claude --agent cekernel:worker '${PROMPT}'"
 
-# ── ライフサイクルイベントをログに記録 ──
+# ── Record lifecycle event in log ──
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] SPAWN issue=#${ISSUE_NUMBER} branch=${BRANCH}" >> "$LOG_FILE"
 
 echo "session: $CEKERNEL_SESSION_ID" >&2
 echo "worker spawned: issue #${ISSUE_NUMBER}" >&2
 
-# FIFO パスを返す（orchestrator が読み取りに使う）
+# Return FIFO path (used by orchestrator for reading)
 echo "$FIFO"

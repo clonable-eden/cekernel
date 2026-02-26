@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# notify-complete.sh — Worker → Orchestrator 完了通知 (named pipe)
+# notify-complete.sh — Worker → Orchestrator completion notification (named pipe)
 #
 # Usage: notify-complete.sh <issue-number> <status> [detail]
 #   status: merged | failed
@@ -25,8 +25,8 @@ if [[ ! -p "$FIFO" ]]; then
   exit 1
 fi
 
-# JSON メッセージを FIFO に書き込み
-# この書き込みが orchestrator のブロッキング読み取りを解放する
+# Write JSON message to FIFO
+# This write unblocks the orchestrator's blocking read
 TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 JSON=$(jq -cn \
@@ -37,7 +37,7 @@ JSON=$(jq -cn \
   '{issue: $issue, status: $status, detail: $detail, timestamp: $timestamp}')
 echo "$JSON" > "$FIFO"
 
-# ── ライフサイクルイベントをログに記録 ──
+# ── Record lifecycle event in log ──
 LOG_FILE="${CEKERNEL_IPC_DIR}/logs/worker-${ISSUE_NUMBER}.log"
 if [[ -d "${CEKERNEL_IPC_DIR}/logs" ]]; then
   EVENT="COMPLETE"
