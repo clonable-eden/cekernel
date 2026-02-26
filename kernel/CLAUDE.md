@@ -36,7 +36,7 @@ kernel/
 | `fork` + `exec` | `spawn-worker.sh` |
 | address space | git worktree |
 | IPC pipe | named pipe (FIFO) |
-| IPC namespace | `SESSION_ID` |
+| IPC namespace | `CEKERNEL_SESSION_ID` |
 
 ## Scripts
 
@@ -81,13 +81,13 @@ FAILED=$((FAILED + 1))
 
 ### 環境変数
 
-`KERNEL_` プレフィックスを使用する。
+`CEKERNEL_` プレフィックスを使用する。
 
 デフォルト値には `${VAR:-default}` パターンを使う:
 
 ```bash
-MAX_WORKERS="${KERNEL_MAX_WORKERS:-3}"
-TIMEOUT="${KERNEL_WORKER_TIMEOUT:-3600}"
+MAX_WORKERS="${CEKERNEL_MAX_WORKERS:-3}"
+TIMEOUT="${CEKERNEL_WORKER_TIMEOUT:-3600}"
 ```
 
 `CLAUDE_PLUGIN_ROOT` はスキル経由の実行時のみ Claude Code が自動設定する。
@@ -200,15 +200,15 @@ report_results  # "Results: N passed, M failed"
 
 副作用のあるコマンド（WezTerm, `gh`, `git worktree`）はテストから分離するか、モック可能な構造にする。
 
-テストでは専用の `SESSION_ID` を使い、前後でクリーンアップする:
+テストでは専用の `CEKERNEL_SESSION_ID` を使い、前後でクリーンアップする:
 
 ```bash
-export SESSION_ID="test-feature-00000001"
-source "${KERNEL_DIR}/scripts/shared/session-id.sh"
-rm -rf "$SESSION_IPC_DIR"
-mkdir -p "$SESSION_IPC_DIR"
+export CEKERNEL_SESSION_ID="test-feature-00000001"
+source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
+rm -rf "$CEKERNEL_IPC_DIR"
+mkdir -p "$CEKERNEL_IPC_DIR"
 # ... tests ...
-rm -rf "$SESSION_IPC_DIR"
+rm -rf "$CEKERNEL_IPC_DIR"
 ```
 
 ## CI

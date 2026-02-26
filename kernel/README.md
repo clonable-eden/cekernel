@@ -27,15 +27,15 @@ Orchestrator (agent1)              Worker (agent2, 3, 4, ...)
 | `fork` + `exec` | `spawn-worker.sh` |
 | address space | git worktree |
 | IPC pipe | named pipe (FIFO) |
-| IPC namespace | session (`SESSION_ID`) |
+| IPC namespace | session (`CEKERNEL_SESSION_ID`) |
 | `waitpid` | `watch-workers.sh` |
 | zombie reaping | `cleanup-worktree.sh` |
 | PID | issue number |
-| `/var/log/` | `${SESSION_IPC_DIR}/logs/` |
+| `/var/log/` | `${CEKERNEL_IPC_DIR}/logs/` |
 | `syslog` | ライフサイクルイベントのログ書き込み |
 | `tail -f` / `journalctl` | `watch-logs.sh` |
 | log rotation | `cleanup-worktree.sh` でログも削除 |
-| `ulimit -u` (max processes) | `KERNEL_MAX_WORKERS` |
+| `ulimit -u` (max processes) | `CEKERNEL_MAX_WORKERS` |
 | `ps aux` | `worker-status.sh` |
 | process scheduler | Orchestrator のキューイングロジック |
 | semaphore | FIFO 数による concurrency guard |
@@ -119,20 +119,20 @@ Claude Code のプラグインマーケットプレイスから導入する:
 
 # または直接スクリプトを実行（Orchestrator と同じ手順）
 
-# 1. SESSION_ID を生成
-source kernel/scripts/shared/session-id.sh && echo $SESSION_ID
+# 1. CEKERNEL_SESSION_ID を生成
+source kernel/scripts/shared/session-id.sh && echo $CEKERNEL_SESSION_ID
 # => glimmer-7861a821
 
-# 2. 各スクリプトを実行（すべて SESSION_ID が必要。シェルが分かれる場合は毎回 export する）
-export SESSION_ID=glimmer-7861a821 && kernel/scripts/orchestrator/spawn-worker.sh 4
-export SESSION_ID=glimmer-7861a821 && kernel/scripts/orchestrator/worker-status.sh
-export SESSION_ID=glimmer-7861a821 && kernel/scripts/orchestrator/watch-workers.sh 4 5 6
-export SESSION_ID=glimmer-7861a821 && kernel/scripts/orchestrator/watch-logs.sh
-export SESSION_ID=glimmer-7861a821 && kernel/scripts/orchestrator/watch-logs.sh 4
-export SESSION_ID=glimmer-7861a821 && kernel/scripts/orchestrator/cleanup-worktree.sh 4
+# 2. 各スクリプトを実行（すべて CEKERNEL_SESSION_ID が必要。シェルが分かれる場合は毎回 export する）
+export CEKERNEL_SESSION_ID=glimmer-7861a821 && kernel/scripts/orchestrator/spawn-worker.sh 4
+export CEKERNEL_SESSION_ID=glimmer-7861a821 && kernel/scripts/orchestrator/worker-status.sh
+export CEKERNEL_SESSION_ID=glimmer-7861a821 && kernel/scripts/orchestrator/watch-workers.sh 4 5 6
+export CEKERNEL_SESSION_ID=glimmer-7861a821 && kernel/scripts/orchestrator/watch-logs.sh
+export CEKERNEL_SESSION_ID=glimmer-7861a821 && kernel/scripts/orchestrator/watch-logs.sh 4
+export CEKERNEL_SESSION_ID=glimmer-7861a821 && kernel/scripts/orchestrator/cleanup-worktree.sh 4
 
 # 同時実行数を変更（デフォルト: 3）
-export KERNEL_MAX_WORKERS=5
+export CEKERNEL_MAX_WORKERS=5
 ```
 
 バージョン管理とリリース手順については [kernel/CLAUDE.md の Versioning セクション](./CLAUDE.md#versioning) を参照。
@@ -227,7 +227,7 @@ kernel の権限          対象リポジトリの権限
 Worker のライフサイクルイベントはセッションスコープのログディレクトリに記録される。
 
 ```
-/tmp/glimmer-ipc/{SESSION_ID}/
+/tmp/cekernel-ipc/{CEKERNEL_SESSION_ID}/
 ├── worker-4          # FIFO（既存）
 ├── worker-7          # FIFO（既存）
 └── logs/
@@ -260,7 +260,7 @@ kernel/scripts/orchestrator/watch-logs.sh 4           # 特定 Worker
 
 ### 同時実行数制限
 
-`KERNEL_MAX_WORKERS` 環境変数で同時 Worker 数を制限する（デフォルト: 3）。
+`CEKERNEL_MAX_WORKERS` 環境変数で同時 Worker 数を制限する（デフォルト: 3）。
 `spawn-worker.sh` はセッション内のアクティブ FIFO 数をカウントし、上限に達している場合 exit 2 を返す。
 Orchestrator はこの exit code を受けてキューイングを行う。
 
@@ -270,7 +270,7 @@ Orchestrator はこの exit code を受けてキューイングを行う。
 
 ```bash
 kernel/scripts/orchestrator/worker-status.sh
-# {"issue":4,"worktree":"/path/.worktrees/issue/4-...","fifo":"/tmp/glimmer-ipc/.../worker-4","uptime":"12m"}
+# {"issue":4,"worktree":"/path/.worktrees/issue/4-...","fifo":"/tmp/cekernel-ipc/.../worker-4","uptime":"12m"}
 ```
 
 
@@ -283,11 +283,11 @@ Worker 間通信には FIFO（named pipe）を使用。daemon 不要、カーネ
 FIFO パスはセッション単位で名前空間が分離される:
 
 ```
-/tmp/glimmer-ipc/{SESSION_ID}/worker-{issue}
+/tmp/cekernel-ipc/{CEKERNEL_SESSION_ID}/worker-{issue}
 ```
 
-`SESSION_ID` は `session-id.sh` が自動生成する（形式: `{repo-name}-{hex8}`）。
-環境変数 `SESSION_ID` が設定済みの場合はそれを使用する。
-spawn-worker.sh は WezTerm pane 経由で Worker に `SESSION_ID` を伝播する。
+`CEKERNEL_SESSION_ID` は `session-id.sh` が自動生成する（形式: `{repo-name}-{hex8}`）。
+環境変数 `CEKERNEL_SESSION_ID` が設定済みの場合はそれを使用する。
+spawn-worker.sh は WezTerm pane 経由で Worker に `CEKERNEL_SESSION_ID` を伝播する。
 
 これにより、同一マシンで複数の orchestrate セッションを並行実行しても FIFO が衝突しない。
