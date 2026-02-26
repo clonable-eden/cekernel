@@ -4,13 +4,13 @@
     "name": "clonable-eden"
   },
   "metadata": {
-    "description": "clonable-eden の実験的プラグイン群。アイデアの火種を温める場所。"
+    "description": "Experimental plugins by clonable-eden. A place to nurture sparks of ideas."
   },
   "plugins": [
     {
       "name": "kernel",
       "source": "./kernel",
-      "description": "Claude Code 並列エージェント基盤。OS のプロセスモデルに倣い、issue を独立した Worker に分配・監視・回収する。",
+      "description": "Parallel agent infrastructure for Claude Code. Modeled after the OS process model, it distributes, monitors, and reaps issues via independent Workers.",
       "author": {
         "name": "clonable-eden"
       },

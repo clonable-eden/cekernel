@@ -1,10 +1,10 @@
 # Glimmer
 
-アイデアの火種を温める場所。並列エージェントワークフローの実験プロジェクト。
+A place to nurture sparks of ideas. An experimental project for parallel agent workflows.
 
 ## Marketplace
 
-このリポジトリは Claude Code プラグインマーケットプレイスを兼ねている。
+This repository also serves as a Claude Code plugin marketplace.
 
 ```bash
 /plugin marketplace add clonable-eden/glimmer
@@ -13,22 +13,22 @@
 
 ## Plugins
 
-- **cekernel** — 並列エージェント基盤。`/cekernel:orchestrate` スキルと orchestrator/worker エージェントを提供。開発時は `cekernel/CLAUDE.md` を読むこと。
+- **cekernel** — Parallel agent infrastructure. Provides the `/cekernel:orchestrate` skill and orchestrator/worker agents. Read `cekernel/CLAUDE.md` for development.
 
 ## Principles
 
-- Claude Code の仕様や挙動について不確かな場合は、必ず一次情報（公式ドキュメント、GitHub issue）に当たってから回答する。推測で答えない。
+- When uncertain about Claude Code specifications or behavior, always consult primary sources (official documentation, GitHub issues) before answering. Do not guess.
 
 ## Conventions
 
-- ブランチ名: `issue/{number}-{short-description}`
-- commit message の title は英語、body は日本語 OK
-- PR の body に `closes #{issue-number}` を含める
-- worktree は `.worktrees/` 配下に作成（.gitignore 済み）
-- commit message は conventional commits に従う:
-  - `feat:` 新機能
-  - `fix:` バグ修正
-  - `docs:` ドキュメントのみ
-  - `test:` テストのみ
-  - `refactor:` リファクタリング
-  - `release:` バージョンバンプ（CI 自動生成）
+- Branch names: `issue/{number}-{short-description}`
+- Commit message titles in English, body may be in Japanese
+- PR body must include `closes #{issue-number}`
+- Worktrees are created under `.worktrees/` (already in .gitignore)
+- Commit messages follow conventional commits:
+  - `feat:` New feature
+  - `fix:` Bug fix
+  - `docs:` Documentation only
+  - `test:` Tests only
+  - `refactor:` Refactoring
+  - `release:` Version bump (CI auto-generated)
