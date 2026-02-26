@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-trust-registration.sh — claude-json-helper.sh のテスト
+# test-trust-registration.sh — Tests for claude-json-helper.sh
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -10,12 +10,12 @@ HELPER_SCRIPT="${CEKERNEL_DIR}/scripts/shared/claude-json-helper.sh"
 
 echo "test: claude-json-helper.sh"
 
-# ── Setup: テスト用の一時 ~/.claude.json を使う ──
+# ── Setup: Use a temporary ~/.claude.json for testing ──
 TEST_TMP=$(mktemp -d)
 FAKE_CLAUDE_JSON="${TEST_TMP}/claude.json"
 trap 'rm -rf "$TEST_TMP"' EXIT
 
-# CLAUDE_JSON を上書きして source する関数
+# Function to source the helper with overridden CLAUDE_JSON
 source_helper() {
   (
     export CLAUDE_JSON="$FAKE_CLAUDE_JSON"
@@ -25,7 +25,7 @@ source_helper() {
   )
 }
 
-# ── Test 1: register_trust — 新規ファイルに全5フィールドが設定される ──
+# ── Test 1: register_trust — All 5 fields are set on a new file ──
 rm -f "$FAKE_CLAUDE_JSON"
 source_helper register_trust "/tmp/test-worktree/issue/42-foo"
 RESULT=$(jq -r '.projects["/tmp/test-worktree/issue/42-foo"].hasTrustDialogAccepted' "$FAKE_CLAUDE_JSON")
@@ -43,7 +43,7 @@ assert_eq "register_trust sets hasClaudeMdExternalIncludesApproved" "true" "$RES
 RESULT=$(jq -r '.projects["/tmp/test-worktree/issue/42-foo"].hasClaudeMdExternalIncludesWarningShown' "$FAKE_CLAUDE_JSON")
 assert_eq "register_trust sets hasClaudeMdExternalIncludesWarningShown" "true" "$RESULT"
 
-# ── Test 2: register_trust — 既存エントリがある場合に他のフィールドが保持される ──
+# ── Test 2: register_trust — Existing entries are preserved when adding new ones ──
 rm -f "$FAKE_CLAUDE_JSON"
 cat > "$FAKE_CLAUDE_JSON" <<'JSON'
 {
@@ -66,7 +66,7 @@ assert_eq "existing project custom field preserved" "keep-me" "$RESULT"
 RESULT=$(jq -r '.projects["/tmp/new-worktree"].hasTrustDialogAccepted' "$FAKE_CLAUDE_JSON")
 assert_eq "new worktree trust added alongside existing" "true" "$RESULT"
 
-# ── Test 3: unregister_trust — エントリが削除される ──
+# ── Test 3: unregister_trust — Entry is removed ──
 rm -f "$FAKE_CLAUDE_JSON"
 cat > "$FAKE_CLAUDE_JSON" <<'JSON'
 {
@@ -88,11 +88,11 @@ assert_eq "unregister_trust removes target entry" "null" "$RESULT"
 RESULT=$(jq -r '.projects["/keep/this/project"].hasTrustDialogAccepted' "$FAKE_CLAUDE_JSON")
 assert_eq "unregister_trust preserves other entries" "true" "$RESULT"
 
-# ── Test 4: ロック取得・解放 ──
+# ── Test 4: Lock acquire/release ──
 LOCK_TEST_DIR="${TEST_TMP}/claude.json.lock"
 rm -rf "$LOCK_TEST_DIR"
 
-# acquire してロックディレクトリが存在する
+# Verify lock directory exists after acquire
 (
   export CLAUDE_JSON="$FAKE_CLAUDE_JSON"
   export LOCK_DIR="$LOCK_TEST_DIR"
@@ -103,14 +103,14 @@ rm -rf "$LOCK_TEST_DIR"
   assert_not_exists "lock directory removed after release" "$LOCK_DIR"
 )
 
-# ── Test 5: register_trust — ~/.claude.json が存在しない場合でも動作する ──
+# ── Test 5: register_trust — Works even when ~/.claude.json does not exist ──
 rm -f "$FAKE_CLAUDE_JSON"
 source_helper register_trust "/tmp/brand-new"
 assert_file_exists "claude.json created when missing" "$FAKE_CLAUDE_JSON"
 RESULT=$(jq -r '.projects["/tmp/brand-new"].hasTrustDialogAccepted' "$FAKE_CLAUDE_JSON")
 assert_eq "trust set on newly created file" "true" "$RESULT"
 
-# ── Test 6: unregister_trust — ファイルが存在しない場合はエラーにならない ──
+# ── Test 6: unregister_trust — No error when file does not exist ──
 rm -f "$FAKE_CLAUDE_JSON"
 source_helper unregister_trust "/tmp/nonexistent" 2>/dev/null
 assert_eq "unregister_trust on missing file exits cleanly" "0" "$?"

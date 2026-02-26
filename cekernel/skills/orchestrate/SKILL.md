@@ -1,46 +1,46 @@
 ---
-description: Issue の優先度判断後、Orchestrator エージェントに委譲して並列処理する
+description: Delegate issues to the Orchestrator agent for parallel processing after priority assessment
 allowed-tools: Bash, Read, Task(cekernel:orchestrator)
 ---
 
 # /orchestrate
 
-指定された issue を Orchestrator エージェントに委譲し、git worktree + WezTerm ウィンドウで並列処理する。
+Delegates specified issues to the Orchestrator agent for parallel processing using git worktrees + WezTerm windows.
 
 ## Usage
 
-ユーザーから issue 番号（単数または複数）を受け取る。
+Receive issue numbers (single or multiple) from the user.
 
 ## Workflow
 
-### Step 1: Issue のトリアージと優先度判断
+### Step 1: Issue Triage and Priority Assessment
 
-各 issue の内容を `gh issue view` で確認し、以下を検証する:
+Check each issue's content with `gh issue view` and verify:
 
-1. **要件の明確さ**: 何を変更すべきか具体的に記述されているか
-2. **スコープ**: 実装範囲が特定できるか
+1. **Clarity of requirements**: Are the required changes specifically described?
+2. **Scope**: Can the implementation scope be identified?
 
-要件が曖昧または不十分な issue がある場合は、ユーザーに報告して対応を確認する（issue の修正、スキップ、続行など）。ユーザーとの対話で要件がクリアになった場合は、Worker が正確に作業できるよう `gh issue comment` で補足情報を issue にコメントとして追記してから Orchestrator に委譲する。
+If any issue has ambiguous or insufficient requirements, report to the user and confirm action (fix the issue, skip, proceed, etc.). If requirements become clear through user interaction, add supplementary information as a comment on the issue via `gh issue comment` so the Worker can work accurately, then delegate to the Orchestrator.
 
-複数 issue の場合はさらに:
+For multiple issues, additionally:
 
-3. issue 間の依存関係を分析（A の完了が B の前提になるか）
-4. 依存関係がある場合はフェーズ分けし、実行順序をユーザーに提示して確認を取る
+3. Analyze dependencies between issues (does completing A require B to finish first?)
+4. If dependencies exist, organize into phases and present the execution order to the user for confirmation
 
-### Step 2: Orchestrator エージェント起動
+### Step 2: Launch Orchestrator Agent
 
-Task tool で `kernel:orchestrator` サブエージェントを起動する:
+Launch the `cekernel:orchestrator` subagent via the Task tool:
 
 - `subagent_type`: `cekernel:orchestrator`
-- `prompt`: issue 番号、base branch（指定があれば）、実行順序（Step 1 で決定した場合）を含める
+- `prompt`: Include issue numbers, base branch (if specified), and execution order (if determined in Step 1)
 
-Orchestrator が自律的に以下を実行する:
+The Orchestrator autonomously executes:
 
-1. issue 確認・トリアージ（曖昧な issue は FAIL）
-2. Worker 起動
-3. 完了監視
-4. クリーンアップ
+1. Issue verification and triage (FAIL for ambiguous issues)
+2. Worker spawning
+3. Completion monitoring
+4. Cleanup
 
-### Step 3: 結果報告
+### Step 3: Report Results
 
-Orchestrator の結果をユーザーに報告する。
+Report the Orchestrator's results to the user.

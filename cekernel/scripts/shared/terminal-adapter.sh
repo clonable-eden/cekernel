@@ -1,20 +1,21 @@
 #!/usr/bin/env bash
-# terminal-adapter.sh — ターミナルマルチプレクサの抽象化レイヤー
+# terminal-adapter.sh — Abstraction layer for terminal multiplexer
 #
 # Usage: source terminal-adapter.sh
 #
-# WezTerm 固有の操作を関数でラップし、他スクリプトからの直接依存を排除する。
-# 将来 tmux 等に対応する場合はこのファイルのみ差し替える（Rule of Separation）。
+# Wraps WezTerm-specific operations behind functions, eliminating direct
+# dependencies from other scripts. To support tmux etc. in the future,
+# only this file needs to be replaced (Rule of Separation).
 #
 # Functions:
-#   terminal_available          — ターミナルが利用可能か確認
-#   terminal_resolve_workspace  — 現在の pane が属する workspace 名を返す
-#   terminal_spawn_window       — 新しいウィンドウを作成し pane ID を返す
-#   terminal_run_command        — 指定 pane でコマンドを実行
-#   terminal_split_pane         — pane を分割（オプションでコマンド実行）
-#   terminal_kill_pane          — pane を削除
-#   terminal_kill_window        — pane が属するウィンドウの全ペインを削除
-#   terminal_pane_alive         — pane が生きているか確認
+#   terminal_available          — Check if terminal multiplexer is available
+#   terminal_resolve_workspace  — Return workspace name of current pane
+#   terminal_spawn_window       — Create new window and return pane ID
+#   terminal_run_command        — Execute command in specified pane
+#   terminal_split_pane         — Split pane (optionally run command)
+#   terminal_kill_pane          — Kill a pane
+#   terminal_kill_window        — Kill all panes in the pane's window
+#   terminal_pane_alive         — Check if pane is alive
 
 terminal_available() {
   command -v wezterm >/dev/null 2>&1
@@ -92,7 +93,7 @@ terminal_kill_pane() {
 }
 
 # terminal_kill_window <pane-id>
-# pane が属するウィンドウの全ペインを kill。取得失敗時は指定 pane のみ kill。
+# Kill all panes in the pane's window. Falls back to killing the specified pane only.
 terminal_kill_window() {
   local pane_id="$1"
   local window_panes

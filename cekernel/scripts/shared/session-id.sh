@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# session-id.sh — セッション ID の生成と IPC ディレクトリの導出
+# session-id.sh — Generate session ID and derive IPC directory
 #
 # Usage: source session-id.sh
 #
-# 環境変数:
-#   CEKERNEL_SESSION_ID — 未設定なら {repo-name}-{random-hex-8} を自動生成
-#   CEKERNEL_IPC_DIR    — /tmp/cekernel-ipc/${CEKERNEL_SESSION_ID} を export
+# Environment variables:
+#   CEKERNEL_SESSION_ID — Auto-generated as {repo-name}-{random-hex-8} if not set
+#   CEKERNEL_IPC_DIR    — Exports /tmp/cekernel-ipc/${CEKERNEL_SESSION_ID}
 
 if [[ -z "${CEKERNEL_SESSION_ID:-}" ]]; then
-  # リポジトリ名を取得（git 外なら "glimmer" をフォールバック）
+  # Get repository name (fallback to "glimmer" outside git)
   _repo_name=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null || echo "glimmer")
-  # ランダム 8 桁 hex
+  # Random 8-digit hex
   _hex=$(od -An -tx1 -N4 /dev/urandom | tr -d ' \n')
   export CEKERNEL_SESSION_ID="${_repo_name}-${_hex}"
   unset _repo_name _hex

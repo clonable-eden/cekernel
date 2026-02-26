@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# health-check.sh — ゾンビ Worker の検知・報告
+# health-check.sh — Detect and report zombie Workers
 #
 # Usage: health-check.sh [issue-number...]
-#   issue 番号省略時: セッション内の全 Worker を検査
+#   Without issue numbers: inspect all Workers in the session
 #
-# ゾンビ = FIFO が存在するが Worker プロセスが死んでいる状態
-# （waitpid + WNOHANG 相当）
+# Zombie = FIFO exists but the Worker process is dead
+# (waitpid + WNOHANG equivalent)
 #
 # Exit code:
 #   0 — all workers healthy (or no workers found)
@@ -18,7 +18,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../shared/session-id.sh"
 source "${SCRIPT_DIR}/../shared/terminal-adapter.sh"
 
-# issue 番号が指定されていれば、それだけ検査。なければセッション内全 FIFO を検査
+# If issue numbers are specified, inspect only those. Otherwise inspect all FIFOs in session
 if [[ $# -gt 0 ]]; then
   ISSUES=("$@")
 else
@@ -46,13 +46,13 @@ check_worker() {
   local status="unknown"
   local detail=""
 
-  # FIFO が存在しなければ完了済み
+  # No active FIFO means completed
   if [[ ! -p "$fifo" ]]; then
     echo "{\"issue\":${issue},\"status\":\"completed\",\"detail\":\"No active FIFO\"}"
     return 0
   fi
 
-  # 1. ターミナル pane チェック（pane ID ファイルがあれば）
+  # 1. Terminal pane check (if pane ID file exists)
   if [[ -f "$pane_file" ]]; then
     local pane_id
     pane_id=$(cat "$pane_file")
@@ -67,7 +67,7 @@ check_worker() {
     fi
   fi
 
-  # 2. pane チェックで判定できなかった場合、プロセスベースでフォールバック
+  # 2. If pane check was inconclusive, fallback to process-based detection
   if [[ "$status" == "unknown" ]]; then
     local worktree=""
     worktree=$(git worktree list --porcelain 2>/dev/null \

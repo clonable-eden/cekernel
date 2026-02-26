@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run-tests.sh — cekernel/tests/{shared,orchestrator,worker}/test-*.sh を順次実行するテストランナー
+# run-tests.sh — Test runner that sequentially executes cekernel/tests/{shared,orchestrator,worker}/test-*.sh
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

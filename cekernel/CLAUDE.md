@@ -1,33 +1,33 @@
 # cekernel Development Guide
 
-cekernel は Claude Code の並列エージェント基盤。
-Unix の概念（プロセス、IPC、スケジューラ）を Claude ワークフローにマッピングしている。
-アーキテクチャの詳細は [README.md](./README.md) を参照。
+cekernel is a parallel agent infrastructure for Claude Code.
+It maps Unix concepts (processes, IPC, schedulers) onto Claude workflows.
+See [README.md](./README.md) for architecture details.
 
 ## Philosophy
 
-cekernel の設計は UNIX 哲学と TDD に根ざしている。
+cekernel's design is rooted in UNIX philosophy and TDD.
 
-- [UNIX Philosophy](./docs/unix-philosophy.md) — Eric S. Raymond の 17 原則
-- [TDD](./docs/tdd.md) — Red-Green-Refactor サイクルとテストの原則
+- [UNIX Philosophy](./docs/unix-philosophy.md) — Eric S. Raymond's 17 principles
+- [TDD](./docs/tdd.md) — Red-Green-Refactor cycle and testing principles
 
 ## Architecture
 
 ```
 cekernel/
-├── agents/          # エージェント定義 (orchestrator, worker)
+├── agents/          # Agent definitions (orchestrator, worker)
 ├── scripts/
-│   ├── orchestrator/  # Orchestrator 用スクリプト
-│   ├── worker/        # Worker 用スクリプト
-│   └── shared/        # 共有ヘルパー (session-id, claude-json-helper, etc.)
-├── skills/          # スキル定義 (/cekernel:orchestrate)
+│   ├── orchestrator/  # Orchestrator scripts
+│   ├── worker/        # Worker scripts
+│   └── shared/        # Shared helpers (session-id, claude-json-helper, etc.)
+├── skills/          # Skill definitions (/cekernel:orchestrate)
 └── tests/
-    ├── orchestrator/  # Orchestrator スクリプトのテスト
-    ├── worker/        # Worker スクリプトのテスト
-    └── shared/        # 共有ヘルパーのテスト
+    ├── orchestrator/  # Orchestrator script tests
+    ├── worker/        # Worker script tests
+    └── shared/        # Shared helper tests
 ```
 
-主要なマッピング:
+Key mappings:
 
 | Unix | kernel |
 |------|--------|
@@ -40,15 +40,15 @@ cekernel/
 
 ## Scripts
 
-### 基本ルール
+### Basic Rules
 
-すべてのスクリプトは先頭に以下を記述する:
+All scripts must begin with:
 
 ```bash
 set -euo pipefail
 ```
 
-`shared/session-id.sh` を source してセッションスコープを確保する:
+Source `shared/session-id.sh` to establish session scope:
 
 ```bash
 source "${SCRIPT_DIR}/../shared/session-id.sh"
@@ -56,51 +56,50 @@ source "${SCRIPT_DIR}/../shared/session-id.sh"
 
 ### shared/claude-json-helper.sh
 
-`~/.claude.json` の trust エントリを安全に読み書きするヘルパー。`spawn-worker.sh` と `cleanup-worktree.sh` で共有する。
+A helper for safely reading and writing trust entries in `~/.claude.json`. Shared by `spawn-worker.sh` and `cleanup-worktree.sh`.
 
 ```bash
 source "${SCRIPT_DIR}/../shared/claude-json-helper.sh"
-register_trust "$WORKTREE"    # worktree パスの trust を登録
-unregister_trust "$WORKTREE"  # worktree パスの trust を解除
+register_trust "$WORKTREE"    # Register trust for the worktree path
+unregister_trust "$WORKTREE"  # Unregister trust for the worktree path
 ```
 
-mkdir ベースのファイルロック（`acquire_claude_json_lock` / `release_claude_json_lock`）で並行書き込みを防止する。テスト時は `CLAUDE_JSON` / `LOCK_DIR` 環境変数でパスをオーバーライドできる。
+Uses mkdir-based file locking (`acquire_claude_json_lock` / `release_claude_json_lock`) to prevent concurrent writes. In tests, override paths via the `CLAUDE_JSON` / `LOCK_DIR` environment variables.
 
-### 既知の罠
+### Known Pitfalls
 
-`((var++))` は `var=0` のとき exit 1 を返す（bash の算術式で 0 は falsy）。
-`set -e` 下では即死するため、代わりに `var=$((var + 1))` を使う:
+`((var++))` returns exit 1 when `var=0` (bash treats 0 as falsy in arithmetic expressions).
+Under `set -e` this causes immediate termination. Use `var=$((var + 1))` instead:
 
 ```bash
-# NG: FAILED=0 のとき set -e で死ぬ
+# BAD: terminates under set -e when FAILED=0
 ((FAILED++))
 
 # OK
 FAILED=$((FAILED + 1))
 ```
 
-### 環境変数
+### Environment Variables
 
-`CEKERNEL_` プレフィックスを使用する。
+Use the `CEKERNEL_` prefix.
 
-デフォルト値には `${VAR:-default}` パターンを使う:
+Use `${VAR:-default}` pattern for default values:
 
 ```bash
 MAX_WORKERS="${CEKERNEL_MAX_WORKERS:-3}"
 TIMEOUT="${CEKERNEL_WORKER_TIMEOUT:-3600}"
 ```
 
-`CLAUDE_PLUGIN_ROOT` はスキル経由の実行時のみ Claude Code が自動設定する。
-直接実行にも対応するため `SCRIPT_DIR` からのフォールバックを入れる:
+`CLAUDE_PLUGIN_ROOT` is set automatically by Claude Code only when executed via a skill. Add a `SCRIPT_DIR`-based fallback for direct execution:
 
 ```bash
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 ```
 
-### フラグパース
+### Flag Parsing
 
-`while-case` ループで処理する（`cleanup-worktree.sh --force` 参照）:
+Use a `while-case` loop (see `cleanup-worktree.sh --force`):
 
 ```bash
 FORCE=0
@@ -112,9 +111,9 @@ while [[ $# -gt 0 ]]; do
 done
 ```
 
-### Positional 引数のバリデーション
+### Positional Argument Validation
 
-`${1:?Usage: ...}` パターンを使う:
+Use the `${1:?Usage: ...}` pattern:
 
 ```bash
 ISSUE_NUMBER="${1:?Usage: spawn-worker.sh <issue-number> [base-branch]}"
@@ -125,7 +124,7 @@ BASE_BRANCH="${2:-main}"
 
 ### Frontmatter
 
-エージェント定義ファイルには以下の frontmatter を記述する:
+Agent definition files require the following frontmatter:
 
 ```yaml
 name: <agent-name>
@@ -133,58 +132,58 @@ description: <description>
 tools: Read, Edit, Write, Bash
 ```
 
-### 権限の分離
+### Separation of Authority
 
-cekernel はライフサイクルのみを定義する（spawn → PR → merge → notify）。
-実装の規約は対象リポジトリの CLAUDE.md に従う。
+cekernel defines only the lifecycle (spawn → PR → merge → notify).
+Implementation conventions follow the target repository's CLAUDE.md.
 
-Worker の起動プロンプトにも「対象リポジトリの CLAUDE.md を読み、その規約に完全に従う」旨を含める。
+The Worker launch prompt includes instructions to "read the target repository's CLAUDE.md and fully follow its conventions."
 
-ツールの利用可能性は agent frontmatter の `tools` で定義する。ツールの自動承認（パーミッション確認のスキップ）は対象リポジトリの `.claude/settings.json` に完全に委譲する。cekernel 側では `--allowedTools` や `permissionMode` を指定しない。Claude Code は worktree 内の `.claude/settings.json` を自動的に読み込むため、リポジトリごとに適切な権限設定が可能になる。スキルファイルでは `allowed-tools` を使用する（エージェントとスキルでキー名が異なる点に注意）。
+Tool availability is defined by the agent frontmatter's `tools` key. Tool auto-approval (skipping permission prompts) is fully delegated to the target repository's `.claude/settings.json`. cekernel does not specify `--allowedTools` or `permissionMode`. Claude Code automatically reads `.claude/settings.json` within the worktree, enabling per-repository permission configuration. Skill files use `allowed-tools` (note the different key name between agents and skills).
 
 ### Worker Protocol
 
-`worker.md` は以下のフェーズを定義する:
+`worker.md` defines the following phases:
 
-1. **Phase 0** — 対象リポジトリの CLAUDE.md を読む → Execution Plan を issue にコメント投稿
-2. **Phase 1** — 実装（コード変更を伴う場合は TDD: RED → GREEN → REFACTOR）
-3. **Phase 2** — PR 作成
-4. **Phase 3** — CI 確認・merge
-5. **Phase 4** — Result を issue にコメント投稿 → `notify-complete.sh` で完了通知
+1. **Phase 0** — Read the target repository's CLAUDE.md → Post Execution Plan as a comment on the issue
+2. **Phase 1** — Implementation (TDD for code changes: RED → GREEN → REFACTOR)
+3. **Phase 2** — Create PR
+4. **Phase 3** — CI verification + merge
+5. **Phase 4** — Post Result as a comment on the issue → Completion notification via `notify-complete.sh`
 
-TDD はコード変更を伴う issue では常に実施する。ドキュメントのみの変更等は Worker が判断して省略してよい。
+TDD is always performed for issues involving code changes. Workers may skip TDD at their discretion for documentation-only changes and similar cases.
 
-TDD 実施時は commit message に phase suffix を付ける: `(RED)`, `(GREEN)`, `(REFACTOR)`。
+When TDD is applied, commit messages include a phase suffix: `(RED)`, `(GREEN)`, `(REFACTOR)`.
 
 ## Testing
 
-### テスト対象
+### What to Test
 
-**実行可能なスクリプトの振る舞い**のみをテストする。
+Test only the **behavior of executable scripts**.
 
-- OK: `session-id.sh` が `SESSION_ID` を生成・エクスポートする
-- OK: `spawn-worker.sh` が同時実行数を超えたとき exit 2 を返す
-- NG: `*.md` の内容を grep して特定の文字列が含まれるか確認するだけのテスト
+- OK: `session-id.sh` generates and exports `SESSION_ID`
+- OK: `spawn-worker.sh` returns exit 2 when the concurrency limit is exceeded
+- NG: Grep-testing `*.md` content to verify specific strings are present
 
-### テストファイル命名
+### Test File Naming
 
 ```
 tests/
-├── run-tests.sh             # テストランナー
-├── helpers.sh               # アサーション関数
+├── run-tests.sh             # Test runner
+├── helpers.sh               # Assertion functions
 ├── orchestrator/
 │   ├── test-concurrency-guard.sh
-│   └── test-{feature}.sh   # Orchestrator スクリプトのテスト
+│   └── test-{feature}.sh   # Orchestrator script tests
 ├── worker/
-│   └── test-{feature}.sh   # Worker スクリプトのテスト
+│   └── test-{feature}.sh   # Worker script tests
 └── shared/
-    ├── test-session-id.sh   # session-id.sh のテスト
-    └── test-{feature}.sh   # 共有ヘルパーのテスト
+    ├── test-session-id.sh   # session-id.sh tests
+    └── test-{feature}.sh   # Shared helper tests
 ```
 
-### アサーション関数
+### Assertion Functions
 
-`helpers.sh` が提供する関数を使用する:
+Use the functions provided by `helpers.sh`:
 
 ```bash
 assert_eq <label> <expected> <actual>
@@ -196,11 +195,11 @@ assert_not_exists <label> <path>
 report_results  # "Results: N passed, M failed"
 ```
 
-### テスト分離
+### Test Isolation
 
-副作用のあるコマンド（WezTerm, `gh`, `git worktree`）はテストから分離するか、モック可能な構造にする。
+Isolate commands with side effects (WezTerm, `gh`, `git worktree`) from tests, or structure them to be mockable.
 
-テストでは専用の `CEKERNEL_SESSION_ID` を使い、前後でクリーンアップする:
+Use a dedicated `CEKERNEL_SESSION_ID` in tests, and clean up before and after:
 
 ```bash
 export CEKERNEL_SESSION_ID="test-feature-00000001"
@@ -213,46 +212,46 @@ rm -rf "$CEKERNEL_IPC_DIR"
 
 ## CI
 
-GitHub Actions が `cekernel/**` パス変更時に `run-tests.sh` を実行する。テストが通らない PR は merge しない。
+GitHub Actions runs `run-tests.sh` when changes are detected in the `cekernel/**` path. PRs that fail tests are not merged.
 
 ## Versioning
 
-`/plugin update` は `plugin.json` の version 文字列で差分を判断する。
-バージョン管理は `/release-cekernel` スキルと GitHub Actions で自動化されている。
+`/plugin update` uses the version string in `plugin.json` to determine differences.
+Version management is automated via the `/release-cekernel` skill and GitHub Actions.
 
-### セマンティックバージョニングルール
+### Semantic Versioning Rules
 
-| Bump | 条件 | 例 |
-|------|------|----|
-| **patch** | バグ修正、ドキュメント更新、テスト追加 | `fix:`, `docs:`, `test:`, `refactor:` |
-| **minor** | 新スクリプト/スキル追加、後方互換な機能拡張 | `feat:` |
-| **major** | 破壊的変更: 引数変更、環境変数廃止、スクリプト削除 | 既存の呼び出し元が壊れる変更 |
+| Bump | Condition | Example |
+|------|-----------|---------|
+| **patch** | Bug fixes, documentation updates, test additions | `fix:`, `docs:`, `test:`, `refactor:` |
+| **minor** | New scripts/skills, backward-compatible feature additions | `feat:` |
+| **major** | Breaking changes: argument changes, deprecated env vars, removed scripts | Changes that break existing callers |
 
-### リリース手順
+### Release Procedure
 
 ```bash
 /release-cekernel
 ```
 
-スキルが git log を分析し bump レベルを推奨する。確認後 `gh workflow run` で CI をトリガーし、CI が version bump + commit + tag + push を実行する。
+The skill analyzes git log and recommends a bump level. After confirmation, it triggers CI via `gh workflow run`, and CI performs the version bump + commit + tag + push.
 
-### バージョン管理対象
+### Versioned Artifacts
 
-- `cekernel/.claude-plugin/plugin.json` — プラグインマニフェスト
+- `cekernel/.claude-plugin/plugin.json` — Plugin manifest
 
-### タグ形式
+### Tag Format
 
-`cekernel-v{major}.{minor}.{patch}`（将来の複数プラグイン対応のためプレフィックス付き）
+`cekernel-v{major}.{minor}.{patch}` (prefixed for future multi-plugin support)
 
 ## Conventions
 
-ルートの [CLAUDE.md](../CLAUDE.md) を継承する:
+Inherits from the root [CLAUDE.md](../CLAUDE.md):
 
-- ブランチ名: `issue/{number}-{short-description}`
-- commit message の title は英語、body は日本語 OK
-- PR の body に `closes #{issue-number}` を含める
+- Branch names: `issue/{number}-{short-description}`
+- Commit message titles in English, body may be in Japanese
+- PR body must include `closes #{issue-number}`
 
 ## Self-hosting
 
-cekernel 自身の issue も `/cekernel:orchestrate` で解決していく。
-この CLAUDE.md は Worker が cekernel を開発する際のガイドでもある。
+cekernel's own issues are also resolved using `/cekernel:orchestrate`.
+This CLAUDE.md also serves as a guide for Workers developing cekernel itself.

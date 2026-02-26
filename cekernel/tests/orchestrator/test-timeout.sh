@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-timeout.sh — watch-workers タイムアウト機構テスト
+# test-timeout.sh — watch-workers timeout mechanism tests
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -23,15 +23,15 @@ trap cleanup EXIT
 mkdir -p "$CEKERNEL_IPC_DIR"
 mkfifo "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
 
-# ── Test 1: タイムアウトで適切な JSON が返る ──
+# ── Test 1: Timeout returns appropriate JSON ──
 RESULT_FILE=$(mktemp)
 
-# 2秒タイムアウトで watch-workers を起動（Writer は書き込まない）
+# Launch watch-workers with 2s timeout (Writer does not write)
 CEKERNEL_WORKER_TIMEOUT=2 \
   bash "${CEKERNEL_DIR}/scripts/orchestrator/watch-workers.sh" "$ISSUE" > "$RESULT_FILE" 2>/dev/null &
 WATCH_PID=$!
 
-# 完了をポーリング（最大 10 秒）
+# Poll for completion (up to 10 seconds)
 WATCH_DONE=0
 for _ in $(seq 1 100); do
   if ! kill -0 "$WATCH_PID" 2>/dev/null; then
@@ -52,8 +52,8 @@ assert_match "Timeout status in result" '"status":"timeout"' "$RESULT"
 assert_match "Issue number in result" '"issue":99' "$RESULT"
 assert_match "Timeout detail in result" 'No response within' "$RESULT"
 
-# ── Test 2: 正常完了はタイムアウト前に返る ──
-# FIFO を再作成（Test 1 の watch_one で削除済み）
+# ── Test 2: Normal completion returns before timeout ──
+# Recreate FIFO (deleted by watch_one in Test 1)
 mkfifo "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
 
 RESULT_FILE=$(mktemp)
@@ -62,14 +62,14 @@ CEKERNEL_WORKER_TIMEOUT=10 \
   bash "${CEKERNEL_DIR}/scripts/orchestrator/watch-workers.sh" "$ISSUE" > "$RESULT_FILE" 2>/dev/null &
 WATCH_PID=$!
 
-# watch-workers が FIFO を開くのを待つ
+# Wait for watch-workers to open FIFO
 sleep 0.5
 
-# 即座に書き込み
+# Write immediately
 echo '{"issue":99,"status":"merged","detail":"PR-99"}' > "${CEKERNEL_IPC_DIR}/worker-${ISSUE}" &
 WRITER_PID=$!
 
-# 完了をポーリング（3秒以内に完了するはず）
+# Poll for completion (should complete within 3 seconds)
 WATCH_DONE=0
 for _ in $(seq 1 30); do
   if ! kill -0 "$WATCH_PID" 2>/dev/null; then

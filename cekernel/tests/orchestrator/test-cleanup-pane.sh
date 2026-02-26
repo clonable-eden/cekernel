@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# test-cleanup-pane.sh — cleanup-worktree.sh が WezTerm pane を閉じることをテスト
+# test-cleanup-pane.sh — Tests that cleanup-worktree.sh closes WezTerm panes
 #
-# cleanup-worktree.sh は --force なしでも WezTerm pane を kill すべき。
-# WezTerm コマンドはモックし、kill-pane の呼び出しを記録する。
+# cleanup-worktree.sh should kill WezTerm panes even without --force.
+# WezTerm commands are mocked and kill-pane calls are recorded.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -12,12 +12,12 @@ CEKERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 echo "test: cleanup-pane"
 
-# ── テスト用セッション ──
+# ── Test session ──
 export CEKERNEL_SESSION_ID="test-cleanup-pane-00000001"
 source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
 source "${CEKERNEL_DIR}/scripts/shared/claude-json-helper.sh"
 
-# ── テスト用の一時 Git リポジトリを作成 ──
+# ── Create temporary Git repository for testing ──
 TEST_TMP=$(mktemp -d)
 trap 'rm -rf "$TEST_TMP" "$CEKERNEL_IPC_DIR" 2>/dev/null || true' EXIT
 
@@ -26,12 +26,12 @@ mkdir -p "$FAKE_REPO"
 git -C "$FAKE_REPO" init --quiet
 git -C "$FAKE_REPO" -c user.name="test" -c user.email="test@test" commit --allow-empty -m "initial" --quiet
 
-# テスト用の ~/.claude.json
+# Temporary ~/.claude.json for testing
 FAKE_CLAUDE_JSON="${TEST_TMP}/claude.json"
 export CLAUDE_JSON="$FAKE_CLAUDE_JSON"
 export LOCK_DIR="${FAKE_CLAUDE_JSON}.lock"
 
-# ── wezterm モック: kill-pane の呼び出しを記録 ──
+# ── wezterm mock: record kill-pane calls ──
 WEZTERM_LOG="${TEST_TMP}/wezterm-calls.log"
 
 setup_wezterm_mock() {
@@ -57,7 +57,7 @@ setup_worktree() {
   echo "$worktree"
 }
 
-# ── Test 1: --force なしで cleanup → pane が kill される ──
+# ── Test 1: cleanup without --force → pane is killed ──
 > "$WEZTERM_LOG"
 setup_wezterm_mock "$WEZTERM_LOG"
 
@@ -71,7 +71,7 @@ echo "42" > "${CEKERNEL_IPC_DIR}/pane-${ISSUE}"
 cd "$FAKE_REPO"
 bash "${CEKERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
 
-# pane が kill されたことを確認
+# Verify pane was killed
 if grep -q "kill-pane.*42" "$WEZTERM_LOG" 2>/dev/null; then
   echo "  PASS: Pane killed without --force"
   TESTS_PASSED=$((TESTS_PASSED + 1))
@@ -83,7 +83,7 @@ fi
 
 assert_not_exists "Pane file removed after cleanup" "${CEKERNEL_IPC_DIR}/pane-${ISSUE}"
 
-# ── Test 2: --force ありで cleanup → pane が kill される ──
+# ── Test 2: cleanup with --force → pane is killed ──
 rm -rf "$CEKERNEL_IPC_DIR"
 > "$WEZTERM_LOG"
 
@@ -107,7 +107,7 @@ fi
 
 assert_not_exists "Pane file removed after --force cleanup" "${CEKERNEL_IPC_DIR}/pane-${ISSUE}"
 
-# ── Test 3: pane ファイルが存在しない場合 → エラーなしでスキップ ──
+# ── Test 3: No pane file → skips without error ──
 rm -rf "$CEKERNEL_IPC_DIR"
 > "$WEZTERM_LOG"
 
@@ -116,14 +116,14 @@ WORKTREE=$(setup_worktree "$ISSUE" "$FAKE_REPO")
 
 mkdir -p "$CEKERNEL_IPC_DIR"
 mkfifo "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
-# pane ファイルは作成しない
+# Do not create pane file
 
 bash "${CEKERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
 RESULT=$?
 
 assert_eq "Cleanup succeeds without pane file" "0" "$RESULT"
 
-# wezterm kill-pane は呼ばれないはず
+# wezterm kill-pane should not be called
 if grep -q "kill-pane" "$WEZTERM_LOG" 2>/dev/null; then
   echo "  FAIL: kill-pane called despite no pane file"
   TESTS_FAILED=$((TESTS_FAILED + 1))
@@ -132,7 +132,7 @@ else
   TESTS_PASSED=$((TESTS_PASSED + 1))
 fi
 
-# ── wezterm モック (enhanced): cli list --format json にも応答 ──
+# ── Enhanced wezterm mock: also responds to cli list --format json ──
 setup_wezterm_mock_with_list() {
   local log_file="$1"
   local json_file="$2"
@@ -149,11 +149,11 @@ MOCK_SCRIPT
   export PATH="${mock_bin}:${PATH}"
 }
 
-# ── Test 4: 同一ウィンドウの全ペインが kill される ──
+# ── Test 4: All panes in same window are killed ──
 rm -rf "$CEKERNEL_IPC_DIR"
 > "$WEZTERM_LOG"
 
-# wezterm cli list --format json のモックデータ
+# Mock data for wezterm cli list --format json
 PANE_LIST_JSON="${TEST_TMP}/pane-list.json"
 cat > "$PANE_LIST_JSON" <<'JSONEOF'
 [
@@ -176,7 +176,7 @@ echo "42" > "${CEKERNEL_IPC_DIR}/pane-${ISSUE}"
 cd "$FAKE_REPO"
 bash "${CEKERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
 
-# 同一ウィンドウの全ペイン (42, 43, 44) が kill されること
+# All panes in same window (42, 43, 44) should be killed
 if grep -q "kill-pane.*--pane-id 42" "$WEZTERM_LOG" 2>/dev/null; then
   echo "  PASS: Main pane 42 killed"
   TESTS_PASSED=$((TESTS_PASSED + 1))
@@ -204,7 +204,7 @@ else
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-# 別ウィンドウのペイン (100) は kill されないこと
+# Pane 100 from different window should NOT be killed
 if grep -q "kill-pane.*--pane-id 100" "$WEZTERM_LOG" 2>/dev/null; then
   echo "  FAIL: Pane 100 from different window was killed"
   TESTS_FAILED=$((TESTS_FAILED + 1))
@@ -213,11 +213,11 @@ else
   TESTS_PASSED=$((TESTS_PASSED + 1))
 fi
 
-# ── Test 5: cli list が失敗 → メインペインのみ kill (フォールバック) ──
+# ── Test 5: cli list fails → only main pane killed (fallback) ──
 rm -rf "$CEKERNEL_IPC_DIR"
 > "$WEZTERM_LOG"
 
-# cli list が空 JSON を返すモック
+# Mock that returns empty JSON for cli list
 EMPTY_JSON="${TEST_TMP}/empty-list.json"
 echo "[]" > "$EMPTY_JSON"
 setup_wezterm_mock_with_list "$WEZTERM_LOG" "$EMPTY_JSON"
@@ -232,7 +232,7 @@ echo "55" > "${CEKERNEL_IPC_DIR}/pane-${ISSUE}"
 cd "$FAKE_REPO"
 bash "${CEKERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
 
-# メインペインは kill される
+# Main pane should be killed
 if grep -q "kill-pane.*--pane-id 55" "$WEZTERM_LOG" 2>/dev/null; then
   echo "  PASS: Main pane 55 killed as fallback"
   TESTS_PASSED=$((TESTS_PASSED + 1))
@@ -242,11 +242,11 @@ else
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-# kill-pane の呼び出し回数は 1 回のみ
+# Only 1 kill-pane call
 KILL_COUNT=$(grep -c "kill-pane" "$WEZTERM_LOG" 2>/dev/null || echo "0")
 assert_eq "Fallback: only 1 kill-pane call" "1" "$KILL_COUNT"
 
-# ── クリーンアップ ──
+# ── Cleanup ──
 rm -rf "$CEKERNEL_IPC_DIR"
 
 report_results
