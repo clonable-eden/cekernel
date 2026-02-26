@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -27,7 +27,10 @@ Introduce a **state file per Worker** in the IPC directory. Workers update their
 
 ```
 SPAWNING → PLANNING → RUNNING → PR_CREATED → CI_WAITING → MERGING → COMPLETED
-                                                                   → FAILED
+                                                  ↑  ↓         ↑
+                                                  CI_FIXING ───┘
+                                                     ↓
+                                                   FAILED (after 3 retries)
                                                           → CANCELLED (via signal, ADR-0003)
 ```
 
@@ -40,10 +43,13 @@ States map to the Worker protocol phases defined in `worker.md`:
 | `RUNNING` | Worker | Phase 1 | Implementing (TDD cycles) |
 | `PR_CREATED` | Worker | Phase 2 | PR pushed and created |
 | `CI_WAITING` | Worker | Phase 3 | Waiting on CI checks |
+| `CI_FIXING` | Worker | Phase 3 | CI failed, fixing and re-pushing (up to 3 retries) |
 | `MERGING` | Worker | Phase 3 | CI passed, merge in progress |
 | `COMPLETED` | Worker | Phase 4 | Merged and notified |
-| `FAILED` | Worker | any | Unrecoverable error |
+| `FAILED` | Worker | any | Unrecoverable error (including 3 CI failures) |
 | `CANCELLED` | Worker | any | Received TERM signal (ADR-0003) |
+
+The `CI_WAITING → CI_FIXING → CI_WAITING` cycle corresponds to the Worker protocol's On Error section, which allows up to 3 CI retry attempts before reporting failure.
 
 ### State file format
 
@@ -71,14 +77,16 @@ No JSON, no structured format. A state is a single token. This is deliberate:
 The Worker writes its state file at each phase boundary. In `worker.md`, this translates to:
 
 ```
-On startup:     echo PLANNING > $STATE_FILE
-Before Phase 1: echo RUNNING > $STATE_FILE
-Before Phase 2: echo PR_CREATED > $STATE_FILE
-Before Phase 3: echo CI_WAITING > $STATE_FILE
-Before merge:   echo MERGING > $STATE_FILE
-Phase 4:        echo COMPLETED > $STATE_FILE
-On error:       echo FAILED > $STATE_FILE
-On signal:      echo CANCELLED > $STATE_FILE
+On startup:       echo PLANNING > $STATE_FILE
+Before Phase 1:   echo RUNNING > $STATE_FILE
+Before Phase 2:   echo PR_CREATED > $STATE_FILE
+Before Phase 3:   echo CI_WAITING > $STATE_FILE
+On CI failure:    echo CI_FIXING > $STATE_FILE
+After fix + push: echo CI_WAITING > $STATE_FILE   (cycle up to 3 times)
+Before merge:     echo MERGING > $STATE_FILE
+Phase 4:          echo COMPLETED > $STATE_FILE
+On error:         echo FAILED > $STATE_FILE
+On signal:        echo CANCELLED > $STATE_FILE
 ```
 
 `spawn-worker.sh` writes the initial `SPAWNING` state before launching the Worker agent.
@@ -93,9 +101,10 @@ On signal:      echo CANCELLED > $STATE_FILE
 
 `health-check.sh` can use state for more precise zombie detection:
 
-- State is `RUNNING` but pane is dead → zombie (certain)
+- State is `RUNNING` or `CI_FIXING` but pane is dead → zombie (certain)
 - State is `CI_WAITING` and pane is dead → possibly expected (CI can outlive the pane in headless mode per ADR-0001)
 - State is `SPAWNING` for > 5 minutes → likely stuck
+- State is `CI_FIXING` for > 30 minutes → possibly stuck in fix loop
 
 ### UNIX Philosophy Alignment
 
@@ -187,6 +196,30 @@ Individual state files are the simplest implementation that works. One file per 
 
 ### Trade-offs
 
-**Precision vs. Simplicity**: The state model has 9 states. A simpler model (e.g., 3 states: ACTIVE, WAITING, DONE) would be easier to manage but less useful for diagnostics. The 9-state model maps 1:1 to Worker protocol phases, which means no interpretation is needed — the state name tells you exactly which phase the Worker is in. The marginal cost of more states is near zero (it's still one word in a file), while the diagnostic value is significant.
+**Precision vs. Simplicity**: The state model has 10 states. A simpler model (e.g., 3 states: ACTIVE, WAITING, DONE) would be easier to manage but less useful for diagnostics. The 10-state model maps 1:1 to Worker protocol phases (including the CI retry loop), which means no interpretation is needed — the state name tells you exactly which phase the Worker is in. The marginal cost of more states is near zero (it's still one word in a file), while the diagnostic value is significant.
 
 **Cooperative vs. Authoritative**: Workers self-report their state. A crashing Worker may leave a stale `RUNNING` state file. This is mitigated by `health-check.sh`, which cross-references state with pane liveness: if state says `RUNNING` but the pane is dead, the Worker is a zombie regardless of what the state file claims. The state file is advisory, not authoritative — it improves observability but is not the sole source of truth.
+
+## Review Notes
+
+The following modifications were made during review:
+
+### Added `CI_FIXING` state
+
+The original proposal only modeled the happy path (`CI_WAITING → MERGING`). The Worker protocol (`worker.md` On Error section) defines a CI retry loop with up to 3 attempts. The `CI_FIXING` state was added to make this loop visible in the state model:
+
+```
+CI_WAITING → CI fails → CI_FIXING (fix, test, commit, push) → CI_WAITING (retry)
+                              ↓ after 3 failures
+                            FAILED
+```
+
+This also improves `health-check.sh` diagnostics: `CI_FIXING` for >30 minutes indicates a Worker potentially stuck in a fix loop.
+
+### Consistency with ADR-0002 (file-based approach)
+
+Alternative 3 (SQLite) was correctly deferred per Rule of Optimization. ADR-0002 was accepted as Phase 1 (file-based) only, which aligns with this ADR's choice of individual state files over a database. Both ADRs follow the same principle: start with files, migrate to SQLite only when demonstrated need arises.
+
+### Related: CI retry count (#82)
+
+During review, the hardcoded 3-retry limit in the Worker protocol was identified as a potential improvement area. Filed as #82 (separate from this ADR, as retry policy is a Worker protocol concern, not a state machine concern).
