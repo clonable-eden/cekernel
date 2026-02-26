@@ -65,7 +65,7 @@ kernel/
     shared/
       session-id.sh          # セッション ID 生成 + IPC ディレクトリ導出
       claude-json-helper.sh  # ~/.claude.json trust エントリの読み書きヘルパー
-      resolve-workspace.sh   # WezTerm workspace 解決ヘルパー
+      terminal-adapter.sh    # ターミナルマルチプレクサ抽象化レイヤー
   tests/
     run-tests.sh             # テストランナー
     helpers.sh               # アサーションヘルパー
@@ -73,6 +73,16 @@ kernel/
     worker/test-*.sh         # Worker スクリプトのテスト
     shared/test-*.sh         # 共有ヘルパーのテスト
 ```
+
+## Dependencies
+
+| ツール | 用途 | 必須 |
+|--------|------|------|
+| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | Worker エージェントの実行基盤 | Yes |
+| [jq](https://jqlang.github.io/jq/) | `~/.claude.json` の trust エントリ操作、JSON パース | Yes |
+| [gh](https://cli.github.com/) | issue 取得、PR 作成・merge | Yes |
+| [WezTerm](https://wezfurlong.org/wezterm/) | Worker ウィンドウの起動・管理 | Yes |
+| git | worktree 作成・管理 | Yes |
 
 ## Install
 

@@ -19,26 +19,23 @@ DETAIL="${3:-}"
 
 FIFO="${SESSION_IPC_DIR}/worker-${ISSUE_NUMBER}"
 
-# レガシーフォールバック: セッション FIFO が見つからなければ旧パスを試行
 if [[ ! -p "$FIFO" ]]; then
-  LEGACY_FIFO="/tmp/glimmer-ipc/worker-${ISSUE_NUMBER}"
-  if [[ -p "$LEGACY_FIFO" ]]; then
-    echo "Warning: using legacy FIFO path (no session)" >&2
-    FIFO="$LEGACY_FIFO"
-  else
-    echo "Error: FIFO not found at $FIFO" >&2
-    echo "Orchestrator may not be listening." >&2
-    exit 1
-  fi
+  echo "Error: FIFO not found at $FIFO" >&2
+  echo "Orchestrator may not be listening." >&2
+  exit 1
 fi
 
 # JSON メッセージを FIFO に書き込み
 # この書き込みが orchestrator のブロッキング読み取りを解放する
 TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-cat > "$FIFO" <<EOF
-{"issue":${ISSUE_NUMBER},"status":"${STATUS}","detail":"${DETAIL}","timestamp":"${TIMESTAMP}"}
-EOF
+JSON=$(jq -cn \
+  --argjson issue "$ISSUE_NUMBER" \
+  --arg status "$STATUS" \
+  --arg detail "$DETAIL" \
+  --arg timestamp "$TIMESTAMP" \
+  '{issue: $issue, status: $status, detail: $detail, timestamp: $timestamp}')
+echo "$JSON" > "$FIFO"
 
 # ── ライフサイクルイベントをログに記録 ──
 LOG_FILE="${SESSION_IPC_DIR}/logs/worker-${ISSUE_NUMBER}.log"

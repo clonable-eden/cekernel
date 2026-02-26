@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# spawn-worker.sh — Worktree 作成 + WezTerm ウィンドウで Worker 起動
+# spawn-worker.sh — Worktree 作成 + ターミナルウィンドウで Worker 起動
 #
 # Usage: spawn-worker.sh <issue-number> [base-branch]
 # Output: FIFO path (stdout last line)
@@ -13,7 +13,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 source "${SCRIPT_DIR}/../shared/session-id.sh"
 source "${SCRIPT_DIR}/../shared/claude-json-helper.sh"
-source "${SCRIPT_DIR}/../shared/resolve-workspace.sh"
+source "${SCRIPT_DIR}/../shared/terminal-adapter.sh"
 
 ISSUE_NUMBER="${1:?Usage: spawn-worker.sh <issue-number> [base-branch]}"
 BASE_BRANCH="${2:-main}"
@@ -52,9 +52,9 @@ WORKTREE="${WORKTREE_DIR}/${BRANCH}"
 # ── Rollback: 途中失敗時のリソースクリーンアップ ──
 rollback() {
   echo "Error: spawn-worker.sh failed. Rolling back..." >&2
-  # WezTerm pane を kill
+  # ターミナル pane を kill
   if [[ -n "${MAIN_PANE:-}" ]]; then
-    wezterm cli kill-pane --pane-id "$MAIN_PANE" 2>/dev/null || true
+    terminal_kill_pane "$MAIN_PANE"
   fi
   rm -f "${SESSION_IPC_DIR}/pane-${ISSUE_NUMBER}"
   # Trust 登録解除
@@ -122,7 +122,7 @@ register_trust "$WORKTREE"
 echo "worktree: $WORKTREE" >&2
 echo "branch:   $BRANCH" >&2
 
-# ── WezTerm ウィンドウ起動 (project_layout 相当) ──
+# ── ターミナルウィンドウ起動 (project_layout 相当) ──
 #
 #   ┌──────────────┬──────────┐
 #   │  Claude Code │ Terminal │
@@ -133,31 +133,20 @@ echo "branch:   $BRANCH" >&2
 
 # Worker に SESSION_ID を伝播
 # Orchestrator と同じ workspace に Worker を作成
-WORKSPACE=$(resolve_workspace)
-WORKSPACE_ARGS=()
-if [[ -n "$WORKSPACE" ]]; then
-  WORKSPACE_ARGS=(--workspace "$WORKSPACE")
-fi
-MAIN_PANE=$(wezterm cli spawn --new-window "${WORKSPACE_ARGS[@]}" --cwd "$WORKTREE")
+WORKSPACE=$(terminal_resolve_workspace)
+MAIN_PANE=$(terminal_spawn_window "$WORKTREE" "$WORKSPACE")
 
-# Pane ID を保存（health-check / cleanup --force で使用）
+# Pane ID を保存（health-check / cleanup で使用）
 echo "$MAIN_PANE" > "${SESSION_IPC_DIR}/pane-${ISSUE_NUMBER}"
-# WezTerm の --cwd が確実に反映されないケースに備え、明示的に cd する
-wezterm cli send-text --pane-id "$MAIN_PANE" -- "cd '${WORKTREE}' && export SESSION_ID='${SESSION_ID}'"
-wezterm cli send-text --pane-id "$MAIN_PANE" --no-paste $'\r'
+# --cwd が確実に反映されないケースに備え、明示的に cd する
+terminal_run_command "$MAIN_PANE" "cd '${WORKTREE}' && export SESSION_ID='${SESSION_ID}'"
 
 # 下部: auto-refresh git log
-wezterm cli split-pane \
-  --bottom --percent 25 \
-  --pane-id "$MAIN_PANE" \
-  --cwd "$WORKTREE" \
-  -- watch -n3 -t -c "git --no-pager log --oneline --graph --color=always"
+terminal_split_pane bottom 25 "$MAIN_PANE" "$WORKTREE" \
+  watch -n3 -t -c "git --no-pager log --oneline --graph --color=always"
 
 # 右側: 汎用ターミナル
-wezterm cli split-pane \
-  --right --percent 40 \
-  --pane-id "$MAIN_PANE" \
-  --cwd "$WORKTREE"
+terminal_split_pane right 40 "$MAIN_PANE" "$WORKTREE"
 
 # メイン pane で Claude Code 起動
 # Worker への初期プロンプト:
@@ -165,8 +154,7 @@ wezterm cli split-pane \
 # 2. ライフサイクル（PR → CI → merge → notify）のみ kernel のプロトコルに従う
 # 3. 実装・規約は対象リポジトリに完全に従う
 PROMPT="issue #${ISSUE_NUMBER} を解決してください。まず対象リポジトリの CLAUDE.md を読み、その規約に完全に従ってください。ライフサイクルのみ kernel の Worker Protocol に従います: 実装 → PR作成 → CI確認 → merge。完了したら ${CLAUDE_PLUGIN_ROOT}/scripts/worker/notify-complete.sh ${ISSUE_NUMBER} merged <pr-number> を実行してください。"
-wezterm cli send-text --pane-id "$MAIN_PANE" -- "claude --agent kernel:worker '${PROMPT}'"
-wezterm cli send-text --pane-id "$MAIN_PANE" --no-paste $'\r'
+terminal_run_command "$MAIN_PANE" "claude --agent kernel:worker '${PROMPT}'"
 
 # ── ライフサイクルイベントをログに記録 ──
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] SPAWN issue=#${ISSUE_NUMBER} branch=${BRANCH}" >> "$LOG_FILE"

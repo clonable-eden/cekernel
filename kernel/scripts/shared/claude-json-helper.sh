@@ -13,6 +13,11 @@
 #   CLAUDE_JSON — ~/.claude.json のパス（デフォルト: ${HOME}/.claude.json）
 #   LOCK_DIR    — ロックディレクトリ（デフォルト: ${CLAUDE_JSON}.lock）
 
+if ! command -v jq >/dev/null 2>&1; then
+  echo "Error: jq is required but not found. Install it: https://jqlang.github.io/jq/download/" >&2
+  return 1
+fi
+
 CLAUDE_JSON="${CLAUDE_JSON:-${HOME}/.claude.json}"
 LOCK_DIR="${LOCK_DIR:-${CLAUDE_JSON}.lock}"
 

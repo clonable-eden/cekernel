@@ -36,7 +36,7 @@ watch_one() {
   # FIFO を read-write で開いて open() のブロッキングを回避（SIGALRM 相当）
   local result
   exec 3<>"$fifo"
-  if read -t "$TIMEOUT" result <&3; then
+  if read -r -t "$TIMEOUT" result <&3; then
     exec 3>&-
     echo "$result" > "${RESULT_DIR}/${issue}"
     rm -f "$fifo"
