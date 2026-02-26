@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# helpers.sh — テスト用アサーションヘルパー
+# helpers.sh — Test assertion helpers
 #
 # Usage: source helpers.sh
 

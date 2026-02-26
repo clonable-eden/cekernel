@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-watch-workers.sh — セッションスコープ内の watch-workers テスト
+# test-watch-workers.sh — watch-workers test within session scope
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -22,30 +22,30 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# セットアップ: セッションディレクトリに FIFO を作成
+# Setup: Create FIFOs in session directory
 mkdir -p "$CEKERNEL_IPC_DIR"
 for issue in "${ISSUES[@]}"; do
   mkfifo "${CEKERNEL_IPC_DIR}/worker-${issue}"
 done
 
-# ── Test: watch-workers.sh がセッションスコープの FIFO を並列監視 ──
+# ── Test: watch-workers.sh monitors session-scoped FIFOs in parallel ──
 RESULT_FILE=$(mktemp)
 
-# バックグラウンドで watch-workers を起動
+# Launch watch-workers in background
 bash "${CEKERNEL_DIR}/scripts/orchestrator/watch-workers.sh" "${ISSUES[@]}" > "$RESULT_FILE" 2>/dev/null &
 WATCH_PID=$!
 
-# watch-workers が FIFO を開くのを待つ
+# Wait for watch-workers to open FIFOs
 sleep 0.5
 
-# 各 FIFO に書き込み
+# Write to each FIFO
 WRITER_PIDS=()
 for issue in "${ISSUES[@]}"; do
   bash -c "echo '{\"issue\":${issue},\"status\":\"merged\",\"detail\":\"PR-${issue}\"}' > '${CEKERNEL_IPC_DIR}/worker-${issue}'" &
   WRITER_PIDS+=($!)
 done
 
-# watch-workers の完了をポーリング（最大 5 秒）
+# Poll for watch-workers completion (up to 5 seconds)
 WATCH_DONE=0
 for _ in $(seq 1 50); do
   if ! kill -0 "$WATCH_PID" 2>/dev/null; then
@@ -55,11 +55,11 @@ for _ in $(seq 1 50); do
   sleep 0.1
 done
 
-# watch-workers 終了後、残存 writer を kill（RED フェーズでは reader がいないため block する）
+# Kill remaining writers after watch-workers finishes (they may block without a reader)
 for pid in "${WRITER_PIDS[@]}"; do
   kill "$pid" 2>/dev/null || true
 done
-# kill 後に FIFO を削除して open() をアンブロック
+# Delete FIFOs after kill to unblock open()
 for issue in "${ISSUES[@]}"; do
   rm -f "${CEKERNEL_IPC_DIR}/worker-${issue}"
 done
@@ -76,7 +76,7 @@ if [[ "$WATCH_DONE" -eq 0 ]]; then
   exit "$TESTS_FAILED"
 fi
 
-# 結果を検証
+# Verify results
 RESULT=$(cat "$RESULT_FILE")
 rm -f "$RESULT_FILE"
 

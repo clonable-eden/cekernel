@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# test-cleanup-session.sh — セッションディレクトリのクリーンアップテスト
+# test-cleanup-session.sh — Session directory cleanup tests
 #
-# cleanup-worktree.sh の IPC 部分のみテスト。
-# git worktree 操作は除外（テスト環境で worktree を安全に作れないため）。
+# Tests only the IPC portion of cleanup-worktree.sh.
+# git worktree operations are excluded (cannot safely create worktrees in test environment).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -20,25 +20,25 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# ── Test 1: FIFO 削除後、セッションディレクトリが空なら削除される ──
+# ── Test 1: Session directory removed when empty after FIFO deletion ──
 mkdir -p "$CEKERNEL_IPC_DIR"
 FIFO="${CEKERNEL_IPC_DIR}/worker-50"
 mkfifo "$FIFO"
 
 assert_fifo_exists "FIFO exists before cleanup" "$FIFO"
 
-# FIFO を手動削除してから rmdir でディレクトリを削除
+# Manually delete FIFO then rmdir to remove directory
 rm -f "$FIFO"
 rmdir "$CEKERNEL_IPC_DIR" 2>/dev/null || true
 
 assert_not_exists "Empty session dir removed" "$CEKERNEL_IPC_DIR"
 
-# ── Test 2: 他の FIFO が残っていればディレクトリは残る ──
+# ── Test 2: Directory remains when other FIFOs exist ──
 mkdir -p "$CEKERNEL_IPC_DIR"
 mkfifo "${CEKERNEL_IPC_DIR}/worker-51"
 mkfifo "${CEKERNEL_IPC_DIR}/worker-52"
 
-# worker-51 だけ削除
+# Delete only worker-51
 rm -f "${CEKERNEL_IPC_DIR}/worker-51"
 rmdir "$CEKERNEL_IPC_DIR" 2>/dev/null || true
 

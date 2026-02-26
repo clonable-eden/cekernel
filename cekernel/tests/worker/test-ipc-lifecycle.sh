@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-ipc-lifecycle.sh — セッションスコープ付き IPC ライフサイクルテスト
+# test-ipc-lifecycle.sh — Session-scoped IPC lifecycle test
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -9,11 +9,11 @@ CEKERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 echo "test: ipc-lifecycle (session-scoped)"
 
-# テスト用セッション
+# Test session
 export CEKERNEL_SESSION_ID="test-lifecycle-00000001"
 source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
 
-# セットアップ: セッションディレクトリと FIFO を作成
+# Setup: Create session directory and FIFO
 ISSUE_NUMBER=42
 mkdir -p "$CEKERNEL_IPC_DIR"
 FIFO="${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}"
@@ -21,19 +21,19 @@ mkfifo "$FIFO"
 
 assert_fifo_exists "FIFO created in session dir" "$FIFO"
 
-# ── Test: notify-complete.sh 経由で書き込み → 読み取り → JSON 検証 ──
-# バックグラウンドで読み取り
+# ── Test: Write via notify-complete.sh → read → validate JSON ──
+# Background reader
 RESULT_FILE=$(mktemp)
 (cat "$FIFO" > "$RESULT_FILE") &
 READER_PID=$!
 
-# notify-complete.sh で書き込み
+# Write via notify-complete.sh
 bash "${CEKERNEL_DIR}/scripts/worker/notify-complete.sh" "$ISSUE_NUMBER" merged 99
 
-# 読み取り完了を待機
+# Wait for read to complete
 wait "$READER_PID" || true
 
-# JSON の検証
+# Validate JSON
 RESULT=$(cat "$RESULT_FILE")
 rm -f "$RESULT_FILE"
 
@@ -42,7 +42,7 @@ assert_match "Result contains status" '"status":"merged"' "$RESULT"
 assert_match "Result contains detail" '"detail":"99"' "$RESULT"
 assert_match "Result contains timestamp" '"timestamp":"[0-9]{4}-[0-9]{2}-[0-9]{2}T' "$RESULT"
 
-# クリーンアップ
+# Cleanup
 rm -f "$FIFO"
 rmdir "$CEKERNEL_IPC_DIR" 2>/dev/null || true
 

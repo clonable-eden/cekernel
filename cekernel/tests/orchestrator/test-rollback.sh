@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# test-rollback.sh — spawn-worker.sh のロールバック関数テスト
+# test-rollback.sh — Tests for spawn-worker.sh rollback function
 #
-# spawn-worker.sh 全体は WezTerm 依存のため直接実行できない。
-# ここでは rollback() 関数のロジックを抽出してテストする。
+# spawn-worker.sh cannot be run directly due to WezTerm dependency.
+# Here we extract and test the rollback() function logic.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -12,12 +12,12 @@ CEKERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 echo "test: rollback"
 
-# テスト用セッション
+# Test session
 export CEKERNEL_SESSION_ID="test-rollback-00000001"
 source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
 source "${CEKERNEL_DIR}/scripts/shared/claude-json-helper.sh"
 
-# ── テスト用の一時 Git リポジトリを作成 ──
+# ── Create temporary Git repository for testing ──
 TEST_TMP=$(mktemp -d)
 trap 'rm -rf "$TEST_TMP"' EXIT
 
@@ -26,24 +26,24 @@ mkdir -p "$FAKE_REPO"
 git -C "$FAKE_REPO" init --quiet
 git -C "$FAKE_REPO" -c user.name="test" -c user.email="test@test" commit --allow-empty -m "initial" --quiet
 
-# テスト用の ~/.claude.json
+# Temporary ~/.claude.json for testing
 FAKE_CLAUDE_JSON="${TEST_TMP}/claude.json"
 export CLAUDE_JSON="$FAKE_CLAUDE_JSON"
 export LOCK_DIR="${FAKE_CLAUDE_JSON}.lock"
 
-# ── rollback 関数を spawn-worker.sh から抽出して再定義 ──
-# wezterm はモック化（CI で使えないため）
+# ── Extract and redefine rollback function from spawn-worker.sh ──
+# Mock wezterm (not available in CI)
 wezterm() { return 0; }
 export -f wezterm
 
-# rollback 関数を source する（spawn-worker.sh と同じロジック）
-# spawn-worker.sh に定義される rollback() を直接テストするため、
-# ここでは同じ変数名・ロジックでテストする。
+# Source the rollback function (same logic as spawn-worker.sh)
+# We test the rollback() defined in spawn-worker.sh directly,
+# using the same variable names and logic here.
 source_rollback() {
-  # spawn-worker.sh から rollback 関数だけを抽出
-  # これは spawn-worker.sh の rollback() と同一であることを前提とする
+  # Extract only the rollback function from spawn-worker.sh
+  # This assumes it matches the rollback() in spawn-worker.sh
   local script="${CEKERNEL_DIR}/scripts/orchestrator/spawn-worker.sh"
-  # rollback 関数を抽出して eval する
+  # Extract and eval the rollback function
   local func_body
   func_body=$(sed -n '/^rollback()/,/^}/p' "$script")
   if [[ -z "$func_body" ]]; then
@@ -53,19 +53,19 @@ source_rollback() {
   eval "$func_body"
 }
 
-# ── セットアップ: クリーンな状態を保証 ──
+# ── Setup: Ensure clean state ──
 rm -rf "$CEKERNEL_IPC_DIR"
 mkdir -p "$CEKERNEL_IPC_DIR"
 
-# ── Test 1: 全リソースが存在する状態でロールバック → すべてクリーンアップされる ──
+# ── Test 1: All resources exist → rollback cleans up everything ──
 (
   export CLAUDE_JSON="$FAKE_CLAUDE_JSON"
   export LOCK_DIR="${FAKE_CLAUDE_JSON}.lock"
 
-  # git コマンドが正しいリポジトリで動作するように cd
+  # cd so git commands operate on the correct repo
   cd "$FAKE_REPO"
 
-  # リソース作成
+  # Create resources
   ISSUE_NUMBER="100"
   WORKTREE_DIR="${FAKE_REPO}/.worktrees"
   BRANCH="issue/100-test-rollback"
@@ -84,20 +84,20 @@ mkdir -p "$CEKERNEL_IPC_DIR"
 
   echo "fake-pane-id" > "${CEKERNEL_IPC_DIR}/pane-${ISSUE_NUMBER}"
 
-  # trust 登録
+  # Register trust
   register_trust "$WORKTREE"
 
-  # ロールバック関数を取得・実行
+  # Get and execute rollback function
   source_rollback
   rollback 2>/dev/null
 
-  # 検証
+  # Verify
   assert_not_exists "FIFO removed after rollback" "$FIFO"
   assert_not_exists "Pane file removed after rollback" "${CEKERNEL_IPC_DIR}/pane-${ISSUE_NUMBER}"
   assert_not_exists "Worktree removed after rollback" "$WORKTREE"
   assert_not_exists "Log file removed after rollback" "$LOG_FILE"
 
-  # trust が解除されていることを確認
+  # Verify trust is unregistered
   if [[ -f "$CLAUDE_JSON" ]]; then
     TRUST=$(jq -r ".projects[\"${WORKTREE}\"] // \"null\"" "$CLAUDE_JSON")
     assert_eq "Trust unregistered after rollback" "null" "$TRUST"
@@ -106,7 +106,7 @@ mkdir -p "$CEKERNEL_IPC_DIR"
     TESTS_PASSED=$((TESTS_PASSED + 1))
   fi
 
-  # ブランチが削除されていることを確認
+  # Verify branch is deleted
   if git -C "$FAKE_REPO" rev-parse --verify "$BRANCH" >/dev/null 2>&1; then
     echo "  FAIL: Branch still exists after rollback"
     TESTS_FAILED=$((TESTS_FAILED + 1))
@@ -118,7 +118,7 @@ mkdir -p "$CEKERNEL_IPC_DIR"
   report_results
 )
 
-# ── Test 2: 部分的なリソース（FIFO のみ）でロールバック → エラーなし ──
+# ── Test 2: Partial resources (FIFO only) → rollback without error ──
 rm -rf "$CEKERNEL_IPC_DIR"
 mkdir -p "$CEKERNEL_IPC_DIR"
 rm -f "$FAKE_CLAUDE_JSON"
@@ -127,12 +127,12 @@ rm -f "$FAKE_CLAUDE_JSON"
   export CLAUDE_JSON="$FAKE_CLAUDE_JSON"
   export LOCK_DIR="${FAKE_CLAUDE_JSON}.lock"
 
-  # FIFO のみ作成（worktree、pane 未作成）
+  # Create only FIFO (worktree, pane not created)
   ISSUE_NUMBER="101"
   FIFO="${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}"
   mkfifo "$FIFO"
 
-  # WORKTREE, BRANCH, MAIN_PANE は未定義のまま
+  # WORKTREE, BRANCH, MAIN_PANE remain undefined
 
   source_rollback
   rollback 2>/dev/null
@@ -142,7 +142,7 @@ rm -f "$FAKE_CLAUDE_JSON"
   report_results
 )
 
-# ── Test 3: リソースが何もない状態でロールバック → エラーなし ──
+# ── Test 3: No resources exist → rollback without error ──
 rm -rf "$CEKERNEL_IPC_DIR"
 mkdir -p "$CEKERNEL_IPC_DIR"
 
@@ -151,7 +151,7 @@ mkdir -p "$CEKERNEL_IPC_DIR"
   export LOCK_DIR="${FAKE_CLAUDE_JSON}.lock"
 
   ISSUE_NUMBER="102"
-  # 何も作成しない
+  # Create nothing
 
   source_rollback
   rollback 2>/dev/null
@@ -162,5 +162,5 @@ mkdir -p "$CEKERNEL_IPC_DIR"
   report_results
 )
 
-# ── クリーンアップ ──
+# ── Cleanup ──
 rm -rf "$CEKERNEL_IPC_DIR"
