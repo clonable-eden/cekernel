@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -167,3 +167,35 @@ FIFOs are unidirectional by design. Using a single FIFO for bidirectional commun
 **Simplicity vs. Responsiveness**: File-based signals are checked at phase boundaries, not continuously. A Worker deep in implementation may take minutes to notice a `TERM`. More responsive options (reverse FIFO with polling, process signals) were rejected for their complexity. The trade-off is acceptable because cekernel's use cases (issue direction change, priority shift, end-of-day shutdown) are not time-critical — minutes of latency before graceful shutdown is far better than immediate kill with lost work.
 
 **Cooperative vs. Preemptive**: The mechanism depends on Worker cooperation. A misbehaving Worker can ignore signals indefinitely. This mirrors Unix's own model: `SIGTERM` is cooperative (process can catch and handle it), `SIGKILL` is preemptive (kernel forces termination). cekernel retains both options: `TERM` signal file for cooperative shutdown, pane kill for forced termination.
+
+## Review Notes
+
+### Improvement option: Background signal watcher for finer-grained detection
+
+During review, we investigated whether a Worker could detect signals faster than phase-boundary checking by using Claude Code's background task mechanism.
+
+**Approach**: On startup, the Worker spawns a background Bash task (`run_in_background: true`) that polls for the signal file:
+
+```bash
+# Background watcher (spawned by Worker at startup)
+while [[ ! -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.signal" ]]; do
+  sleep 5
+done
+cat "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.signal"
+```
+
+When the signal file appears, the background task completes. Claude Code injects the completion notification into the Worker's conversation at the next **turn boundary** — which occurs between every API round-trip (every few tool calls), far more frequently than phase boundaries.
+
+| Detection method | Granularity | Latency |
+|-----------------|-------------|---------|
+| Phase-boundary check (ADR base) | Between phases | Minutes |
+| Background watcher (this option) | Between turns | Seconds to tens of seconds |
+
+**Platform constraints identified**:
+
+- Claude Code is fundamentally a synchronous, turn-based agent. There is no mechanism for true mid-turn interruption ([anthropics/claude-code#3455](https://github.com/anthropics/claude-code/issues/3455)).
+- Background task completion notifications are queued until the next turn boundary — cooperative, not preemptive.
+- Known reliability issues with background task notifications ([#21048](https://github.com/anthropics/claude-code/issues/21048), [#20525](https://github.com/anthropics/claude-code/issues/20525)).
+- The Worker still needs to correctly interpret the notification and initiate graceful shutdown, which depends on prompt design in `worker.md`.
+
+**Recommendation**: This is a viable improvement over phase-boundary checking, but should not replace it. Phase-boundary checks remain the reliable baseline; background watching is an additive optimization. The signal file mechanism (delivery side) is unchanged — only the detection strategy differs.
