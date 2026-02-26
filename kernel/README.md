@@ -74,6 +74,15 @@ kernel/
     shared/test-*.sh         # 共有ヘルパーのテスト
 ```
 
+## Dependencies
+
+| ツール | 用途 | 必須 |
+|--------|------|------|
+| [jq](https://jqlang.github.io/jq/) | `~/.claude.json` の trust エントリ操作、JSON パース | Yes |
+| [gh](https://cli.github.com/) | issue 取得、PR 作成・merge | Yes |
+| [WezTerm](https://wezfurlong.org/wezterm/) | Worker ウィンドウの起動・管理 | Yes |
+| git | worktree 作成・管理 | Yes |
+
 ## Install
 
 Claude Code のプラグインマーケットプレイスから導入する:
