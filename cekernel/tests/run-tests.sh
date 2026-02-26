@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run-tests.sh — kernel/tests/{shared,orchestrator,worker}/test-*.sh を順次実行するテストランナー
+# run-tests.sh — cekernel/tests/{shared,orchestrator,worker}/test-*.sh を順次実行するテストランナー
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -7,7 +7,7 @@ TOTAL_PASS=0
 TOTAL_FAIL=0
 FAILED_FILES=()
 
-echo "=== kernel test runner ==="
+echo "=== cekernel test runner ==="
 echo ""
 
 for category in shared orchestrator worker; do

@@ -8,12 +8,12 @@
 
 ```bash
 /plugin marketplace add clonable-eden/glimmer
-/plugin install kernel@clonable-eden-glimmer
+/plugin install cekernel@clonable-eden-glimmer
 ```
 
 ## Plugins
 
-- **kernel** — 並列エージェント基盤。`/kernel:orchestrate` スキルと orchestrator/worker エージェントを提供。開発時は `kernel/CLAUDE.md` を読むこと。
+- **cekernel** — 並列エージェント基盤。`/cekernel:orchestrate` スキルと orchestrator/worker エージェントを提供。開発時は `cekernel/CLAUDE.md` を読むこと。
 
 ## Principles
 
