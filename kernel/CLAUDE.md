@@ -4,6 +4,13 @@ kernel は Claude Code の並列エージェント基盤。
 Unix の概念（プロセス、IPC、スケジューラ）を Claude ワークフローにマッピングしている。
 アーキテクチャの詳細は [README.md](./README.md) を参照。
 
+## Philosophy
+
+kernel の設計は UNIX 哲学と TDD に根ざしている。
+
+- [UNIX Philosophy](./docs/unix-philosophy.md) — Eric S. Raymond の 17 原則
+- [TDD](./docs/tdd.md) — Red-Green-Refactor サイクルとテストの原則
+
 ## Architecture
 
 ```
