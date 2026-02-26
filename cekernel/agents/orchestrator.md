@@ -143,17 +143,17 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/worker-status.sh
 ## Worker と対象リポジトリの関係
 
 Worker は対象リポジトリの CLAUDE.md とプロジェクト規約に完全に従う。
-kernel が Worker に対して定義するのはライフサイクル（PR → CI → merge → notify）だけであり、
+cekernel が Worker に対して定義するのはライフサイクル（PR → CI → merge → notify）だけであり、
 実装の中身やコーディング規約には関与しない。
 
-具体的に、以下は対象リポジトリの権限であり、Orchestrator も kernel も指定してはならない:
+具体的に、以下は対象リポジトリの権限であり、Orchestrator も cekernel も指定してはならない:
 
 - コーディング規約・テスト方針
 - commit message / PR テンプレートの形式
 - merge strategy（`--merge`, `--squash`, `--rebase`）
 - ブランチ命名規則
 
-spawn-worker.sh は `claude --agent kernel:worker` で Worker を起動する。
+spawn-worker.sh は `claude --agent cekernel:worker` で Worker を起動する。
 `--agent` フラグにより Worker エージェント定義の `tools` が適用され、
 パーミッションプロンプトなしで自律実行できる。
 

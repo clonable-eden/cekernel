@@ -1,22 +1,22 @@
 ---
-description: kernel プラグインのバージョンをリリースする
+description: cekernel プラグインのバージョンをリリースする
 allowed-tools: Read, Bash(git *), Bash(gh *)
 ---
 
-# /release-kernel
+# /release-cekernel
 
-kernel プラグインのリリーススキル。git log を分析して semver bump レベルを推奨し、ユーザー確認後に CI をトリガーする。
+cekernel プラグインのリリーススキル。git log を分析して semver bump レベルを推奨し、ユーザー確認後に CI をトリガーする。
 
 ## Workflow
 
 ### Step 1: 現在のバージョンを取得
 
-`kernel/.claude-plugin/plugin.json` から現在のバージョンを読み取る。
+`cekernel/.claude-plugin/plugin.json` から現在のバージョンを読み取る。
 
 ### Step 2: 最新リリースタグを特定
 
 ```bash
-git tag -l 'kernel-v*' --sort=-v:refname | head -1
+git tag -l 'cekernel-v*' --sort=-v:refname | head -1
 ```
 
 タグが存在しない場合は全履歴を対象とする。
@@ -25,10 +25,10 @@ git tag -l 'kernel-v*' --sort=-v:refname | head -1
 
 ```bash
 # タグが存在する場合
-git log <last-tag>..HEAD --oneline -- kernel/
+git log <last-tag>..HEAD --oneline -- cekernel/
 
 # タグが存在しない場合
-git log --oneline -- kernel/
+git log --oneline -- cekernel/
 ```
 
 ### Step 4: bump レベルを判定
@@ -58,7 +58,7 @@ conventional commits の prefix を参考にしつつ、コミット内容も考
 ### Step 6: CI をトリガー
 
 ```bash
-gh workflow run plugin-release.yml -f version=<new-version> -f plugin=kernel
+gh workflow run plugin-release.yml -f version=<new-version> -f plugin=cekernel
 ```
 
 ### Step 7: 結果を確認

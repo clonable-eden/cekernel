@@ -1,12 +1,12 @@
-# kernel Development Guide
+# cekernel Development Guide
 
-kernel は Claude Code の並列エージェント基盤。
+cekernel は Claude Code の並列エージェント基盤。
 Unix の概念（プロセス、IPC、スケジューラ）を Claude ワークフローにマッピングしている。
 アーキテクチャの詳細は [README.md](./README.md) を参照。
 
 ## Philosophy
 
-kernel の設計は UNIX 哲学と TDD に根ざしている。
+cekernel の設計は UNIX 哲学と TDD に根ざしている。
 
 - [UNIX Philosophy](./docs/unix-philosophy.md) — Eric S. Raymond の 17 原則
 - [TDD](./docs/tdd.md) — Red-Green-Refactor サイクルとテストの原則
@@ -14,13 +14,13 @@ kernel の設計は UNIX 哲学と TDD に根ざしている。
 ## Architecture
 
 ```
-kernel/
+cekernel/
 ├── agents/          # エージェント定義 (orchestrator, worker)
 ├── scripts/
 │   ├── orchestrator/  # Orchestrator 用スクリプト
 │   ├── worker/        # Worker 用スクリプト
 │   └── shared/        # 共有ヘルパー (session-id, claude-json-helper, etc.)
-├── skills/          # スキル定義 (/kernel:orchestrate)
+├── skills/          # スキル定義 (/cekernel:orchestrate)
 └── tests/
     ├── orchestrator/  # Orchestrator スクリプトのテスト
     ├── worker/        # Worker スクリプトのテスト
@@ -135,12 +135,12 @@ tools: Read, Edit, Write, Bash
 
 ### 権限の分離
 
-kernel はライフサイクルのみを定義する（spawn → PR → merge → notify）。
+cekernel はライフサイクルのみを定義する（spawn → PR → merge → notify）。
 実装の規約は対象リポジトリの CLAUDE.md に従う。
 
 Worker の起動プロンプトにも「対象リポジトリの CLAUDE.md を読み、その規約に完全に従う」旨を含める。
 
-ツールの利用可能性は agent frontmatter の `tools` で定義する。ツールの自動承認（パーミッション確認のスキップ）は対象リポジトリの `.claude/settings.json` に完全に委譲する。kernel 側では `--allowedTools` や `permissionMode` を指定しない。Claude Code は worktree 内の `.claude/settings.json` を自動的に読み込むため、リポジトリごとに適切な権限設定が可能になる。スキルファイルでは `allowed-tools` を使用する（エージェントとスキルでキー名が異なる点に注意）。
+ツールの利用可能性は agent frontmatter の `tools` で定義する。ツールの自動承認（パーミッション確認のスキップ）は対象リポジトリの `.claude/settings.json` に完全に委譲する。cekernel 側では `--allowedTools` や `permissionMode` を指定しない。Claude Code は worktree 内の `.claude/settings.json` を自動的に読み込むため、リポジトリごとに適切な権限設定が可能になる。スキルファイルでは `allowed-tools` を使用する（エージェントとスキルでキー名が異なる点に注意）。
 
 ### Worker Protocol
 
@@ -213,12 +213,12 @@ rm -rf "$CEKERNEL_IPC_DIR"
 
 ## CI
 
-GitHub Actions が `kernel/**` パス変更時に `run-tests.sh` を実行する。テストが通らない PR は merge しない。
+GitHub Actions が `cekernel/**` パス変更時に `run-tests.sh` を実行する。テストが通らない PR は merge しない。
 
 ## Versioning
 
 `/plugin update` は `plugin.json` の version 文字列で差分を判断する。
-バージョン管理は `/release-kernel` スキルと GitHub Actions で自動化されている。
+バージョン管理は `/release-cekernel` スキルと GitHub Actions で自動化されている。
 
 ### セマンティックバージョニングルール
 
@@ -231,18 +231,18 @@ GitHub Actions が `kernel/**` パス変更時に `run-tests.sh` を実行する
 ### リリース手順
 
 ```bash
-/release-kernel
+/release-cekernel
 ```
 
 スキルが git log を分析し bump レベルを推奨する。確認後 `gh workflow run` で CI をトリガーし、CI が version bump + commit + tag + push を実行する。
 
 ### バージョン管理対象
 
-- `kernel/.claude-plugin/plugin.json` — プラグインマニフェスト
+- `cekernel/.claude-plugin/plugin.json` — プラグインマニフェスト
 
 ### タグ形式
 
-`kernel-v{major}.{minor}.{patch}`（将来の複数プラグイン対応のためプレフィックス付き）
+`cekernel-v{major}.{minor}.{patch}`（将来の複数プラグイン対応のためプレフィックス付き）
 
 ## Conventions
 
@@ -254,5 +254,5 @@ GitHub Actions が `kernel/**` パス変更時に `run-tests.sh` を実行する
 
 ## Self-hosting
 
-kernel 自身の issue も `/kernel:orchestrate` で解決していく。
-この CLAUDE.md は Worker が kernel を開発する際のガイドでもある。
+cekernel 自身の issue も `/cekernel:orchestrate` で解決していく。
+この CLAUDE.md は Worker が cekernel を開発する際のガイドでもある。
