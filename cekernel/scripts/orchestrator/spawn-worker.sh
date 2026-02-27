@@ -15,6 +15,7 @@ source "${SCRIPT_DIR}/../shared/session-id.sh"
 source "${SCRIPT_DIR}/../shared/claude-json-helper.sh"
 source "${SCRIPT_DIR}/../shared/terminal-adapter.sh"
 source "${SCRIPT_DIR}/../shared/worker-state.sh"
+source "${SCRIPT_DIR}/../shared/task-file.sh"
 
 ISSUE_NUMBER="${1:?Usage: spawn-worker.sh <issue-number> [base-branch]}"
 BASE_BRANCH="${2:-main}"
@@ -123,6 +124,12 @@ git worktree add -b "$BRANCH" "$WORKTREE" "origin/${BASE_BRANCH}"
 
 # ── Register trust (so Worker can start without trust prompt) ──
 register_trust "$WORKTREE"
+
+# ── Extract issue data into worktree (session memory: page cache) ──
+# Workers read .cekernel-task.md locally instead of calling gh issue view,
+# reducing GitHub API calls and context window consumption.
+create_task_file "$WORKTREE" "$ISSUE_NUMBER"
+echo "task file: $(task_file_path "$WORKTREE")" >&2
 
 echo "worktree: $WORKTREE" >&2
 echo "branch:   $BRANCH" >&2

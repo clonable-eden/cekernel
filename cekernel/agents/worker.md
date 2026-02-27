@@ -45,7 +45,8 @@ cekernel defines only the lifecycle skeleton for Workers:
 2. **Read the target repository's CLAUDE.md and understand its conventions**
    - If the CLAUDE.md references URLs or document paths, read those as well
    - If no CLAUDE.md exists, infer conventions from existing code (reference existing commit messages, PRs, and code style)
-3. Fetch issue content from the given issue number (`gh issue view`)
+3. Read issue content from `.cekernel-task.md` in the worktree (pre-extracted at spawn time)
+   - If `.cekernel-task.md` does not exist, fall back to `gh issue view`
 4. Understand the issue requirements
 5. Post Execution Plan as a comment on the issue
 
@@ -64,6 +65,42 @@ EOF
 ```
 
 The Plan must be posted before starting implementation, so the Orchestrator or humans can review the approach in advance.
+
+## Signal Handling
+
+Workers check for signals at **phase boundaries** — between each lifecycle phase. This enables cooperative cancellation by the Orchestrator or user.
+
+### How to check
+
+```bash
+SIGNAL=$(${CLAUDE_PLUGIN_ROOT}/scripts/worker/check-signal.sh <issue-number>) || true
+if [[ -n "$SIGNAL" ]]; then
+  # Handle signal
+fi
+```
+
+### On receiving `TERM`
+
+1. Commit any uncommitted work to the branch (preserve progress)
+2. Post a status comment on the issue
+3. Call `${CLAUDE_PLUGIN_ROOT}/scripts/worker/notify-complete.sh <issue-number> cancelled "TERM signal received"`
+4. Exit immediately
+
+### When to check
+
+Check for signals at the boundary **before** each phase:
+
+```
+Phase 0 (Plan)
+  ← CHECK SIGNAL
+Phase 1 (Implement)
+  ← CHECK SIGNAL
+Phase 2 (Create PR)
+  ← CHECK SIGNAL
+Phase 3 (CI verify + merge)
+  ← CHECK SIGNAL
+Phase 4 (Notify)
+```
 
 ## Lifecycle Protocol
 
