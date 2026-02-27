@@ -8,8 +8,9 @@
 #
 # State machine:
 #   NEW → READY → RUNNING → WAITING → TERMINATED
-#                    ↑          ↓
-#                    └──────────┘
+#                    ↑↑         ↓
+#                    |└─────────┘
+#                    └── SUSPENDED (checkpoint saved, can resume)
 #
 # State file format: STATE:TIMESTAMP:detail (one line, detail may contain colons)
 # State file path: ${CEKERNEL_IPC_DIR}/worker-{issue}.state
@@ -19,14 +20,14 @@
 #   worker_state_read <issue-number>  → JSON to stdout
 
 # Valid states
-_CEKERNEL_VALID_STATES="NEW READY RUNNING WAITING TERMINATED"
+_CEKERNEL_VALID_STATES="NEW READY RUNNING WAITING SUSPENDED TERMINATED"
 
 # worker_state_write <issue-number> <state> [detail]
 #   Write state to the worker state file.
 #   Exit 1 if state is invalid.
 worker_state_write() {
   local issue="${1:?Usage: worker_state_write <issue-number> <state> [detail]}"
-  local state="${2:?State required: NEW|READY|RUNNING|WAITING|TERMINATED}"
+  local state="${2:?State required: NEW|READY|RUNNING|WAITING|SUSPENDED|TERMINATED}"
   local detail="${3:-}"
 
   # Validate state

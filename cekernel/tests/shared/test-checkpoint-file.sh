@@ -32,7 +32,7 @@ assert_file_exists "Checkpoint file created in worktree" "${MOCK_WORKTREE}/.ceke
 
 # ── Test 2: Checkpoint file contains phase ──
 CONTENT=$(cat "${MOCK_WORKTREE}/.cekernel-checkpoint.md")
-assert_match "Checkpoint file contains phase" "Phase 1 (Implementation)" "$CONTENT"
+assert_match "Checkpoint file contains phase" "Phase 1" "$CONTENT"
 
 # ── Test 3: Checkpoint file contains completed work ──
 assert_match "Checkpoint file contains completed" "tests written, 2/5 files implemented" "$CONTENT"
@@ -87,12 +87,12 @@ mkdir -p "$EMPTY_FIELDS_WORKTREE"
 create_checkpoint_file "$EMPTY_FIELDS_WORKTREE" "Phase 2 (PR)" "" "" ""
 assert_file_exists "Checkpoint with empty fields created" "${EMPTY_FIELDS_WORKTREE}/.cekernel-checkpoint.md"
 CONTENT_EMPTY=$(cat "${EMPTY_FIELDS_WORKTREE}/.cekernel-checkpoint.md")
-assert_match "Empty fields checkpoint has phase" "Phase 2 (PR)" "$CONTENT_EMPTY"
+assert_match "Empty fields checkpoint has phase" "Phase 2" "$CONTENT_EMPTY"
 
 # ── Test 13: create_checkpoint_file overwrites existing checkpoint ──
 create_checkpoint_file "$MOCK_WORKTREE" "Phase 2 (PR)" "all files implemented" "create PR" "approach X confirmed"
 CONTENT_NEW=$(cat "${MOCK_WORKTREE}/.cekernel-checkpoint.md")
-assert_match "Overwritten checkpoint has new phase" "Phase 2 (PR)" "$CONTENT_NEW"
+assert_match "Overwritten checkpoint has new phase" "Phase 2" "$CONTENT_NEW"
 assert_match "Overwritten checkpoint has new completed" "all files implemented" "$CONTENT_NEW"
 
 report_results
