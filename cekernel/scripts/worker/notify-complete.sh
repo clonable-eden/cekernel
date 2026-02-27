@@ -12,6 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../shared/session-id.sh"
+source "${SCRIPT_DIR}/../shared/worker-state.sh"
 
 ISSUE_NUMBER="${1:?Usage: notify-complete.sh <issue-number> <status> [detail]}"
 STATUS="${2:?Status required: merged | failed}"
@@ -24,6 +25,9 @@ if [[ ! -p "$FIFO" ]]; then
   echo "Orchestrator may not be listening." >&2
   exit 1
 fi
+
+# ── State: TERMINATED (Completed, cleanup pending) ──
+worker_state_write "$ISSUE_NUMBER" TERMINATED "$STATUS"
 
 # Write JSON message to FIFO
 # This write unblocks the orchestrator's blocking read

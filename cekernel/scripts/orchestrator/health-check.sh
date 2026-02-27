@@ -17,6 +17,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../shared/session-id.sh"
 source "${SCRIPT_DIR}/../shared/terminal-adapter.sh"
+source "${SCRIPT_DIR}/../shared/worker-state.sh"
 
 # If issue numbers are specified, inspect only those. Otherwise inspect all FIFOs in session
 if [[ $# -gt 0 ]]; then
@@ -89,11 +90,17 @@ check_worker() {
     fi
   fi
 
+  # Read worker state for richer output
+  local state_json worker_state
+  state_json=$(worker_state_read "$issue")
+  worker_state=$(echo "$state_json" | jq -r '.state')
+
   jq -cn \
     --argjson issue "$issue" \
     --arg status "$status" \
     --arg detail "$detail" \
-    '{issue: $issue, status: $status, detail: $detail}'
+    --arg state "$worker_state" \
+    '{issue: $issue, status: $status, detail: $detail, state: $state}'
 
   if [[ "$status" == "zombie" ]]; then
     return 1

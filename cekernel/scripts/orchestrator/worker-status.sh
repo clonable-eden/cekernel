@@ -12,6 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../shared/session-id.sh"
+source "${SCRIPT_DIR}/../shared/worker-state.sh"
 
 if [[ ! -d "$CEKERNEL_IPC_DIR" ]]; then
   echo "No active session: ${CEKERNEL_IPC_DIR}" >&2
@@ -60,11 +61,18 @@ find "$CEKERNEL_IPC_DIR" -maxdepth 1 -name 'worker-*' -type p 2>/dev/null | sort
     fi
   fi
 
+  # Read worker state
+  state_json=$(worker_state_read "$issue")
+  worker_state=$(echo "$state_json" | jq -r '.state')
+  worker_state_detail=$(echo "$state_json" | jq -r '.detail')
+
   # JSON output
   jq -cn \
     --argjson issue "$issue" \
     --arg worktree "$worktree" \
     --arg fifo "$fifo" \
     --arg uptime "$uptime" \
-    '{issue: $issue, worktree: $worktree, fifo: $fifo, uptime: $uptime}'
+    --arg state "$worker_state" \
+    --arg state_detail "$worker_state_detail" \
+    '{issue: $issue, worktree: $worktree, fifo: $fifo, uptime: $uptime, state: $state, state_detail: $state_detail}'
 done

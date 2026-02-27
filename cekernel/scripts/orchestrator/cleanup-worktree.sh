@@ -66,6 +66,8 @@ fi
 
 # FIFO cleanup (session-scoped)
 rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}"
+# State file cleanup
+rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.state"
 # Pane ID file cleanup
 rm -f "${CEKERNEL_IPC_DIR}/pane-${ISSUE_NUMBER}"
 
