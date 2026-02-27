@@ -3,7 +3,7 @@
 #
 # Usage: worker-status.sh
 # Output: JSON Lines (1 line = 1 Worker)
-#   {"issue": 4, "worktree": "...", "fifo": "...", "uptime": "12m", "state": "RUNNING", "state_detail": "phase1:implement"}
+#   {"issue": 4, "worktree": "...", "fifo": "...", "uptime": "12m", "state": "RUNNING", "state_detail": "phase1:implement", "priority": 10, "priority_name": "normal"}
 #
 # Exit codes:
 #   0 — Success
@@ -13,6 +13,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../shared/session-id.sh"
 source "${SCRIPT_DIR}/../shared/worker-state.sh"
+source "${SCRIPT_DIR}/../shared/worker-priority.sh"
 
 if [[ ! -d "$CEKERNEL_IPC_DIR" ]]; then
   echo "No active session: ${CEKERNEL_IPC_DIR}" >&2
@@ -66,6 +67,11 @@ find "$CEKERNEL_IPC_DIR" -maxdepth 1 -name 'worker-*' -type p 2>/dev/null | sort
   worker_state=$(echo "$state_json" | jq -r '.state')
   worker_state_detail=$(echo "$state_json" | jq -r '.detail')
 
+  # Read worker priority
+  priority_json=$(worker_priority_read "$issue")
+  worker_priority=$(echo "$priority_json" | jq -r '.priority')
+  worker_priority_name=$(echo "$priority_json" | jq -r '.priority_name')
+
   # JSON output
   jq -cn \
     --argjson issue "$issue" \
@@ -74,5 +80,7 @@ find "$CEKERNEL_IPC_DIR" -maxdepth 1 -name 'worker-*' -type p 2>/dev/null | sort
     --arg uptime "$uptime" \
     --arg state "$worker_state" \
     --arg state_detail "$worker_state_detail" \
-    '{issue: $issue, worktree: $worktree, fifo: $fifo, uptime: $uptime, state: $state, state_detail: $state_detail}'
+    --argjson priority "$worker_priority" \
+    --arg priority_name "$worker_priority_name" \
+    '{issue: $issue, worktree: $worktree, fifo: $fifo, uptime: $uptime, state: $state, state_detail: $state_detail, priority: $priority, priority_name: $priority_name}'
 done

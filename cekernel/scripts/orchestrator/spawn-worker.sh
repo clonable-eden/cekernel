@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # spawn-worker.sh — Create worktree + launch Worker in terminal window
 #
-# Usage: spawn-worker.sh <issue-number> [base-branch]
+# Usage: spawn-worker.sh [--priority <priority>] <issue-number> [base-branch]
+#   priority: critical|high|normal|low or numeric 0-19 (default: normal)
 # Output: FIFO path (stdout last line)
 # Exit codes:
 #   0 — Worker spawned successfully
@@ -15,9 +16,19 @@ source "${SCRIPT_DIR}/../shared/session-id.sh"
 source "${SCRIPT_DIR}/../shared/claude-json-helper.sh"
 source "${SCRIPT_DIR}/../shared/terminal-adapter.sh"
 source "${SCRIPT_DIR}/../shared/worker-state.sh"
+source "${SCRIPT_DIR}/../shared/worker-priority.sh"
 source "${SCRIPT_DIR}/../shared/task-file.sh"
 
-ISSUE_NUMBER="${1:?Usage: spawn-worker.sh <issue-number> [base-branch]}"
+# ── Flag parsing ──
+PRIORITY="normal"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --priority) PRIORITY="${2:?--priority requires a value}"; shift 2 ;;
+    *) break ;;
+  esac
+done
+
+ISSUE_NUMBER="${1:?Usage: spawn-worker.sh [--priority <priority>] <issue-number> [base-branch]}"
 BASE_BRANCH="${2:-main}"
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 
@@ -74,9 +85,10 @@ rollback() {
   # Delete log file
   rm -f "${LOG_FILE:-}"
   rmdir "${LOG_DIR:-}" 2>/dev/null || true
-  # Delete FIFO and state file
+  # Delete FIFO, state file, and priority file
   rm -f "${FIFO:-}"
   rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.state"
+  rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.priority"
 }
 trap rollback ERR
 
@@ -87,6 +99,9 @@ FIFO="${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}"
 
 # ── State: NEW (Worker spawned, worktree being created) ──
 worker_state_write "$ISSUE_NUMBER" NEW "spawning"
+
+# ── Priority: Set worker nice value ──
+worker_priority_write "$ISSUE_NUMBER" "$PRIORITY"
 
 # ── Create log file ──
 LOG_DIR="${CEKERNEL_IPC_DIR}/logs"
@@ -176,7 +191,7 @@ echo "$MAIN_PANE" > "${CEKERNEL_IPC_DIR}/pane-${ISSUE_NUMBER}"
 worker_state_write "$ISSUE_NUMBER" READY "agent-starting"
 
 # ── Record lifecycle event in log ──
-echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] SPAWN issue=#${ISSUE_NUMBER} branch=${BRANCH}" >> "$LOG_FILE"
+echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] SPAWN issue=#${ISSUE_NUMBER} branch=${BRANCH} priority=${PRIORITY}" >> "$LOG_FILE"
 
 echo "session: $CEKERNEL_SESSION_ID" >&2
 echo "worker spawned: issue #${ISSUE_NUMBER}" >&2
