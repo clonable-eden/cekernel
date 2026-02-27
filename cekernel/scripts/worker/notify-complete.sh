@@ -2,19 +2,20 @@
 # notify-complete.sh — Worker → Orchestrator completion notification (named pipe)
 #
 # Usage: notify-complete.sh <issue-number> <status> [detail]
-#   status: merged | failed
-#   detail: PR number (merged) or error reason (failed)
+#   status: merged | failed | cancelled
+#   detail: PR number (merged), error reason (failed), or signal info (cancelled)
 #
 # Example:
 #   notify-complete.sh 4 merged 42
 #   notify-complete.sh 4 failed "CI failed 3 times"
+#   notify-complete.sh 4 cancelled "TERM signal received"
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../shared/session-id.sh"
 
 ISSUE_NUMBER="${1:?Usage: notify-complete.sh <issue-number> <status> [detail]}"
-STATUS="${2:?Status required: merged | failed}"
+STATUS="${2:?Status required: merged | failed | cancelled}"
 DETAIL="${3:-}"
 
 FIFO="${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}"
@@ -42,6 +43,7 @@ LOG_FILE="${CEKERNEL_IPC_DIR}/logs/worker-${ISSUE_NUMBER}.log"
 if [[ -d "${CEKERNEL_IPC_DIR}/logs" ]]; then
   EVENT="COMPLETE"
   [[ "$STATUS" == "failed" ]] && EVENT="FAILED"
+  [[ "$STATUS" == "cancelled" ]] && EVENT="CANCELLED"
   echo "[${TIMESTAMP}] ${EVENT} issue=#${ISSUE_NUMBER} status=${STATUS} detail=${DETAIL}" >> "$LOG_FILE"
 fi
 
