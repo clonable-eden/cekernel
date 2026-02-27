@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # spawn-worker.sh — Create worktree + launch Worker in terminal window
 #
-# Usage: spawn-worker.sh [--priority <priority>] <issue-number> [base-branch]
+# Usage: spawn-worker.sh [--resume] [--priority <priority>] <issue-number> [base-branch]
 #   priority: critical|high|normal|low or numeric 0-19 (default: normal)
 # Output: FIFO path (stdout last line)
+# Options:
+#   --resume    Resume a suspended Worker (reuse existing worktree)
+#   --priority  Set worker priority (nice value)
 # Exit codes:
 #   0 — Worker spawned successfully
 #   1 — General error
@@ -18,17 +21,20 @@ source "${SCRIPT_DIR}/../shared/terminal-adapter.sh"
 source "${SCRIPT_DIR}/../shared/worker-state.sh"
 source "${SCRIPT_DIR}/../shared/worker-priority.sh"
 source "${SCRIPT_DIR}/../shared/task-file.sh"
+source "${SCRIPT_DIR}/../shared/checkpoint-file.sh"
 
 # ── Flag parsing ──
+RESUME=0
 PRIORITY="normal"
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --resume) RESUME=1; shift ;;
     --priority) PRIORITY="${2:?--priority requires a value}"; shift 2 ;;
     *) break ;;
   esac
 done
 
-ISSUE_NUMBER="${1:?Usage: spawn-worker.sh [--priority <priority>] <issue-number> [base-branch]}"
+ISSUE_NUMBER="${1:?Usage: spawn-worker.sh [--resume] [--priority <priority>] <issue-number> [base-branch]}"
 BASE_BRANCH="${2:-main}"
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 
@@ -70,17 +76,20 @@ rollback() {
     terminal_kill_pane "$MAIN_PANE"
   fi
   rm -f "${CEKERNEL_IPC_DIR}/pane-${ISSUE_NUMBER}"
-  # Unregister trust
-  if [[ -n "${WORKTREE:-}" && -d "${WORKTREE:-}" ]]; then
-    unregister_trust "$WORKTREE" 2>/dev/null || true
-  fi
-  # Remove worktree
-  if [[ -n "${WORKTREE:-}" ]]; then
-    git worktree remove --force "$WORKTREE" 2>/dev/null || true
-  fi
-  # Delete branch
-  if [[ -n "${BRANCH:-}" ]]; then
-    git branch -D "$BRANCH" 2>/dev/null || true
+  # In resume mode, do not destroy the existing worktree/branch
+  if [[ "${RESUME:-0}" -eq 0 ]]; then
+    # Unregister trust
+    if [[ -n "${WORKTREE:-}" && -d "${WORKTREE:-}" ]]; then
+      unregister_trust "$WORKTREE" 2>/dev/null || true
+    fi
+    # Remove worktree
+    if [[ -n "${WORKTREE:-}" ]]; then
+      git worktree remove --force "$WORKTREE" 2>/dev/null || true
+    fi
+    # Delete branch
+    if [[ -n "${BRANCH:-}" ]]; then
+      git branch -D "$BRANCH" 2>/dev/null || true
+    fi
   fi
   # Delete log file
   rm -f "${LOG_FILE:-}"
@@ -131,20 +140,41 @@ cleanup_stale_worktree() {
   fi
 }
 
-# ── Create worktree ──
-mkdir -p "$WORKTREE_DIR"
-git fetch origin "${BASE_BRANCH}" --quiet
-cleanup_stale_worktree "$WORKTREE" "$BRANCH"
-git worktree add -b "$BRANCH" "$WORKTREE" "origin/${BASE_BRANCH}"
+# ── Create or reuse worktree ──
+if [[ "$RESUME" -eq 1 ]]; then
+  # Resume mode: reuse existing worktree (must already exist)
+  if [[ ! -d "$WORKTREE" ]]; then
+    echo "Error: worktree not found for resume: ${WORKTREE}" >&2
+    echo "Cannot resume without an existing worktree." >&2
+    exit 1
+  fi
+  echo "resume: reusing worktree $WORKTREE" >&2
 
-# ── Register trust (so Worker can start without trust prompt) ──
-register_trust "$WORKTREE"
+  # Re-register trust (may have been cleaned up)
+  register_trust "$WORKTREE"
 
-# ── Extract issue data into worktree (session memory: page cache) ──
-# Workers read .cekernel-task.md locally instead of calling gh issue view,
-# reducing GitHub API calls and context window consumption.
-create_task_file "$WORKTREE" "$ISSUE_NUMBER"
-echo "task file: $(task_file_path "$WORKTREE")" >&2
+  # Verify checkpoint exists for resume
+  if checkpoint_file_exists "$WORKTREE"; then
+    echo "checkpoint: $(checkpoint_file_path "$WORKTREE")" >&2
+  else
+    echo "Warning: no checkpoint file found. Worker will start fresh." >&2
+  fi
+else
+  # Normal mode: create new worktree
+  mkdir -p "$WORKTREE_DIR"
+  git fetch origin "${BASE_BRANCH}" --quiet
+  cleanup_stale_worktree "$WORKTREE" "$BRANCH"
+  git worktree add -b "$BRANCH" "$WORKTREE" "origin/${BASE_BRANCH}"
+
+  # Register trust (so Worker can start without trust prompt)
+  register_trust "$WORKTREE"
+
+  # Extract issue data into worktree (session memory: page cache)
+  # Workers read .cekernel-task.md locally instead of calling gh issue view,
+  # reducing GitHub API calls and context window consumption.
+  create_task_file "$WORKTREE" "$ISSUE_NUMBER"
+  echo "task file: $(task_file_path "$WORKTREE")" >&2
+fi
 
 echo "worktree: $WORKTREE" >&2
 echo "branch:   $BRANCH" >&2
@@ -167,7 +197,11 @@ WORKSPACE=$(terminal_resolve_workspace)
 # 1. Read the target repository's CLAUDE.md first
 # 2. Follow kernel's protocol only for lifecycle (PR → CI → merge → notify)
 # 3. Follow the target repository's conventions for implementation
-PROMPT="Resolve issue #${ISSUE_NUMBER}. First read the target repository's CLAUDE.md and fully follow its conventions. Follow only the kernel Worker Protocol for lifecycle: implement → create PR → verify CI → merge. When done, run ${CLAUDE_PLUGIN_ROOT}/scripts/worker/notify-complete.sh ${ISSUE_NUMBER} merged <pr-number>."
+if [[ "$RESUME" -eq 1 ]]; then
+  PROMPT="Resume issue #${ISSUE_NUMBER}. Read .cekernel-checkpoint.md to understand previous progress, then continue from where the previous Worker left off. First read the target repository's CLAUDE.md and fully follow its conventions. Follow only the kernel Worker Protocol for lifecycle: implement → create PR → verify CI → merge. When done, run ${CLAUDE_PLUGIN_ROOT}/scripts/worker/notify-complete.sh ${ISSUE_NUMBER} merged <pr-number>."
+else
+  PROMPT="Resolve issue #${ISSUE_NUMBER}. First read the target repository's CLAUDE.md and fully follow its conventions. Follow only the kernel Worker Protocol for lifecycle: implement → create PR → verify CI → merge. When done, run ${CLAUDE_PLUGIN_ROOT}/scripts/worker/notify-complete.sh ${ISSUE_NUMBER} merged <pr-number>."
+fi
 
 # Build JSON payload for Lua-side layout construction.
 # The wezterm.lua user-var-changed handler creates the 3-pane layout in-process,
@@ -191,10 +225,15 @@ echo "$MAIN_PANE" > "${CEKERNEL_IPC_DIR}/pane-${ISSUE_NUMBER}"
 worker_state_write "$ISSUE_NUMBER" READY "agent-starting"
 
 # ── Record lifecycle event in log ──
-echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] SPAWN issue=#${ISSUE_NUMBER} branch=${BRANCH} priority=${PRIORITY}" >> "$LOG_FILE"
-
-echo "session: $CEKERNEL_SESSION_ID" >&2
-echo "worker spawned: issue #${ISSUE_NUMBER}" >&2
+if [[ "$RESUME" -eq 1 ]]; then
+  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] RESUME issue=#${ISSUE_NUMBER} branch=${BRANCH} priority=${PRIORITY}" >> "$LOG_FILE"
+  echo "session: $CEKERNEL_SESSION_ID" >&2
+  echo "worker resumed: issue #${ISSUE_NUMBER}" >&2
+else
+  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] SPAWN issue=#${ISSUE_NUMBER} branch=${BRANCH} priority=${PRIORITY}" >> "$LOG_FILE"
+  echo "session: $CEKERNEL_SESSION_ID" >&2
+  echo "worker spawned: issue #${ISSUE_NUMBER}" >&2
+fi
 
 # Return FIFO path (used by orchestrator for reading)
 echo "$FIFO"

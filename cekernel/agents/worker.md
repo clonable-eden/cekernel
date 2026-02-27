@@ -45,10 +45,13 @@ cekernel defines only the lifecycle skeleton for Workers:
 2. **Read the target repository's CLAUDE.md and understand its conventions**
    - If the CLAUDE.md references URLs or document paths, read those as well
    - If no CLAUDE.md exists, infer conventions from existing code (reference existing commit messages, PRs, and code style)
-3. Read issue content from `.cekernel-task.md` in the worktree (pre-extracted at spawn time)
+3. **Check for `.cekernel-checkpoint.md`** (resume mode)
+   - If present, read it to understand previous progress and continue from where the last Worker left off
+   - Skip steps already completed according to the checkpoint
+4. Read issue content from `.cekernel-task.md` in the worktree (pre-extracted at spawn time)
    - If `.cekernel-task.md` does not exist, fall back to `gh issue view`
-4. Understand the issue requirements
-5. Post Execution Plan as a comment on the issue
+5. Understand the issue requirements
+6. Post Execution Plan as a comment on the issue (or a Resume Plan if resuming)
 
 ```bash
 gh issue comment <issue-number> --body "$(cat <<'EOF'
@@ -85,6 +88,27 @@ fi
 2. Post a status comment on the issue
 3. Call `${CLAUDE_PLUGIN_ROOT}/scripts/worker/notify-complete.sh <issue-number> cancelled "TERM signal received"`
 4. Exit immediately
+
+### On receiving `SUSPEND`
+
+1. Commit any uncommitted work to the branch (preserve progress)
+2. Write a checkpoint file to the worktree:
+
+```bash
+# Source the checkpoint helper
+source ${CLAUDE_PLUGIN_ROOT}/scripts/shared/checkpoint-file.sh
+
+# Save current progress
+create_checkpoint_file "$WORKTREE" \
+  "Phase 1 (Implementation)" \
+  "tests written, 2/5 files implemented" \
+  "implement remaining 3 files" \
+  "chose approach X because Y"
+```
+
+3. Post a status comment on the issue describing suspended state
+4. Call `${CLAUDE_PLUGIN_ROOT}/scripts/worker/notify-complete.sh <issue-number> cancelled "SUSPEND signal received"`
+5. Exit — the Orchestrator can later resume with `spawn-worker.sh --resume`
 
 ### When to check
 

@@ -2,7 +2,7 @@
 # send-signal.sh — Send a signal to a running Worker
 #
 # Usage: send-signal.sh <issue-number> <signal>
-#   signal: TERM
+#   signal: TERM, SUSPEND
 #
 # Creates a signal file in the IPC directory. Worker checks for this file
 # at phase boundaries (cooperative signal delivery).
@@ -23,7 +23,7 @@ ISSUE_NUMBER="${1:?Usage: send-signal.sh <issue-number> <signal>}"
 SIGNAL="${2:?Usage: send-signal.sh <issue-number> <signal>}"
 
 # ── Validate signal ──
-SUPPORTED_SIGNALS="TERM"
+SUPPORTED_SIGNALS="TERM SUSPEND"
 VALID=0
 for s in $SUPPORTED_SIGNALS; do
   if [[ "$SIGNAL" == "$s" ]]; then
