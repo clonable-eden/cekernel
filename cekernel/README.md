@@ -47,9 +47,12 @@ Orchestrator (agent1)              Worker (agent2, 3, 4, ...)
 cekernel/
   .claude-plugin/
     plugin.json              # Plugin manifest
+  Makefile                   # WezTerm plugin install/uninstall
   agents/
     orchestrator.md          # Orchestrator protocol definition
     worker.md                # Worker protocol definition
+  config/
+    wezterm.cekernel.lua     # WezTerm plugin (Worker layout via user-var event)
   skills/
     orchestrate/
       SKILL.md               # /cekernel:orchestrate skill
@@ -106,6 +109,32 @@ Install from the Claude Code plugin marketplace:
 # 2. Install cekernel plugin
 /plugin install cekernel@clonable-eden-glimmer
 ```
+
+### WezTerm Plugin
+
+If using the WezTerm backend, install the WezTerm plugin into `plugins.d/` (recommended):
+
+```bash
+cd cekernel
+make install    # Symlinks config/wezterm.cekernel.lua → ~/.config/wezterm/plugins.d/cekernel.lua
+make uninstall  # Removes the symlink
+
+# or
+make -C cekernel install # uninstall
+```
+
+This requires a `plugins.d` loader in your `wezterm.lua` (before `return config`):
+
+```lua
+-- ============================================================
+-- Plugins: load all .lua files from plugins.d/
+-- ============================================================
+for _, file in ipairs(wezterm.glob(wezterm.config_dir .. '/plugins.d/*.lua')) do
+  dofile(file)
+end
+```
+
+If you manage your own WezTerm config, you can load `config/wezterm.cekernel.lua` directly instead.
 
 ### Update
 
