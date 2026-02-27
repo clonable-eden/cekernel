@@ -42,7 +42,3 @@ The Orchestrator autonomously executes:
 3. Completion monitoring
 4. Cleanup
 
-### Step 3: Report Results
-
-The Orchestrator will notify on completion via background task notification.
-Report the results to the user at that time.
