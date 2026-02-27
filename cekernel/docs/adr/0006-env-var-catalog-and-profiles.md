@@ -193,6 +193,41 @@ Rejected:
 
 Loading once at the Orchestrator level propagates to all child scripts via the environment. Loading in every script is redundant and risks inconsistency if scripts source different profiles. The Orchestrator is the natural configuration boundary — it's where the session begins.
 
+## Integration Points
+
+### Propagation Chain
+
+The env profile mechanism requires wiring at specific points in the execution chain:
+
+```
+/cekernel:orchestrate --env headless #108
+  → skill (SKILL.md): parses --env argument, defaults to "default"
+    → skill includes CEKERNEL_ENV=headless in orchestrator agent prompt
+      → orchestrator agent: passes export CEKERNEL_ENV=headless before spawn-worker.sh
+        → spawn-worker.sh: sources load-env.sh early (before other shared helpers)
+          → load-env.sh: reads headless.env, exports CEKERNEL_BACKEND=headless etc.
+            → remaining spawn-worker.sh logic uses configured values
+```
+
+### Scripts That Source `load-env.sh`
+
+| Script | Role | Why |
+|--------|------|-----|
+| `spawn-worker.sh` | Only integration point | All user-configurable vars are consumed by Orchestrator-side scripts. Loading once at spawn time propagates to backend-adapter, concurrency guard, etc. via the environment. |
+
+`load-env.sh` is sourced immediately after `session-id.sh` and before other shared helpers, ensuring that profile values are available when `backend-adapter.sh`, `worker-state.sh`, etc. are loaded.
+
+### Why Not Load in Other Scripts
+
+Per the "Key observation" in the Context section, all user-configurable variables are consumed by Orchestrator-side scripts. Worker agents inherit only `CEKERNEL_SESSION_ID`. Therefore:
+
+- `watch-worker.sh`, `cleanup-worktree.sh`, `health-check.sh` — These run in the Orchestrator's shell where `CEKERNEL_ENV` is already exported. They use `${VAR:-default}` which is sufficient since `spawn-worker.sh` already set the environment.
+- Worker-side scripts — Do not need profile loading; they only use `CEKERNEL_SESSION_ID`.
+
+### Skill UX
+
+The `/cekernel:orchestrate` skill accepts `--env <profile>` as an optional argument (via `argument-hint` frontmatter). When unspecified, `default` is used. The skill passes the profile name to the Orchestrator agent's prompt, which in turn exports it before each `spawn-worker.sh` call.
+
 ## Consequences
 
 ### Positive
