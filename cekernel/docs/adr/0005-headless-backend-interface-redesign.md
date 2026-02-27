@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed — Amends the interface defined in ADR-0001
+Accepted — Amends the interface defined in ADR-0001
 
 ## Context
 
