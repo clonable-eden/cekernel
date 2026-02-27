@@ -76,7 +76,7 @@ Workers check for signals at **phase boundaries** — between each lifecycle pha
 ### How to check
 
 ```bash
-SIGNAL=$(${CLAUDE_PLUGIN_ROOT}/scripts/worker/check-signal.sh <issue-number>) || true
+SIGNAL=$(check-signal.sh <issue-number>) || true
 if [[ -n "$SIGNAL" ]]; then
   # Handle signal
 fi
@@ -86,7 +86,7 @@ fi
 
 1. Commit any uncommitted work to the branch (preserve progress)
 2. Post a status comment on the issue
-3. Call `${CLAUDE_PLUGIN_ROOT}/scripts/worker/notify-complete.sh <issue-number> cancelled "TERM signal received"`
+3. Run `notify-complete.sh <issue-number> cancelled "TERM signal received"`
 4. Exit immediately
 
 ### On receiving `SUSPEND`
@@ -95,8 +95,8 @@ fi
 2. Write a checkpoint file to the worktree:
 
 ```bash
-# Source the checkpoint helper
-source ${CLAUDE_PLUGIN_ROOT}/scripts/shared/checkpoint-file.sh
+# Source the checkpoint helper (checkpoint-file.sh in scripts/shared/)
+source checkpoint-file.sh
 
 # Save current progress
 create_checkpoint_file "$WORKTREE" \
@@ -107,7 +107,7 @@ create_checkpoint_file "$WORKTREE" \
 ```
 
 3. Post a status comment on the issue describing suspended state
-4. Call `${CLAUDE_PLUGIN_ROOT}/scripts/worker/notify-complete.sh <issue-number> cancelled "SUSPEND signal received"`
+4. Run `notify-complete.sh <issue-number> cancelled "SUSPEND signal received"`
 5. Exit — the Orchestrator can later resume with `spawn-worker.sh --resume`
 
 ### When to check
@@ -197,7 +197,7 @@ EOF
 )"
 
 # CEKERNEL_SESSION_ID is propagated from the Orchestrator via environment variable
-${CLAUDE_PLUGIN_ROOT}/scripts/worker/notify-complete.sh <issue-number> merged <pr-number>
+notify-complete.sh <issue-number> merged <pr-number>
 ```
 
 ## On Error
@@ -209,7 +209,7 @@ When CI fails:
 3. Wait for CI again
 4. After 3 failures:
    1. Post Result as a comment on the issue (Status: failed, describe failure reason in Summary)
-   2. Notify with `${CLAUDE_PLUGIN_ROOT}/scripts/worker/notify-complete.sh <issue-number> failed "reason"`
+   2. Run `notify-complete.sh <issue-number> failed "reason"`
 
 ## Constraints
 

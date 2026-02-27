@@ -44,14 +44,14 @@ RESULT=$(
 )
 assert_eq "Existing CLAUDE_PLUGIN_ROOT is preserved" "/custom/plugin/root" "$RESULT"
 
-# ── Test 3: spawn-worker.sh source contains CLAUDE_PLUGIN_ROOT fallback line ──
-# Verify the actual source file contains the fallback line
+# ── Test 3: spawn-worker.sh does not reference CLAUDE_PLUGIN_ROOT ──
+# spawn-worker.sh no longer depends on CLAUDE_PLUGIN_ROOT (removed in #129)
 SPAWN_SCRIPT="${SCRIPTS_DIR}/spawn-worker.sh"
-if grep -q 'CLAUDE_PLUGIN_ROOT=.*CLAUDE_PLUGIN_ROOT:-' "$SPAWN_SCRIPT"; then
+if grep -q 'CLAUDE_PLUGIN_ROOT' "$SPAWN_SCRIPT"; then
   FOUND="yes"
 else
   FOUND="no"
 fi
-assert_eq "spawn-worker.sh contains CLAUDE_PLUGIN_ROOT fallback" "yes" "$FOUND"
+assert_eq "spawn-worker.sh does not reference CLAUDE_PLUGIN_ROOT" "no" "$FOUND"
 
 report_results

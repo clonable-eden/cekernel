@@ -30,14 +30,10 @@ Examples:
 
 Determine whether cekernel is running as a plugin (with namespace prefix) or locally (without prefix).
 
-Run the following Bash command:
+Check whether the skill was invoked with a namespace prefix (e.g., `cekernel:orchestrate` vs `orchestrate`).
 
-```bash
-test -n "${CLAUDE_PLUGIN_ROOT:-}" && echo "plugin" || echo "local"
-```
-
-- If `plugin`: `CEKERNEL_AGENT_ORCHESTRATOR=cekernel:orchestrator`, `CEKERNEL_AGENT_WORKER=cekernel:worker`
-- If `local`: `CEKERNEL_AGENT_ORCHESTRATOR=orchestrator`, `CEKERNEL_AGENT_WORKER=worker`
+- If namespaced (plugin mode): `CEKERNEL_AGENT_ORCHESTRATOR=cekernel:orchestrator`, `CEKERNEL_AGENT_WORKER=cekernel:worker`
+- If not namespaced (local mode): `CEKERNEL_AGENT_ORCHESTRATOR=orchestrator`, `CEKERNEL_AGENT_WORKER=worker`
 
 Store these values for use in subsequent steps.
 
@@ -69,7 +65,7 @@ Example prompt fragment:
 
 ```
 Use CEKERNEL_ENV=headless and CEKERNEL_AGENT_WORKER=cekernel:worker when spawning workers:
-export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=headless && export CEKERNEL_AGENT_WORKER=cekernel:worker && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 108
+export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=headless && export CEKERNEL_AGENT_WORKER=cekernel:worker && spawn-worker.sh 108
 ```
 
 The Orchestrator autonomously executes:
