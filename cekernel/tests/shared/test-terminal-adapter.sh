@@ -194,10 +194,15 @@ else
 fi
 rm -f "$MOCK_LOG"
 
-# ── Test 13: terminal_pane_alive — alive ──
+# ── Test 13: terminal_pane_alive — alive (WezTerm JSON with spaces) ──
 wezterm() {
   if [[ "$1" == "cli" && "$2" == "list" ]]; then
-    echo '[{"pane_id":10},{"pane_id":20}]'
+    cat <<'MOCK_JSON'
+[
+  {"pane_id": 10, "window_id": 1, "workspace": "default"},
+  {"pane_id": 20, "window_id": 1, "workspace": "default"}
+]
+MOCK_JSON
   fi
 }
 export -f wezterm
@@ -216,6 +221,21 @@ if terminal_pane_alive "999"; then
 else
   echo "  PASS: pane_alive returns 1 for dead pane"
   ((TESTS_PASSED++)) || true
+fi
+
+# ── Test 15: terminal_pane_alive — compact JSON (no spaces) ──
+wezterm() {
+  if [[ "$1" == "cli" && "$2" == "list" ]]; then
+    echo '[{"pane_id":10},{"pane_id":20}]'
+  fi
+}
+export -f wezterm
+if terminal_pane_alive "10"; then
+  echo "  PASS: pane_alive handles compact JSON"
+  ((TESTS_PASSED++)) || true
+else
+  echo "  FAIL: pane_alive should handle compact JSON"
+  ((TESTS_FAILED++)) || true
 fi
 
 # ── Cleanup ──

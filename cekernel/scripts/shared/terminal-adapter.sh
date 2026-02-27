@@ -118,7 +118,8 @@ terminal_kill_window() {
 # exit 0 if alive, exit 1 if dead
 terminal_pane_alive() {
   local pane_id="$1"
-  wezterm cli list --format json 2>/dev/null | grep -q "\"pane_id\":${pane_id}[,}]"
+  wezterm cli list --format json 2>/dev/null \
+    | jq -e --argjson target "$pane_id" 'any(.[]; .pane_id == $target)' >/dev/null 2>&1
 }
 
 # terminal_spawn_worker_layout <cwd> <workspace> <json-payload>
