@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted — Interface amended by ADR-0005 (8 functions → 4 external API, `terminal_*` → `backend_*`)
 
 ## Context
 

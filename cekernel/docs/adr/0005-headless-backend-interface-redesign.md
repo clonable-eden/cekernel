@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Proposed — Amends the interface defined in ADR-0001
 
 ## Context
 
@@ -43,7 +43,10 @@ terminal_pane_alive
 ```
 terminal-adapter.sh  →  backend-adapter.sh
 terminal-backends/   →  backends/            (already this name)
+CEKERNEL_TERMINAL    →  CEKERNEL_BACKEND     (env var rename)
 ```
+
+The environment variable `CEKERNEL_TERMINAL` is renamed to `CEKERNEL_BACKEND` to match the file and function renames. Since headless mode has no terminal, keeping `CEKERNEL_TERMINAL=headless` would be contradictory. There is no backward compatibility concern — the env var is set per-session, not persisted in configuration files.
 
 External API:
 
@@ -102,10 +105,13 @@ backend_available() { return 0; }
 
 backend_spawn_worker() {
   local issue="$1" worktree="$2" prompt="$3"
-  cd "$worktree"
-  CEKERNEL_SESSION_ID="$CEKERNEL_SESSION_ID" \
-    claude --agent cekernel:worker "$prompt" \
-    > "${CEKERNEL_IPC_DIR}/logs/worker-${issue}.stdout.log" 2>&1 &
+  # Use setsid to create a new process group for clean termination
+  setsid bash -c "
+    cd '$worktree' && \
+    CEKERNEL_SESSION_ID='$CEKERNEL_SESSION_ID' \
+    claude --agent cekernel:worker '$prompt' \
+    > '${CEKERNEL_IPC_DIR}/logs/worker-${issue}.stdout.log' 2>&1
+  " &
   echo $! > "${CEKERNEL_IPC_DIR}/handle-${issue}"
 }
 
@@ -116,11 +122,27 @@ backend_worker_alive() {
 
 backend_kill_worker() {
   local pid; pid=$(cat "${CEKERNEL_IPC_DIR}/handle-${1}")
-  kill "$pid" 2>/dev/null
+  # Kill the entire process group (claude + child processes)
+  kill -- -"$pid" 2>/dev/null
 }
 ```
 
 SESSION_ID propagation becomes a direct environment variable pass — simpler than WezTerm OSC or tmux send-keys.
+
+Note on `backend_spawn_worker` argument change: the current `terminal_spawn_worker_layout` takes `(cwd, workspace, json_payload)`. The new signature takes `(issue, worktree, prompt)`, dropping workspace (absorbed internally) and changing the payload from JSON to a prompt string. WezTerm's backend implementation must construct the JSON payload internally, as the WezTerm Lua handler still expects JSON.
+
+#### Process group management
+
+Terminal backends (WezTerm/tmux) handle child process cleanup implicitly — killing a pane or window terminates all processes within it. Headless mode lacks this containment. `claude --agent` spawns child processes (git, npm, test runners, etc.) that would become orphans if only the parent PID is killed.
+
+The solution is `setsid` + process group kill:
+- `setsid` creates a new session and process group for the Worker
+- `kill -- -$PID` sends the signal to the entire process group
+- This mirrors the terminal backend's behavior: killing a pane terminates all processes within it
+
+#### Impact on ADR-0003 (Signal mechanism)
+
+ADR-0003 defines `KILL` as "Orchestrator kills terminal pane (existing mechanism via `cleanup-worktree.sh`)". With headless mode, KILL becomes "kill the process group" — equivalent effect, different mechanism. The cooperative `TERM` signal (file-based) is unaffected, as it operates at the agent level regardless of backend.
 
 ### UNIX Philosophy Alignment
 
@@ -168,6 +190,12 @@ Rejected: Violates Rule of Simplicity. Callers would need conditional logic. The
 - All callers (`spawn-worker.sh`, `health-check.sh`, `cleanup-worktree.sh`) require signature changes
 - All test files (3 test suites, ~34 test cases) require updates for renamed functions
 - WezTerm/tmux backends need internal restructuring (public → private functions)
+
+### Impact on other ADRs
+
+- **ADR-0001**: Interface reduced from 8 to 4 external functions. ADR-0001 Status updated with cross-reference.
+- **ADR-0003**: `KILL` signal semantics change from "kill terminal pane" to "kill process group" in headless mode. Cooperative `TERM` signal (file-based) is unaffected.
+- **ADR-0004**: State machine is backend-agnostic (file-based). No changes needed.
 
 ### Trade-offs
 
