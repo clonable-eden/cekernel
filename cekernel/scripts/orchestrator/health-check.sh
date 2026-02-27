@@ -16,7 +16,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../shared/session-id.sh"
-source "${SCRIPT_DIR}/../shared/terminal-adapter.sh"
+source "${SCRIPT_DIR}/../shared/backend-adapter.sh"
 source "${SCRIPT_DIR}/../shared/worker-state.sh"
 
 # If issue numbers are specified, inspect only those. Otherwise inspect all FIFOs in session
@@ -43,7 +43,6 @@ ZOMBIES=0
 check_worker() {
   local issue="$1"
   local fifo="${CEKERNEL_IPC_DIR}/worker-${issue}"
-  local pane_file="${CEKERNEL_IPC_DIR}/pane-${issue}"
   local status="unknown"
   local detail=""
 
@@ -53,22 +52,18 @@ check_worker() {
     return 0
   fi
 
-  # 1. Terminal pane check (if pane ID file exists)
-  if [[ -f "$pane_file" ]]; then
-    local pane_id
-    pane_id=$(cat "$pane_file")
-    if terminal_available; then
-      if terminal_pane_alive "$pane_id"; then
-        status="healthy"
-        detail="pane ${pane_id} alive"
-      else
-        status="zombie"
-        detail="pane ${pane_id} dead"
-      fi
+  # 1. Backend liveness check (handle file managed by backend)
+  if backend_available; then
+    if backend_worker_alive "$issue"; then
+      status="healthy"
+      detail="worker alive"
+    else
+      status="zombie"
+      detail="worker dead"
     fi
   fi
 
-  # 2. If pane check was inconclusive, fallback to process-based detection
+  # 2. If backend check was inconclusive, fallback to process-based detection
   if [[ "$status" == "unknown" ]]; then
     local worktree=""
     worktree=$(git worktree list --porcelain 2>/dev/null \

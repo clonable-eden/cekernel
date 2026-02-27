@@ -1,18 +1,77 @@
 #!/usr/bin/env bash
-# backends/tmux.sh — tmux terminal backend
+# backends/tmux.sh — tmux backend (ADR-0005 API)
 #
-# Implements terminal_* functions using tmux.
-# Sourced by terminal-adapter.sh when CEKERNEL_TERMINAL=tmux.
+# Implements 4 external API functions using tmux.
+# Sourced by backend-adapter.sh when CEKERNEL_BACKEND=tmux.
 #
-# Pane IDs use tmux target format: "session:window.pane" (e.g., "cekernel:1.0")
+# Handle file: ${CEKERNEL_IPC_DIR}/handle-{issue} contains tmux pane target
+# (e.g., "session:window.pane").
 
-terminal_available() {
+# ── External API ──
+
+backend_available() {
   command -v tmux >/dev/null 2>&1
 }
 
-# terminal_resolve_workspace
-# Returns the current tmux session name (analogous to WezTerm workspace).
-terminal_resolve_workspace() {
+# backend_spawn_worker <issue> <worktree> <prompt>
+# Spawns a Worker in a tmux 3-pane layout.
+# Saves pane target to handle file internally.
+backend_spawn_worker() {
+  local issue="$1"
+  local worktree="$2"
+  local prompt="$3"
+
+  # Resolve session (tmux-specific)
+  local session=""
+  session=$(_backend_resolve_workspace)
+
+  # Spawn main window
+  local main_pane
+  main_pane=$(_backend_spawn_window "$worktree" "$session")
+
+  # Create right pane (40%) — terminal
+  _backend_split_pane right 40 "$main_pane" "$worktree" 2>/dev/null || true
+
+  # Create bottom pane (25%) — git log
+  _backend_split_pane bottom 25 "$main_pane" "$worktree" 2>/dev/null || true
+
+  # Send Claude command to main pane
+  local claude_cmd="CEKERNEL_SESSION_ID='${CEKERNEL_SESSION_ID:-}' claude --agent cekernel:worker '${prompt}'"
+  _backend_run_command "$main_pane" "$claude_cmd"
+
+  # Save handle (pane target)
+  echo "$main_pane" > "${CEKERNEL_IPC_DIR}/handle-${issue}"
+}
+
+# backend_worker_alive <issue>
+# exit 0 if alive, exit 1 if dead or no handle
+backend_worker_alive() {
+  local issue="$1"
+  local handle_file="${CEKERNEL_IPC_DIR}/handle-${issue}"
+
+  [[ -f "$handle_file" ]] || return 1
+
+  local pane_target
+  pane_target=$(cat "$handle_file")
+  _backend_pane_alive "$pane_target"
+}
+
+# backend_kill_worker <issue>
+# Kills the entire window. No error if handle missing.
+backend_kill_worker() {
+  local issue="$1"
+  local handle_file="${CEKERNEL_IPC_DIR}/handle-${issue}"
+
+  [[ -f "$handle_file" ]] || return 0
+
+  local pane_target
+  pane_target=$(cat "$handle_file")
+  _backend_kill_window "$pane_target"
+}
+
+# ── Private API (internal to tmux backend) ──
+
+_backend_resolve_workspace() {
   if [[ -z "${TMUX:-}" ]]; then
     echo ""
     return 0
@@ -32,9 +91,9 @@ terminal_resolve_workspace() {
   echo "$session"
 }
 
-# terminal_spawn_window <cwd> [session-name]
+# _backend_spawn_window <cwd> [session-name]
 # stdout: pane target (session:window.pane)
-terminal_spawn_window() {
+_backend_spawn_window() {
   local cwd="$1"
   local session="${2:-}"
   local args=()
@@ -47,16 +106,15 @@ terminal_spawn_window() {
   tmux new-window "${args[@]}"
 }
 
-# terminal_run_command <pane-target> <command>
-terminal_run_command() {
+# _backend_run_command <pane-target> <command>
+_backend_run_command() {
   local pane_target="$1"
   local cmd="$2"
   tmux send-keys -t "$pane_target" "$cmd" Enter
 }
 
-# terminal_split_pane <direction> <percent> <pane-target> <cwd> [command...]
-# direction: bottom | right
-terminal_split_pane() {
+# _backend_split_pane <direction> <percent> <pane-target> <cwd> [command...]
+_backend_split_pane() {
   local direction="$1"
   local percent="$2"
   local pane_target="$3"
@@ -84,15 +142,15 @@ terminal_split_pane() {
   tmux split-window "${args[@]}"
 }
 
-# terminal_kill_pane <pane-target>
-terminal_kill_pane() {
+# _backend_pane_alive <pane-target>
+_backend_pane_alive() {
   local pane_target="$1"
-  tmux kill-pane -t "$pane_target" 2>/dev/null || true
+  tmux list-panes -t "$pane_target" >/dev/null 2>&1
 }
 
-# terminal_kill_window <pane-target>
+# _backend_kill_window <pane-target>
 # Kill the entire window that the pane belongs to.
-terminal_kill_window() {
+_backend_kill_window() {
   local pane_target="$1"
 
   # Extract session:window from the pane target
@@ -101,39 +159,4 @@ terminal_kill_window() {
 
   tmux kill-window -t "$window_target" 2>/dev/null || true
   echo "Killed window: ${window_target}" >&2
-}
-
-# terminal_pane_alive <pane-target>
-# exit 0 if alive, exit 1 if dead
-terminal_pane_alive() {
-  local pane_target="$1"
-  tmux list-panes -t "$pane_target" >/dev/null 2>&1
-}
-
-# terminal_spawn_worker_layout <cwd> <session-name> <json-payload>
-# Spawn a new window with 3-pane layout for Worker.
-# Unlike WezTerm (which uses Lua-side OSC handler), tmux creates the layout
-# directly using split-window commands.
-# stdout: main pane target
-terminal_spawn_worker_layout() {
-  local cwd="$1"
-  local session="${2:-}"
-  local payload="$3"
-
-  # 1) Spawn main window
-  local main_pane
-  main_pane=$(terminal_spawn_window "$cwd" "$session")
-
-  # Extract the prompt from the JSON payload for reference
-  # The actual Claude Code command will be sent by the caller via terminal_run_command
-
-  # 2) Create right pane (40%) — terminal
-  local window_target
-  window_target=$(echo "$main_pane" | sed 's/\.[0-9]*$//')
-  terminal_split_pane right 40 "$main_pane" "$cwd" 2>/dev/null || true
-
-  # 3) Create bottom pane (25%) — git log
-  terminal_split_pane bottom 25 "$main_pane" "$cwd" 2>/dev/null || true
-
-  echo "$main_pane"
 }

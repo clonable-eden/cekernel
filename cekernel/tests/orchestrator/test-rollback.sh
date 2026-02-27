@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # test-rollback.sh — Tests for spawn-worker.sh rollback function
 #
-# spawn-worker.sh cannot be run directly due to WezTerm dependency.
+# spawn-worker.sh cannot be run directly due to terminal/backend dependency.
 # Here we extract and test the rollback() function logic.
 set -euo pipefail
 
@@ -61,6 +61,9 @@ mkdir -p "$CEKERNEL_IPC_DIR"
 (
   export CLAUDE_JSON="$FAKE_CLAUDE_JSON"
   export LOCK_DIR="${FAKE_CLAUDE_JSON}.lock"
+  # Source backend adapter for rollback (uses backend_kill_worker)
+  export CEKERNEL_BACKEND=wezterm
+  source "${CEKERNEL_DIR}/scripts/shared/backend-adapter.sh"
 
   # cd so git commands operate on the correct repo
   cd "$FAKE_REPO"
@@ -82,7 +85,7 @@ mkdir -p "$CEKERNEL_IPC_DIR"
   LOG_FILE="${LOG_DIR}/worker-${ISSUE_NUMBER}.log"
   echo "test log" > "$LOG_FILE"
 
-  echo "fake-pane-id" > "${CEKERNEL_IPC_DIR}/pane-${ISSUE_NUMBER}"
+  echo "fake-pane-id" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE_NUMBER}"
 
   # Register trust
   register_trust "$WORKTREE"
@@ -93,7 +96,7 @@ mkdir -p "$CEKERNEL_IPC_DIR"
 
   # Verify
   assert_not_exists "FIFO removed after rollback" "$FIFO"
-  assert_not_exists "Pane file removed after rollback" "${CEKERNEL_IPC_DIR}/pane-${ISSUE_NUMBER}"
+  assert_not_exists "Handle file removed after rollback" "${CEKERNEL_IPC_DIR}/handle-${ISSUE_NUMBER}"
   assert_not_exists "Worktree removed after rollback" "$WORKTREE"
   assert_not_exists "Log file removed after rollback" "$LOG_FILE"
 
@@ -126,13 +129,15 @@ rm -f "$FAKE_CLAUDE_JSON"
 (
   export CLAUDE_JSON="$FAKE_CLAUDE_JSON"
   export LOCK_DIR="${FAKE_CLAUDE_JSON}.lock"
+  export CEKERNEL_BACKEND=wezterm
+  source "${CEKERNEL_DIR}/scripts/shared/backend-adapter.sh"
 
-  # Create only FIFO (worktree, pane not created)
+  # Create only FIFO (worktree, handle not created)
   ISSUE_NUMBER="101"
   FIFO="${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}"
   mkfifo "$FIFO"
 
-  # WORKTREE, BRANCH, MAIN_PANE remain undefined
+  # WORKTREE, BRANCH remain undefined
 
   source_rollback
   rollback 2>/dev/null
@@ -149,6 +154,8 @@ mkdir -p "$CEKERNEL_IPC_DIR"
 (
   export CLAUDE_JSON="$FAKE_CLAUDE_JSON"
   export LOCK_DIR="${FAKE_CLAUDE_JSON}.lock"
+  export CEKERNEL_BACKEND=wezterm
+  source "${CEKERNEL_DIR}/scripts/shared/backend-adapter.sh"
 
   ISSUE_NUMBER="102"
   # Create nothing

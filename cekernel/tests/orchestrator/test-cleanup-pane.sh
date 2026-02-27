@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# test-cleanup-pane.sh — Tests that cleanup-worktree.sh closes WezTerm panes
+# test-cleanup-pane.sh — Tests that cleanup-worktree.sh kills Workers via backend
 #
-# cleanup-worktree.sh should kill WezTerm panes even without --force.
+# cleanup-worktree.sh should kill Workers even without --force.
 # WezTerm commands are mocked and kill-pane calls are recorded.
 set -euo pipefail
 
@@ -57,7 +57,7 @@ setup_worktree() {
   echo "$worktree"
 }
 
-# ── Test 1: cleanup without --force → pane is killed ──
+# ── Test 1: cleanup without --force → Worker is killed ──
 > "$WEZTERM_LOG"
 setup_wezterm_mock "$WEZTERM_LOG"
 
@@ -66,10 +66,11 @@ WORKTREE=$(setup_worktree "$ISSUE" "$FAKE_REPO")
 
 mkdir -p "$CEKERNEL_IPC_DIR"
 mkfifo "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
-echo "42" > "${CEKERNEL_IPC_DIR}/pane-${ISSUE}"
+# Use handle-{issue} (ADR-0005 format)
+echo "42" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE}"
 
 cd "$FAKE_REPO"
-bash "${CEKERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
+CEKERNEL_BACKEND=wezterm bash "${CEKERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
 
 # Verify pane was killed
 if grep -q "kill-pane.*42" "$WEZTERM_LOG" 2>/dev/null; then
@@ -81,9 +82,9 @@ else
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-assert_not_exists "Pane file removed after cleanup" "${CEKERNEL_IPC_DIR}/pane-${ISSUE}"
+assert_not_exists "Handle file removed after cleanup" "${CEKERNEL_IPC_DIR}/handle-${ISSUE}"
 
-# ── Test 2: cleanup with --force → pane is killed ──
+# ── Test 2: cleanup with --force → Worker is killed ──
 rm -rf "$CEKERNEL_IPC_DIR"
 > "$WEZTERM_LOG"
 
@@ -92,9 +93,9 @@ WORKTREE=$(setup_worktree "$ISSUE" "$FAKE_REPO")
 
 mkdir -p "$CEKERNEL_IPC_DIR"
 mkfifo "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
-echo "99" > "${CEKERNEL_IPC_DIR}/pane-${ISSUE}"
+echo "99" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE}"
 
-bash "${CEKERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" --force "$ISSUE" 2>/dev/null
+CEKERNEL_BACKEND=wezterm bash "${CEKERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" --force "$ISSUE" 2>/dev/null
 
 if grep -q "kill-pane.*99" "$WEZTERM_LOG" 2>/dev/null; then
   echo "  PASS: Pane killed with --force"
@@ -105,9 +106,9 @@ else
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-assert_not_exists "Pane file removed after --force cleanup" "${CEKERNEL_IPC_DIR}/pane-${ISSUE}"
+assert_not_exists "Handle file removed after --force cleanup" "${CEKERNEL_IPC_DIR}/handle-${ISSUE}"
 
-# ── Test 3: No pane file → skips without error ──
+# ── Test 3: No handle file → skips without error ──
 rm -rf "$CEKERNEL_IPC_DIR"
 > "$WEZTERM_LOG"
 
@@ -116,19 +117,19 @@ WORKTREE=$(setup_worktree "$ISSUE" "$FAKE_REPO")
 
 mkdir -p "$CEKERNEL_IPC_DIR"
 mkfifo "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
-# Do not create pane file
+# Do not create handle file
 
-bash "${CEKERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
+CEKERNEL_BACKEND=wezterm bash "${CEKERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
 RESULT=$?
 
-assert_eq "Cleanup succeeds without pane file" "0" "$RESULT"
+assert_eq "Cleanup succeeds without handle file" "0" "$RESULT"
 
 # wezterm kill-pane should not be called
 if grep -q "kill-pane" "$WEZTERM_LOG" 2>/dev/null; then
-  echo "  FAIL: kill-pane called despite no pane file"
+  echo "  FAIL: kill-pane called despite no handle file"
   TESTS_FAILED=$((TESTS_FAILED + 1))
 else
-  echo "  PASS: No kill-pane call when no pane file"
+  echo "  PASS: No kill-pane call when no handle file"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 fi
 
@@ -171,10 +172,10 @@ WORKTREE=$(setup_worktree "$ISSUE" "$FAKE_REPO")
 
 mkdir -p "$CEKERNEL_IPC_DIR"
 mkfifo "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
-echo "42" > "${CEKERNEL_IPC_DIR}/pane-${ISSUE}"
+echo "42" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE}"
 
 cd "$FAKE_REPO"
-bash "${CEKERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
+CEKERNEL_BACKEND=wezterm bash "${CEKERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
 
 # All panes in same window (42, 43, 44) should be killed
 if grep -q "kill-pane.*--pane-id 42" "$WEZTERM_LOG" 2>/dev/null; then
@@ -227,10 +228,10 @@ WORKTREE=$(setup_worktree "$ISSUE" "$FAKE_REPO")
 
 mkdir -p "$CEKERNEL_IPC_DIR"
 mkfifo "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
-echo "55" > "${CEKERNEL_IPC_DIR}/pane-${ISSUE}"
+echo "55" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE}"
 
 cd "$FAKE_REPO"
-bash "${CEKERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
+CEKERNEL_BACKEND=wezterm bash "${CEKERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
 
 # Main pane should be killed
 if grep -q "kill-pane.*--pane-id 55" "$WEZTERM_LOG" 2>/dev/null; then

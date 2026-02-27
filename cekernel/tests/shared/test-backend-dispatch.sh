@@ -97,7 +97,7 @@ OLD_CHECK=""
 for fn in "${OLD_FUNCTIONS[@]}"; do
   OLD_CHECK="${OLD_CHECK}declare -f ${fn} >/dev/null 2>&1 && echo ${fn}; "
 done
-FOUND=$(CEKERNEL_BACKEND=wezterm bash -c "source '${CEKERNEL_DIR}/scripts/shared/backend-adapter.sh'; ${OLD_CHECK}" 2>/dev/null)
+FOUND=$(CEKERNEL_BACKEND=wezterm bash -c "source '${CEKERNEL_DIR}/scripts/shared/backend-adapter.sh'; ${OLD_CHECK}" 2>/dev/null || true)
 if [[ -z "$FOUND" ]]; then
   echo "  PASS: No old terminal_* functions leaked into external API"
   TESTS_PASSED=$((TESTS_PASSED + 1))

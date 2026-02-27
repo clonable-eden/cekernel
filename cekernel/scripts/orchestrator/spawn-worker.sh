@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# spawn-worker.sh — Create worktree + launch Worker in terminal window
+# spawn-worker.sh — Create worktree + launch Worker via backend
 #
 # Usage: spawn-worker.sh [--resume] [--priority <priority>] <issue-number> [base-branch]
 #   priority: critical|high|normal|low or numeric 0-19 (default: normal)
@@ -17,7 +17,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 source "${SCRIPT_DIR}/../shared/session-id.sh"
 source "${SCRIPT_DIR}/../shared/claude-json-helper.sh"
-source "${SCRIPT_DIR}/../shared/terminal-adapter.sh"
+source "${SCRIPT_DIR}/../shared/backend-adapter.sh"
 source "${SCRIPT_DIR}/../shared/worker-state.sh"
 source "${SCRIPT_DIR}/../shared/worker-priority.sh"
 source "${SCRIPT_DIR}/../shared/task-file.sh"
@@ -71,11 +71,9 @@ WORKTREE="${WORKTREE_DIR}/${BRANCH}"
 # ── Rollback: clean up resources on failure ──
 rollback() {
   echo "Error: spawn-worker.sh failed. Rolling back..." >&2
-  # Kill terminal pane
-  if [[ -n "${MAIN_PANE:-}" ]]; then
-    terminal_kill_pane "$MAIN_PANE"
-  fi
-  rm -f "${CEKERNEL_IPC_DIR}/pane-${ISSUE_NUMBER}"
+  # Kill Worker via backend (handle file managed internally)
+  backend_kill_worker "$ISSUE_NUMBER" 2>/dev/null || true
+  rm -f "${CEKERNEL_IPC_DIR}/handle-${ISSUE_NUMBER}"
   # In resume mode, do not destroy the existing worktree/branch
   if [[ "${RESUME:-0}" -eq 0 ]]; then
     # Unregister trust
@@ -179,20 +177,7 @@ fi
 echo "worktree: $WORKTREE" >&2
 echo "branch:   $BRANCH" >&2
 
-# ── Launch terminal window (project_layout equivalent) ──
-#
-#   ┌──────────────┬──────────┐
-#   │  Claude Code │ Terminal │
-#   │   (60%)      │  (40%)   │
-#   ├──────────────┴──────────┤
-#   │  git log (25%)          │
-#   └─────────────────────────┘
-
-# Propagate CEKERNEL_SESSION_ID to Worker
-# Create Worker in the same workspace as Orchestrator
-WORKSPACE=$(terminal_resolve_workspace)
-
-# Launch Claude Code in main pane
+# ── Launch Worker via backend ──
 # Initial prompt for Worker:
 # 1. Read the target repository's CLAUDE.md first
 # 2. Follow kernel's protocol only for lifecycle (PR → CI → merge → notify)
@@ -203,23 +188,9 @@ else
   PROMPT="Resolve issue #${ISSUE_NUMBER}. First read the target repository's CLAUDE.md and fully follow its conventions. Follow only the kernel Worker Protocol for lifecycle: implement → create PR → verify CI → merge. When done, run ${CLAUDE_PLUGIN_ROOT}/scripts/worker/notify-complete.sh ${ISSUE_NUMBER} merged <pr-number>."
 fi
 
-# Build JSON payload for Lua-side layout construction.
-# The wezterm.lua user-var-changed handler creates the 3-pane layout in-process,
-# reducing 7+ wezterm cli IPC calls to 3. See docs/wezterm-events.lua.
-# Raw prompt is passed to JSON via jq (no shell escaping needed here).
-# The Lua handler is responsible for shell escaping when constructing the command.
-LAYOUT_PAYLOAD=$(jq -n \
-  --arg worktree "$WORKTREE" \
-  --arg session_id "$CEKERNEL_SESSION_ID" \
-  --arg prompt "$PROMPT" \
-  --arg issue_number "$ISSUE_NUMBER" \
-  '{worktree: $worktree, session_id: $session_id, prompt: $prompt, issue_number: $issue_number}'
-)
-
-MAIN_PANE=$(terminal_spawn_worker_layout "$WORKTREE" "$WORKSPACE" "$LAYOUT_PAYLOAD")
-
-# Save pane ID (used by health-check / cleanup)
-echo "$MAIN_PANE" > "${CEKERNEL_IPC_DIR}/pane-${ISSUE_NUMBER}"
+# Backend handles workspace resolution, window spawning, and handle file management internally.
+# Callers pass only (issue, worktree, prompt) — the backend decides how to launch.
+backend_spawn_worker "$ISSUE_NUMBER" "$WORKTREE" "$PROMPT"
 
 # ── State: READY (Worktree ready, Claude agent starting) ──
 worker_state_write "$ISSUE_NUMBER" READY "agent-starting"

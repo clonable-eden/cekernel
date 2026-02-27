@@ -81,7 +81,9 @@ fi
 
 # ── Test 4: backend_kill_worker — terminates the process ──
 backend_kill_worker "$ISSUE"
-sleep 0.3
+sleep 0.5
+# Wait for process to fully exit
+wait 2>/dev/null || true
 
 if backend_worker_alive "$ISSUE"; then
   echo "  FAIL: backend_worker_alive should return 1 after kill"
