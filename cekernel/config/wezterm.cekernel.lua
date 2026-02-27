@@ -1,10 +1,12 @@
--- cekernel: Worker レイアウトを WezTerm Lua イベントで in-process 構築
+-- cekernel WezTerm plugin — Worker layout via user-var event
 --
--- このスニペットを ~/.config/wezterm/wezterm.lua の `return config` の前に追加してください。
--- spawn-worker.sh が OSC user-var 経由でトリガーし、3 ペインレイアウトを
--- GUI プロセス内部で構築します（IPC 7+ 回 → 3 回に削減、UI フリーズ防止）。
+-- Install: symlink into ~/.config/wezterm/plugins.d/
+--   ln -sfn /path/to/cekernel/config/wezterm.cekernel.lua ~/.config/wezterm/plugins.d/
 --
--- レイアウト:
+-- spawn-worker.sh triggers this via OSC user-var, constructing a 3-pane layout
+-- inside the WezTerm GUI process (IPC 7+ → 3 calls, prevents UI freeze).
+--
+-- Layout:
 --   ┌──────────────┬──────────┐
 --   │  Claude Code │ Terminal │
 --   │   (60%)      │  (40%)   │
@@ -12,8 +14,10 @@
 --   │  git log (25%)          │
 --   └─────────────────────────┘
 --
--- デバッグ: Ctrl+Shift+L で WezTerm デバッグオーバーレイを開き、
--- [cekernel] プレフィックスのログを確認できます。
+-- Debug: Ctrl+Shift+L opens the WezTerm debug overlay.
+-- Look for [cekernel] prefixed log entries.
+
+local wezterm = require 'wezterm'
 
 wezterm.on('user-var-changed', function(window, pane, name, value)
   if name ~= 'cekernel_worker_layout' then
@@ -37,7 +41,7 @@ wezterm.on('user-var-changed', function(window, pane, name, value)
 
   local main_pane = pane
 
-  -- 下部ペイン (25%): git log watch — top_level で全幅に
+  -- Bottom pane (25%): git log watch — top_level for full width
   local bottom_pane = main_pane:split {
     direction = 'Bottom',
     size = 0.25,
@@ -46,21 +50,21 @@ wezterm.on('user-var-changed', function(window, pane, name, value)
   }
   bottom_pane:send_text("watch -n3 -t -c 'git --no-pager log --oneline --graph --color=always'\n")
 
-  -- 右ペイン (40%): 汎用ターミナル
+  -- Right pane (40%): general-purpose terminal
   main_pane:split {
     direction = 'Right',
     size = 0.4,
     cwd = worktree,
   }
 
-  -- メインペインに cd + export + claude コマンドを送信
-  -- shell 起動完了を待ってから send_text
+  -- Send cd + export + claude command to main pane
+  -- Wait for shell to be ready before send_text
   wezterm.time.call_after(0.3, function()
     main_pane:send_text(
       "cd '" .. worktree .. "' && export CEKERNEL_SESSION_ID='" .. session_id .. "'\n"
     )
     if prompt ~= '' then
-      -- シェルエスケープ: ' → '\''
+      -- Shell escape: ' → '\''
       local escaped = prompt:gsub("'", "'\\''")
       local cmd = "claude --agent cekernel:worker '" .. escaped .. "'"
       main_pane:send_text(cmd .. '\n')
