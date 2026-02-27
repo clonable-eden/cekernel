@@ -45,7 +45,8 @@ cekernel defines only the lifecycle skeleton for Workers:
 2. **Read the target repository's CLAUDE.md and understand its conventions**
    - If the CLAUDE.md references URLs or document paths, read those as well
    - If no CLAUDE.md exists, infer conventions from existing code (reference existing commit messages, PRs, and code style)
-3. Fetch issue content from the given issue number (`gh issue view`)
+3. Read issue content from `.cekernel-task.md` in the worktree (pre-extracted at spawn time)
+   - If `.cekernel-task.md` does not exist, fall back to `gh issue view`
 4. Understand the issue requirements
 5. Post Execution Plan as a comment on the issue
 

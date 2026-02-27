@@ -37,6 +37,7 @@ Key mappings:
 | address space | git worktree |
 | IPC pipe | named pipe (FIFO) |
 | IPC namespace | `CEKERNEL_SESSION_ID` |
+| page cache | `.cekernel-task.md` |
 
 ## Scripts
 
@@ -52,6 +53,17 @@ Source `shared/session-id.sh` to establish session scope:
 
 ```bash
 source "${SCRIPT_DIR}/../shared/session-id.sh"
+```
+
+### shared/task-file.sh
+
+A helper for extracting issue data into a local `.cekernel-task.md` file in the worktree at spawn time. Workers read this file instead of calling `gh issue view`, reducing GitHub API calls and context window consumption (OS analogy: page cache).
+
+```bash
+source "${SCRIPT_DIR}/../shared/task-file.sh"
+create_task_file "$WORKTREE" "$ISSUE_NUMBER"  # Fetch issue and write .cekernel-task.md
+task_file_path "$WORKTREE"                    # Returns path to .cekernel-task.md
+task_file_exists "$WORKTREE"                  # Returns 0 if file exists
 ```
 
 ### shared/claude-json-helper.sh
