@@ -120,3 +120,28 @@ terminal_pane_alive() {
   local pane_id="$1"
   wezterm cli list --format json 2>/dev/null | grep -q "\"pane_id\":${pane_id}[,}]"
 }
+
+# terminal_spawn_worker_layout <cwd> <workspace> <json-payload>
+# Spawn a new window and trigger the Lua-side worker layout via OSC user-var.
+# This reduces 7+ wezterm cli IPC calls to 3 (spawn + send-text + Enter),
+# preventing UI freezes on macOS. See docs/wezterm-events.lua for the Lua handler.
+# stdout: main pane ID
+terminal_spawn_worker_layout() {
+  local cwd="$1"
+  local workspace="${2:-}"
+  local payload="$3"
+
+  # 1) Spawn window (IPC 1)
+  local pane_id
+  pane_id=$(terminal_spawn_window "$cwd" "$workspace")
+
+  # 2) Send OSC user-var to trigger Lua handler (IPC 2-3)
+  local payload_b64
+  payload_b64=$(printf '%s' "$payload" | base64)
+  local osc_cmd="printf '\\033]1337;SetUserVar=%s=%s\\007' cekernel_worker_layout '${payload_b64}'"
+  wezterm cli send-text --pane-id "$pane_id" -- "$osc_cmd"
+  sleep 0.1
+  wezterm cli send-text --pane-id "$pane_id" --no-paste $'\r'
+
+  echo "$pane_id"
+}

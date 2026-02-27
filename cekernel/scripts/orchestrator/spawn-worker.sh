@@ -134,19 +134,6 @@ echo "branch:   $BRANCH" >&2
 # Propagate CEKERNEL_SESSION_ID to Worker
 # Create Worker in the same workspace as Orchestrator
 WORKSPACE=$(terminal_resolve_workspace)
-MAIN_PANE=$(terminal_spawn_window "$WORKTREE" "$WORKSPACE")
-
-# Save pane ID (used by health-check / cleanup)
-echo "$MAIN_PANE" > "${CEKERNEL_IPC_DIR}/pane-${ISSUE_NUMBER}"
-# Explicit cd in case --cwd doesn't take effect reliably
-terminal_run_command "$MAIN_PANE" "cd '${WORKTREE}' && export CEKERNEL_SESSION_ID='${CEKERNEL_SESSION_ID}'"
-
-# Bottom: auto-refresh git log
-terminal_split_pane bottom 25 "$MAIN_PANE" "$WORKTREE" \
-  watch -n3 -t -c "git --no-pager log --oneline --graph --color=always"
-
-# Right: general-purpose terminal
-terminal_split_pane right 40 "$MAIN_PANE" "$WORKTREE"
 
 # Launch Claude Code in main pane
 # Initial prompt for Worker:
@@ -154,7 +141,19 @@ terminal_split_pane right 40 "$MAIN_PANE" "$WORKTREE"
 # 2. Follow kernel's protocol only for lifecycle (PR → CI → merge → notify)
 # 3. Follow the target repository's conventions for implementation
 PROMPT="Resolve issue #${ISSUE_NUMBER}. First read the target repository's CLAUDE.md and fully follow its conventions. Follow only the kernel Worker Protocol for lifecycle: implement → create PR → verify CI → merge. When done, run ${CLAUDE_PLUGIN_ROOT}/scripts/worker/notify-complete.sh ${ISSUE_NUMBER} merged <pr-number>."
-terminal_run_command "$MAIN_PANE" "claude --agent cekernel:worker '${PROMPT}'"
+
+# Build JSON payload for Lua-side layout construction.
+# The wezterm.lua user-var-changed handler creates the 3-pane layout in-process,
+# reducing 7+ wezterm cli IPC calls to 3. See docs/wezterm-events.lua.
+LAYOUT_PAYLOAD=$(cat <<EOJSON
+{"worktree":"${WORKTREE}","session_id":"${CEKERNEL_SESSION_ID}","prompt":"claude --agent cekernel:worker '${PROMPT}'","issue_number":"${ISSUE_NUMBER}"}
+EOJSON
+)
+
+MAIN_PANE=$(terminal_spawn_worker_layout "$WORKTREE" "$WORKSPACE" "$LAYOUT_PAYLOAD")
+
+# Save pane ID (used by health-check / cleanup)
+echo "$MAIN_PANE" > "${CEKERNEL_IPC_DIR}/pane-${ISSUE_NUMBER}"
 
 # ── Record lifecycle event in log ──
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] SPAWN issue=#${ISSUE_NUMBER} branch=${BRANCH}" >> "$LOG_FILE"
