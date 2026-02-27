@@ -165,7 +165,7 @@ Rejected:
 
 > Rule of Least Surprise: "In interface design, always do the least surprising thing."
 
-Every script that references FIFOs uses the pattern `worker-{issue}`. Changing FIFO names at runtime would break `watch-workers.sh` (which opens FIFOs by known path), `notify-complete.sh` (which writes to a known path), `health-check.sh` (which finds FIFOs by glob), and `cleanup-worktree.sh` (which removes FIFOs by known path). A renaming FIFO violates the expectation that IPC endpoints have stable names.
+Every script that references FIFOs uses the pattern `worker-{issue}`. Changing FIFO names at runtime would break `watch-worker.sh` (which opens FIFOs by known path), `notify-complete.sh` (which writes to a known path), `health-check.sh` (which finds FIFOs by glob), and `cleanup-worktree.sh` (which removes FIFOs by known path). A renaming FIFO violates the expectation that IPC endpoints have stable names.
 
 ### Alternative: Central state database (SQLite)
 

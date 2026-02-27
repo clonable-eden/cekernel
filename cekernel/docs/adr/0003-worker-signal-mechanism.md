@@ -13,7 +13,7 @@ Orchestrator → Worker:  spawn (one-time, at birth)
 Worker → Orchestrator:  notify-complete via FIFO (one-time, at death)
 ```
 
-Between spawn and completion, there is no communication channel from Orchestrator to Worker. The Orchestrator can detect problems (`health-check.sh` finds zombies, `watch-workers.sh` detects timeouts) but cannot act on them — it can only kill the terminal pane (`cleanup-worktree.sh`), which is the equivalent of `SIGKILL`: immediate, ungraceful, no cleanup by the Worker.
+Between spawn and completion, there is no communication channel from Orchestrator to Worker. The Orchestrator can detect problems (`health-check.sh` finds zombies, `watch-worker.sh` detects timeouts) but cannot act on them — it can only kill the terminal pane (`cleanup-worktree.sh`), which is the equivalent of `SIGKILL`: immediate, ungraceful, no cleanup by the Worker.
 
 This creates three operational gaps:
 
@@ -102,7 +102,7 @@ Writes the signal file to the IPC directory. Returns immediately (asynchronous d
 
 > Rule of Modularity: "Write simple parts connected by clean interfaces."
 
-The signal mechanism is a single new script (`send-signal.sh`) and a file-existence check in the Worker. It does not modify existing scripts — `notify-complete.sh`, `watch-workers.sh`, and `health-check.sh` continue to work unchanged. The signal is a new, independent module that plugs into the existing IPC directory.
+The signal mechanism is a single new script (`send-signal.sh`) and a file-existence check in the Worker. It does not modify existing scripts — `notify-complete.sh`, `watch-worker.sh`, and `health-check.sh` continue to work unchanged. The signal is a new, independent module that plugs into the existing IPC directory.
 
 > Rule of Composition: "Design programs to be connected with other programs."
 
@@ -153,7 +153,7 @@ FIFOs are unidirectional by design. Using a single FIFO for bidirectional commun
 - Workers can be gracefully stopped, preserving uncommitted work on the branch
 - Enables future preemption (#77): Orchestrator sends `TERM` to low-priority Worker, waits for acknowledgment, spawns high-priority Worker in the freed slot
 - `send-signal.sh` is composable: can be called by Orchestrator, by cron (#79), by the user directly, or by other scripts
-- Existing mechanisms unchanged: `notify-complete.sh`, `watch-workers.sh`, `health-check.sh`, `cleanup-worktree.sh` all continue to work as-is
+- Existing mechanisms unchanged: `notify-complete.sh`, `watch-worker.sh`, `health-check.sh`, `cleanup-worktree.sh` all continue to work as-is
 - `KILL` (pane termination) remains available as the last resort when cooperative shutdown fails
 
 ### Negative

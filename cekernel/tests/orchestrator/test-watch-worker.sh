@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-watch-workers.sh — watch-workers test within session scope
+# test-watch-worker.sh — watch-worker test within session scope
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -7,7 +7,7 @@ source "${SCRIPT_DIR}/../helpers.sh"
 
 CEKERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-echo "test: watch-workers (session-scoped)"
+echo "test: watch-worker (session-scoped)"
 
 export CEKERNEL_SESSION_ID="test-watch-00000001"
 source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
@@ -28,14 +28,14 @@ for issue in "${ISSUES[@]}"; do
   mkfifo "${CEKERNEL_IPC_DIR}/worker-${issue}"
 done
 
-# ── Test: watch-workers.sh monitors session-scoped FIFOs in parallel ──
+# ── Test: watch-worker.sh monitors session-scoped FIFOs in parallel ──
 RESULT_FILE=$(mktemp)
 
-# Launch watch-workers in background
-bash "${CEKERNEL_DIR}/scripts/orchestrator/watch-workers.sh" "${ISSUES[@]}" > "$RESULT_FILE" 2>/dev/null &
+# Launch watch-worker in background
+bash "${CEKERNEL_DIR}/scripts/orchestrator/watch-worker.sh" "${ISSUES[@]}" > "$RESULT_FILE" 2>/dev/null &
 WATCH_PID=$!
 
-# Wait for watch-workers to open FIFOs
+# Wait for watch-worker to open FIFOs
 sleep 0.5
 
 # Write to each FIFO
@@ -45,7 +45,7 @@ for issue in "${ISSUES[@]}"; do
   WRITER_PIDS+=($!)
 done
 
-# Poll for watch-workers completion (up to 5 seconds)
+# Poll for watch-worker completion (up to 5 seconds)
 WATCH_DONE=0
 for _ in $(seq 1 50); do
   if ! kill -0 "$WATCH_PID" 2>/dev/null; then
@@ -55,7 +55,7 @@ for _ in $(seq 1 50); do
   sleep 0.1
 done
 
-# Kill remaining writers after watch-workers finishes (they may block without a reader)
+# Kill remaining writers after watch-worker finishes (they may block without a reader)
 for pid in "${WRITER_PIDS[@]}"; do
   kill "$pid" 2>/dev/null || true
 done
@@ -70,7 +70,7 @@ wait "$WATCH_PID" 2>/dev/null || true
 
 if [[ "$WATCH_DONE" -eq 0 ]]; then
   rm -f "$RESULT_FILE"
-  echo "  FAIL: watch-workers timed out (not reading session FIFOs)"
+  echo "  FAIL: watch-worker timed out (not reading session FIFOs)"
   ((TESTS_FAILED++)) || true
   report_results
   exit "$TESTS_FAILED"

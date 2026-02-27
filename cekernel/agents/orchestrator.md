@@ -40,7 +40,7 @@ source ${CLAUDE_PLUGIN_ROOT}/scripts/shared/session-id.sh && echo $CEKERNEL_SESS
 
 # 2. Pass CEKERNEL_SESSION_ID as environment variable in all subsequent commands
 export CEKERNEL_SESSION_ID=glimmer-7861a821 && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 4
-export CEKERNEL_SESSION_ID=glimmer-7861a821 && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-workers.sh 4   # run_in_background: true
+export CEKERNEL_SESSION_ID=glimmer-7861a821 && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-worker.sh 4   # run_in_background: true
 export CEKERNEL_SESSION_ID=glimmer-7861a821 && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/cleanup-worktree.sh 4
 ```
 
@@ -53,7 +53,7 @@ export CEKERNEL_SESSION_ID=glimmer-7861a821 && ${CLAUDE_PLUGIN_ROOT}/scripts/orc
 export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 4
 
 # 2. Monitor completion in background (Bash run_in_background: true)
-export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-workers.sh 4
+export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-worker.sh 4
 
 # 3. While waiting, periodically check and report status
 export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/worker-status.sh
@@ -62,7 +62,7 @@ export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/wo
 export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/cleanup-worktree.sh 4
 ```
 
-Step 2 MUST use `run_in_background: true` on the Bash tool call. This makes `watch-workers.sh` non-blocking, allowing the Orchestrator to remain active in the foreground.
+Step 2 MUST use `run_in_background: true` on the Bash tool call. This makes `watch-worker.sh` non-blocking, allowing the Orchestrator to remain active in the foreground.
 
 While the background task is running, periodically execute `worker-status.sh` (step 3) to report progress. When the background task completion notification arrives, proceed to cleanup (step 4).
 
@@ -73,11 +73,11 @@ While the background task is running, periodically execute `worker-status.sh` (s
 
 # 1. Spawn Workers and watch each individually in background (Bash run_in_background: true)
 export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 4
-export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-workers.sh 4  # run_in_background: true
+export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-worker.sh 4  # run_in_background: true
 export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 5
-export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-workers.sh 5  # run_in_background: true
+export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-worker.sh 5  # run_in_background: true
 export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 6
-export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-workers.sh 6  # run_in_background: true
+export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-worker.sh 6  # run_in_background: true
 
 # 2. While waiting, periodically check and report status
 export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/worker-status.sh
@@ -106,7 +106,7 @@ export CEKERNEL_MAX_WORKERS=5
 
 When the number of issues exceeds `CEKERNEL_MAX_WORKERS`, the Orchestrator uses a waiting queue model:
 
-1. Spawn the first `MAX_WORKERS` issues, each with an individual `watch-workers.sh <issue>` in background (`run_in_background: true`)
+1. Spawn the first `MAX_WORKERS` issues, each with an individual `watch-worker.sh <issue>` in background (`run_in_background: true`)
 2. When any background watch completes → cleanup that Worker → spawn the next issue from the queue (with its own background watch)
 3. Periodically report status via `worker-status.sh` while waiting
 4. Repeat until the queue is empty and all Workers have completed
@@ -119,18 +119,18 @@ This keeps the number of active Workers at `MAX_WORKERS` at all times, maximizin
 
 # Initial: spawn first 3, each watched individually in background
 export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 4
-export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-workers.sh 4  # run_in_background: true
+export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-worker.sh 4  # run_in_background: true
 export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 5
-export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-workers.sh 5  # run_in_background: true
+export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-worker.sh 5  # run_in_background: true
 export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 6
-export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-workers.sh 6  # run_in_background: true
+export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-worker.sh 6  # run_in_background: true
 # Queue remaining: [7, 8, 9]
 
 # Worker 5 completes (background notification arrives)
 export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/cleanup-worktree.sh 5
 # Spawn next from queue
 export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 7
-export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-workers.sh 7  # run_in_background: true
+export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-worker.sh 7  # run_in_background: true
 # Queue remaining: [8, 9]
 
 # ... repeat until queue empty and all Workers complete
@@ -147,7 +147,7 @@ export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/wo
 # {"issue":5,"worktree":"/path/.worktrees/issue/5-...","fifo":"/tmp/cekernel-ipc/.../worker-5","uptime":"8m"}
 ```
 
-During background monitoring (while `watch-workers.sh` runs via `run_in_background`), periodically call `worker-status.sh` to report progress to the user. Output the status and any relevant observations about Worker progress.
+During background monitoring (while `watch-worker.sh` runs via `run_in_background`), periodically call `worker-status.sh` to report progress to the user. Output the status and any relevant observations about Worker progress.
 
 ## Decision Criteria
 
@@ -198,12 +198,12 @@ Investigate Workers whose logs haven't been updated for a long time as potential
 
 ### Timeout (SIGALRM equivalent)
 
-`watch-workers.sh` controls timeout via the `CEKERNEL_WORKER_TIMEOUT` environment variable (default: 3600s = 1 hour).
+`watch-worker.sh` controls timeout via the `CEKERNEL_WORKER_TIMEOUT` environment variable (default: 3600s = 1 hour).
 
 ```bash
 # Set timeout to 30 minutes
 export CEKERNEL_WORKER_TIMEOUT=1800
-export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-workers.sh 4  # run_in_background: true
+export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-worker.sh 4  # run_in_background: true
 ```
 
 On timeout, the following JSON is returned:
@@ -242,4 +242,4 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/cleanup-worktree.sh --force 4
 - Worker unresponsive: check log last modification time, detect zombie with `health-check.sh` → force terminate with `cleanup-worktree.sh --force`
 - Merge conflict: Worker attempts to resolve. If impossible, sends error notification via FIFO
 - CI failure: Worker attempts to fix. After 3 failures, escalate to human
-- Timeout: `watch-workers.sh` automatically detects and returns `timeout` status
+- Timeout: `watch-worker.sh` automatically detects and returns `timeout` status
