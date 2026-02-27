@@ -41,7 +41,7 @@ backend_spawn_worker() {
     cd "$worktree" && \
     unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT && \
     CEKERNEL_SESSION_ID="${CEKERNEL_SESSION_ID:-}" \
-    exec claude -p --agent cekernel:worker "$prompt"
+    exec claude -p --agent "${CEKERNEL_AGENT_WORKER:-worker}" "$prompt"
   ) > "$log_file" 2>&1 &
   local pid=$!
 

@@ -31,7 +31,8 @@ backend_spawn_worker() {
     --arg session_id "${CEKERNEL_SESSION_ID:-}" \
     --arg prompt "$prompt" \
     --arg issue_number "$issue" \
-    '{worktree: $worktree, session_id: $session_id, prompt: $prompt, issue_number: $issue_number}'
+    --arg agent_name "${CEKERNEL_AGENT_WORKER:-worker}" \
+    '{worktree: $worktree, session_id: $session_id, prompt: $prompt, issue_number: $issue_number, agent_name: $agent_name}'
   )
 
   # Spawn window (IPC 1)

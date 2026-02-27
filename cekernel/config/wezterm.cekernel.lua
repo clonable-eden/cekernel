@@ -36,6 +36,7 @@ wezterm.on('user-var-changed', function(window, pane, name, value)
   local session_id = params.session_id or ''
   local prompt = params.prompt or ''
   local issue_number = params.issue_number or ''
+  local agent_name = params.agent_name or 'worker'
 
   wezterm.log_info('[cekernel] issue=#' .. issue_number .. ' worktree=' .. worktree)
 
@@ -66,7 +67,7 @@ wezterm.on('user-var-changed', function(window, pane, name, value)
     if prompt ~= '' then
       -- Shell escape: ' → '\''
       local escaped = prompt:gsub("'", "'\\''")
-      local cmd = "claude --agent cekernel:worker '" .. escaped .. "'"
+      local cmd = "claude --agent " .. agent_name .. " '" .. escaped .. "'"
       main_pane:send_text(cmd .. '\n')
     end
   end)

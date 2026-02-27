@@ -44,6 +44,17 @@ export CEKERNEL_SESSION_ID=glimmer-7861a821 && ${CLAUDE_PLUGIN_ROOT}/scripts/orc
 export CEKERNEL_SESSION_ID=glimmer-7861a821 && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/cleanup-worktree.sh 4
 ```
 
+### CEKERNEL_AGENT_WORKER Propagation
+
+When the `/orchestrate` skill detects plugin mode (`CLAUDE_PLUGIN_ROOT` is set), it determines the correct agent name (`cekernel:worker` for plugin mode, `worker` for local mode) and passes `CEKERNEL_AGENT_WORKER` to the Orchestrator. The Orchestrator must propagate this to all `spawn-worker.sh` invocations.
+
+```bash
+# Example: propagate agent name to spawn-worker.sh
+export CEKERNEL_SESSION_ID=glimmer-7861a821 && export CEKERNEL_AGENT_WORKER=cekernel:worker && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 4
+```
+
+`spawn-worker.sh` defaults `CEKERNEL_AGENT_WORKER` to `worker` if unset, ensuring safe fallback for direct execution.
+
 ### CEKERNEL_ENV (Env Profile) Propagation
 
 When the `/orchestrate` skill specifies `--env <profile>`, the Orchestrator must propagate `CEKERNEL_ENV` to all `spawn-worker.sh` invocations. `spawn-worker.sh` sources `load-env.sh` which reads the profile and exports the configured variables.
@@ -70,10 +81,10 @@ Available profiles: `default`, `headless`, `ci`, or any custom profile in `.ceke
 ### Single Issue Processing
 
 ```bash
-# CEKERNEL_SESSION_ID and CEKERNEL_ENV determined beforehand
+# CEKERNEL_SESSION_ID, CEKERNEL_ENV, and CEKERNEL_AGENT_WORKER determined beforehand
 
 # 1. Spawn Worker (CEKERNEL_ENV propagates to load-env.sh inside spawn-worker.sh)
-export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 4
+export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && export CEKERNEL_AGENT_WORKER=<agent-name> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 4
 
 # 2. Monitor completion in background (Bash run_in_background: true)
 export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-worker.sh 4
@@ -92,14 +103,14 @@ While the background task is running, periodically execute `worker-status.sh` (s
 ### Parallel Multi-Issue Processing
 
 ```bash
-# CEKERNEL_SESSION_ID and CEKERNEL_ENV determined beforehand
+# CEKERNEL_SESSION_ID, CEKERNEL_ENV, and CEKERNEL_AGENT_WORKER determined beforehand
 
 # 1. Spawn Workers and watch each individually in background (Bash run_in_background: true)
-export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 4
+export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && export CEKERNEL_AGENT_WORKER=<agent-name> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 4
 export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-worker.sh 4  # run_in_background: true
-export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 5
+export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && export CEKERNEL_AGENT_WORKER=<agent-name> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 5
 export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-worker.sh 5  # run_in_background: true
-export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 6
+export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && export CEKERNEL_AGENT_WORKER=<agent-name> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 6
 export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-worker.sh 6  # run_in_background: true
 
 # 2. While waiting, periodically check and report status
@@ -162,18 +173,18 @@ This keeps the number of active Workers at `MAX_WORKERS` at all times, maximizin
 # Queue (sorted by priority): [4(critical), 6(high), 5(normal), 7(normal), 8(low), 9(low)]
 
 # Initial: spawn first 3 (highest priority), each watched individually in background
-export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh --priority critical 4
+export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && export CEKERNEL_AGENT_WORKER=<agent-name> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh --priority critical 4
 export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-worker.sh 4  # run_in_background: true
-export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh --priority high 6
+export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && export CEKERNEL_AGENT_WORKER=<agent-name> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh --priority high 6
 export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-worker.sh 6  # run_in_background: true
-export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 5
+export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && export CEKERNEL_AGENT_WORKER=<agent-name> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 5
 export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-worker.sh 5  # run_in_background: true
 # Queue remaining: [7(normal), 8(low), 9(low)]
 
 # Worker 6 completes (background notification arrives)
 export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/cleanup-worktree.sh 6
 # Spawn next highest-priority from queue
-export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 7
+export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && export CEKERNEL_AGENT_WORKER=<agent-name> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 7
 export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-worker.sh 7  # run_in_background: true
 # Queue remaining: [8(low), 9(low)]
 
@@ -213,7 +224,8 @@ Specifically, the following are under the target repository's authority, and nei
 - Merge strategy (`--merge`, `--squash`, `--rebase`)
 - Branch naming conventions
 
-spawn-worker.sh launches Workers with `claude --agent cekernel:worker`.
+spawn-worker.sh launches Workers with `claude --agent ${CEKERNEL_AGENT_WORKER}`.
+The agent name is determined by the `/orchestrate` skill: `cekernel:worker` in plugin mode, `worker` in local mode.
 The `--agent` flag applies the Worker agent definition's `tools`,
 enabling autonomous execution without permission prompts.
 

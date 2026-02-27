@@ -36,7 +36,7 @@ backend_spawn_worker() {
   _backend_split_pane bottom 25 "$main_pane" "$worktree" 2>/dev/null || true
 
   # Send Claude command to main pane
-  local claude_cmd="CEKERNEL_SESSION_ID='${CEKERNEL_SESSION_ID:-}' claude --agent cekernel:worker '${prompt}'"
+  local claude_cmd="CEKERNEL_SESSION_ID='${CEKERNEL_SESSION_ID:-}' claude --agent ${CEKERNEL_AGENT_WORKER:-worker} '${prompt}'"
   _backend_run_command "$main_pane" "$claude_cmd"
 
   # Save handle (pane target)
