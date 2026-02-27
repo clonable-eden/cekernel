@@ -60,7 +60,10 @@ wezterm.on('user-var-changed', function(window, pane, name, value)
       "cd '" .. worktree .. "' && export CEKERNEL_SESSION_ID='" .. session_id .. "'\n"
     )
     if prompt ~= '' then
-      main_pane:send_text(prompt .. '\n')
+      -- シェルエスケープ: ' → '\''
+      local escaped = prompt:gsub("'", "'\\''")
+      local cmd = "claude --agent cekernel:worker '" .. escaped .. "'"
+      main_pane:send_text(cmd .. '\n')
     end
   end)
 

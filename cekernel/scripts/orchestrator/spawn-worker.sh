@@ -142,15 +142,17 @@ WORKSPACE=$(terminal_resolve_workspace)
 # 3. Follow the target repository's conventions for implementation
 PROMPT="Resolve issue #${ISSUE_NUMBER}. First read the target repository's CLAUDE.md and fully follow its conventions. Follow only the kernel Worker Protocol for lifecycle: implement → create PR → verify CI → merge. When done, run ${CLAUDE_PLUGIN_ROOT}/scripts/worker/notify-complete.sh ${ISSUE_NUMBER} merged <pr-number>."
 
-# Escape single quotes for shell embedding: ' → '\''
-PROMPT_ESCAPED="${PROMPT//\'/\'\\\'\'}"
-
 # Build JSON payload for Lua-side layout construction.
 # The wezterm.lua user-var-changed handler creates the 3-pane layout in-process,
 # reducing 7+ wezterm cli IPC calls to 3. See docs/wezterm-events.lua.
-LAYOUT_PAYLOAD=$(cat <<EOJSON
-{"worktree":"${WORKTREE}","session_id":"${CEKERNEL_SESSION_ID}","prompt":"claude --agent cekernel:worker '${PROMPT_ESCAPED}'","issue_number":"${ISSUE_NUMBER}"}
-EOJSON
+# Raw prompt is passed to JSON via jq (no shell escaping needed here).
+# The Lua handler is responsible for shell escaping when constructing the command.
+LAYOUT_PAYLOAD=$(jq -n \
+  --arg worktree "$WORKTREE" \
+  --arg session_id "$CEKERNEL_SESSION_ID" \
+  --arg prompt "$PROMPT" \
+  --arg issue_number "$ISSUE_NUMBER" \
+  '{worktree: $worktree, session_id: $session_id, prompt: $prompt, issue_number: $issue_number}'
 )
 
 MAIN_PANE=$(terminal_spawn_worker_layout "$WORKTREE" "$WORKSPACE" "$LAYOUT_PAYLOAD")
