@@ -1,5 +1,6 @@
 ---
 description: Delegate issues to the Orchestrator agent for parallel processing after priority assessment
+argument-hint: "[--env profile] <issue-numbers>"
 allowed-tools: Bash, Read, Task(cekernel:orchestrator)
 ---
 
@@ -10,6 +11,18 @@ Delegates specified issues to the Orchestrator agent for parallel processing usi
 ## Usage
 
 Receive issue numbers (single or multiple) from the user.
+
+Optional flags:
+
+- `--env <profile>` — Select an env profile (default: `default`). Available profiles: `default`, `headless`, `ci`, or any custom profile in `.cekernel/envs/`.
+
+Examples:
+
+```
+/cekernel:orchestrate #108
+/cekernel:orchestrate --env headless #108 #109
+/cekernel:orchestrate --env ci #42
+```
 
 ## Workflow
 
@@ -27,18 +40,27 @@ For multiple issues, additionally:
 3. Analyze dependencies between issues (does completing A require B to finish first?)
 4. If dependencies exist, organize into phases and present the execution order to the user for confirmation
 
-### Step 2: Launch Orchestrator Agent
+### Step 2: Parse `--env` and Launch Orchestrator Agent
+
+If `--env <profile>` was specified, set `CEKERNEL_ENV` to the given profile name. If not specified, default to `default`.
 
 Launch the `cekernel:orchestrator` subagent via the Task tool:
 
 - `subagent_type`: `cekernel:orchestrator`
 - `run_in_background`: `true`
-- `prompt`: Include issue numbers, base branch (if specified), and execution order (if determined in Step 1)
+- `prompt`: Include issue numbers, base branch (if specified), execution order (if determined in Step 1), and `CEKERNEL_ENV` value. Instruct the Orchestrator to pass `export CEKERNEL_ENV=<profile>` in all `spawn-worker.sh` invocations.
+
+Example prompt fragment:
+
+```
+Use CEKERNEL_ENV=headless when spawning workers:
+export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=headless && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 108
+```
 
 The Orchestrator autonomously executes:
 
 1. Issue verification and triage (FAIL for ambiguous issues)
-2. Worker spawning
+2. Worker spawning (with `CEKERNEL_ENV` propagated)
 3. Completion monitoring
 4. Cleanup
 
