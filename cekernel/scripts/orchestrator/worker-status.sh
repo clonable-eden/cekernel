@@ -3,7 +3,7 @@
 #
 # Usage: worker-status.sh
 # Output: JSON Lines (1 line = 1 Worker)
-#   {"issue": 4, "worktree": "/path/to/.worktrees/issue/4-...", "fifo": "/tmp/cekernel-ipc/.../worker-4", "uptime": "12m"}
+#   {"issue": 4, "worktree": "...", "fifo": "...", "uptime": "12m", "state": "RUNNING", "state_detail": "phase1:implement"}
 #
 # Exit codes:
 #   0 — Success

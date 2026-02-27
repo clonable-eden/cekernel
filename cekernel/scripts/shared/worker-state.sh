@@ -11,7 +11,7 @@
 #                    ↑          ↓
 #                    └──────────┘
 #
-# State file format: STATE:detail (one line)
+# State file format: STATE:TIMESTAMP:detail (one line, detail may contain colons)
 # State file path: ${CEKERNEL_IPC_DIR}/worker-{issue}.state
 #
 # Functions:

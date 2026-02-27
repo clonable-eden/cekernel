@@ -37,6 +37,7 @@ Key mappings:
 | address space | git worktree |
 | IPC pipe | named pipe (FIFO) |
 | IPC namespace | `CEKERNEL_SESSION_ID` |
+| process state | `worker-state.sh` (NEW/READY/RUNNING/WAITING/TERMINATED) |
 
 ## Scripts
 
@@ -65,6 +66,20 @@ unregister_trust "$WORKTREE"  # Unregister trust for the worktree path
 ```
 
 Uses mkdir-based file locking (`acquire_claude_json_lock` / `release_claude_json_lock`) to prevent concurrent writes. In tests, override paths via the `CLAUDE_JSON` / `LOCK_DIR` environment variables.
+
+### shared/worker-state.sh
+
+Worker process state management. Each Worker has a state file (`worker-{issue}.state`) in the session IPC directory.
+
+```bash
+source "${SCRIPT_DIR}/../shared/worker-state.sh"
+worker_state_write "$ISSUE" RUNNING "phase1:implement"  # Write state
+worker_state_read "$ISSUE"                               # Read state → JSON
+```
+
+State machine: `NEW → READY → RUNNING → WAITING → TERMINATED` (with `RUNNING ↔ WAITING` transitions).
+
+State file format: `STATE:TIMESTAMP:detail` (atomic write via temp+rename). `worker_state_read` returns `UNKNOWN` for missing state files.
 
 ### Known Pitfalls
 
