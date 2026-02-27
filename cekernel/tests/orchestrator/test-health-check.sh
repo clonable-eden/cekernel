@@ -19,15 +19,18 @@ trap cleanup EXIT
 
 mkdir -p "$CEKERNEL_IPC_DIR"
 
+# Use headless backend for tests (always available, even on CI without terminal)
+export CEKERNEL_BACKEND=headless
+
 # ── Test 1: No FIFO → completed ──
 RESULT=$(bash "${CEKERNEL_DIR}/scripts/orchestrator/health-check.sh" 70 2>/dev/null)
 assert_match "No FIFO reports completed" '"status":"completed"' "$RESULT"
 
-# ── Test 2: FIFO exists, no pane, no worktree → zombie ──
+# ── Test 2: FIFO exists, no handle, no worktree → zombie ──
 mkfifo "${CEKERNEL_IPC_DIR}/worker-71"
 RESULT=$(bash "${CEKERNEL_DIR}/scripts/orchestrator/health-check.sh" 71 2>/dev/null || true)
 assert_match "Orphaned FIFO reports zombie" '"status":"zombie"' "$RESULT"
-assert_match "Zombie detail mentions no worktree" 'No worktree found' "$RESULT"
+assert_match "Zombie detail mentions worker dead" 'worker dead' "$RESULT"
 
 # ── Test 3: No arguments → inspect all workers ──
 mkfifo "${CEKERNEL_IPC_DIR}/worker-72"
