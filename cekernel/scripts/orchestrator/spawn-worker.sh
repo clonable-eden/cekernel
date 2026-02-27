@@ -116,6 +116,9 @@ LOG_DIR="${CEKERNEL_IPC_DIR}/logs"
 mkdir -p "$LOG_DIR"
 LOG_FILE="${LOG_DIR}/worker-${ISSUE_NUMBER}.log"
 
+# ── Log FIFO creation ──
+echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] FIFO_CREATE issue=#${ISSUE_NUMBER} path=${FIFO}" >> "$LOG_FILE"
+
 # ── Stale worktree/branch cleanup (retry safety) ──
 # If a previous spawn failure + incomplete rollback left stale worktree or branch,
 # clean them up before creating new ones.
