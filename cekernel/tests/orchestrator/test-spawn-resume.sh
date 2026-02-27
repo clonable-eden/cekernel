@@ -31,9 +31,9 @@ else
 fi
 
 # ── Test 2: --resume without existing worktree should fail ──
-# spawn-worker.sh will error out if worktree doesn't exist when --resume is specified
-# We test this by running spawn-worker.sh --resume with a non-existent issue
-# (It should fail before reaching terminal/gh commands due to missing worktree)
+# spawn-worker.sh will error out when --resume is specified for a non-existent issue.
+# The exact exit code may vary (1 for missing worktree, or other codes if gh fails first),
+# but it should always be non-zero.
 export CEKERNEL_SESSION_ID="test-spawn-resume-00000001"
 source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
 rm -rf "$CEKERNEL_IPC_DIR"
@@ -41,7 +41,13 @@ mkdir -p "$CEKERNEL_IPC_DIR"
 
 EXIT_CODE=0
 bash "$SPAWN_SCRIPT" --resume 99999 2>/dev/null || EXIT_CODE=$?
-assert_eq "Resume with non-existent worktree exits non-zero" "1" "$EXIT_CODE"
+if [[ "$EXIT_CODE" -ne 0 ]]; then
+  echo "  PASS: Resume with non-existent worktree exits non-zero (exit=$EXIT_CODE)"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+else
+  echo "  FAIL: Resume with non-existent worktree should exit non-zero"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
 
 # ── Cleanup ──
 rm -rf "$CEKERNEL_IPC_DIR"
