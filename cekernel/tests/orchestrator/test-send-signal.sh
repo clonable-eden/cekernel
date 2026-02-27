@@ -27,31 +27,39 @@ CONTENT=$(cat "$SIGNAL_FILE")
 assert_eq "Signal file contains TERM" "TERM" "$CONTENT"
 rm -f "$SIGNAL_FILE"
 
-# ── Test 2: Missing issue number exits with error ──
+# ── Test 2: SUSPEND signal creates signal file ──
+bash "$SEND_SIGNAL" 43 SUSPEND
+SIGNAL_FILE="${CEKERNEL_IPC_DIR}/worker-43.signal"
+assert_file_exists "SUSPEND signal creates signal file" "$SIGNAL_FILE"
+CONTENT=$(cat "$SIGNAL_FILE")
+assert_eq "Signal file contains SUSPEND" "SUSPEND" "$CONTENT"
+rm -f "$SIGNAL_FILE"
+
+# ── Test 3: Missing issue number exits with error ──
 OUTPUT=$(bash "$SEND_SIGNAL" 2>&1 || true)
 EXIT_CODE=0
 bash "$SEND_SIGNAL" 2>/dev/null || EXIT_CODE=$?
 assert_eq "Missing issue number exits non-zero" "1" "$EXIT_CODE"
 
-# ── Test 3: Missing signal name exits with error ──
+# ── Test 4: Missing signal name exits with error ──
 EXIT_CODE=0
 bash "$SEND_SIGNAL" 42 2>/dev/null || EXIT_CODE=$?
 assert_eq "Missing signal name exits non-zero" "1" "$EXIT_CODE"
 
-# ── Test 4: Unsupported signal is rejected ──
+# ── Test 5: Unsupported signal is rejected ──
 EXIT_CODE=0
 bash "$SEND_SIGNAL" 42 HUP 2>/dev/null || EXIT_CODE=$?
 assert_eq "Unsupported signal HUP is rejected" "1" "$EXIT_CODE"
 assert_not_exists "No signal file for rejected signal" "${CEKERNEL_IPC_DIR}/worker-42.signal"
 
-# ── Test 5: Signal file overwrites existing signal ──
+# ── Test 6: Signal file overwrites existing signal ──
 echo "OLD" > "${CEKERNEL_IPC_DIR}/worker-50.signal"
 bash "$SEND_SIGNAL" 50 TERM
 CONTENT=$(cat "${CEKERNEL_IPC_DIR}/worker-50.signal")
 assert_eq "Signal file overwritten with new signal" "TERM" "$CONTENT"
 rm -f "${CEKERNEL_IPC_DIR}/worker-50.signal"
 
-# ── Test 6: IPC directory does not exist → error ──
+# ── Test 7: IPC directory does not exist → error ──
 rm -rf "$CEKERNEL_IPC_DIR"
 EXIT_CODE=0
 bash "$SEND_SIGNAL" 42 TERM 2>/dev/null || EXIT_CODE=$?

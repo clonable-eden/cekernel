@@ -58,16 +58,22 @@ STATE=$(worker_state_read 50)
 assert_match "State transitions to TERMINATED" '"state":"TERMINATED"' "$STATE"
 assert_match "TERMINATED detail" '"detail":"merged"' "$STATE"
 
-# ── Test 8: Read nonexistent state returns UNKNOWN ──
+# ── Test 8: Write SUSPENDED state ──
+worker_state_write 50 SUSPENDED "checkpoint-saved"
+STATE=$(worker_state_read 50)
+assert_match "State transitions to SUSPENDED" '"state":"SUSPENDED"' "$STATE"
+assert_match "SUSPENDED detail" '"detail":"checkpoint-saved"' "$STATE"
+
+# ── Test 9: Read nonexistent state returns UNKNOWN ──
 STATE=$(worker_state_read 999)
 assert_match "Missing state returns UNKNOWN" '"state":"UNKNOWN"' "$STATE"
 
-# ── Test 9: Invalid state is rejected ──
+# ── Test 10: Invalid state is rejected ──
 EXIT_CODE=0
 worker_state_write 50 INVALID 2>/dev/null || EXIT_CODE=$?
 assert_eq "Invalid state rejected with exit 1" "1" "$EXIT_CODE"
 
-# ── Test 10: State file includes timestamp ──
+# ── Test 11: State file includes timestamp ──
 worker_state_write 51 NEW
 STATE=$(worker_state_read 51)
 assert_match "State includes timestamp" '"timestamp":"[0-9]{4}-[0-9]{2}-[0-9]{2}T' "$STATE"

@@ -32,18 +32,26 @@ assert_eq "TERM signal detected exits 0" "0" "$EXIT_CODE"
 assert_eq "Output is TERM" "TERM" "$OUTPUT"
 assert_not_exists "Signal file consumed after check" "${CEKERNEL_IPC_DIR}/worker-42.signal"
 
-# ── Test 3: Missing issue number exits with error ──
+# ── Test 3: SUSPEND signal file exists → exit 0, outputs SUSPEND, consumes file ──
+echo "SUSPEND" > "${CEKERNEL_IPC_DIR}/worker-43.signal"
+OUTPUT=$(bash "$CHECK_SIGNAL" 43)
+EXIT_CODE=$?
+assert_eq "SUSPEND signal detected exits 0" "0" "$EXIT_CODE"
+assert_eq "Output is SUSPEND" "SUSPEND" "$OUTPUT"
+assert_not_exists "SUSPEND signal file consumed after check" "${CEKERNEL_IPC_DIR}/worker-43.signal"
+
+# ── Test 4: Missing issue number exits with error ──
 EXIT_CODE=0
 bash "$CHECK_SIGNAL" 2>/dev/null || EXIT_CODE=$?
 assert_eq "Missing issue number exits non-zero" "1" "$EXIT_CODE"
 
-# ── Test 4: Signal file with trailing whitespace is trimmed ──
+# ── Test 5: Signal file with trailing whitespace is trimmed ──
 printf "TERM\n" > "${CEKERNEL_IPC_DIR}/worker-55.signal"
 OUTPUT=$(bash "$CHECK_SIGNAL" 55)
 assert_eq "Trailing newline trimmed" "TERM" "$OUTPUT"
 assert_not_exists "Signal file consumed" "${CEKERNEL_IPC_DIR}/worker-55.signal"
 
-# ── Test 5: Log entry is recorded when signal is consumed ──
+# ── Test 6: Log entry is recorded when signal is consumed ──
 mkdir -p "${CEKERNEL_IPC_DIR}/logs"
 LOG_FILE="${CEKERNEL_IPC_DIR}/logs/worker-60.log"
 echo "TERM" > "${CEKERNEL_IPC_DIR}/worker-60.signal"
