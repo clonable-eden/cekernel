@@ -43,13 +43,7 @@ Output destination (file, issue/PR comment, conversation only) is determined int
 
 ### Phase 1: Load Knowledge Base
 
-Read the UNIX philosophy principles from the plugin's bundled document:
-
-```
-${CLAUDE_PLUGIN_ROOT}/docs/unix-philosophy.md
-```
-
-If `CLAUDE_PLUGIN_ROOT` is not available, try the relative path from the skill directory.
+Read the UNIX philosophy principles from the bundled `docs/unix-philosophy.md` document.
 
 Internalize all 17 principles. These are your evaluation criteria.
 

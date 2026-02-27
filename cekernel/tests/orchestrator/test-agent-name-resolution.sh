@@ -23,8 +23,6 @@ mkdir -p "${CEKERNEL_IPC_DIR}/logs"
 # Source only the top portion to check the variable resolution
 (
   unset CEKERNEL_AGENT_WORKER
-  SCRIPT_DIR_SW="$(cd "${CEKERNEL_DIR}/scripts/orchestrator" && pwd)"
-  CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "${SCRIPT_DIR_SW}/../.." && pwd)}"
   CEKERNEL_AGENT_WORKER="${CEKERNEL_AGENT_WORKER:-worker}"
   echo "$CEKERNEL_AGENT_WORKER"
 ) | {
@@ -35,8 +33,6 @@ mkdir -p "${CEKERNEL_IPC_DIR}/logs"
 # ── Test 2: spawn-worker.sh uses CEKERNEL_AGENT_WORKER when set ──
 (
   export CEKERNEL_AGENT_WORKER="cekernel:worker"
-  SCRIPT_DIR_SW="$(cd "${CEKERNEL_DIR}/scripts/orchestrator" && pwd)"
-  CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "${SCRIPT_DIR_SW}/../.." && pwd)}"
   CEKERNEL_AGENT_WORKER="${CEKERNEL_AGENT_WORKER:-worker}"
   echo "$CEKERNEL_AGENT_WORKER"
 ) | {
