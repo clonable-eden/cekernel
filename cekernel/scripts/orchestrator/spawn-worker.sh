@@ -14,6 +14,7 @@ CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 source "${SCRIPT_DIR}/../shared/session-id.sh"
 source "${SCRIPT_DIR}/../shared/claude-json-helper.sh"
 source "${SCRIPT_DIR}/../shared/terminal-adapter.sh"
+source "${SCRIPT_DIR}/../shared/worker-state.sh"
 source "${SCRIPT_DIR}/../shared/task-file.sh"
 
 ISSUE_NUMBER="${1:?Usage: spawn-worker.sh <issue-number> [base-branch]}"
@@ -73,8 +74,9 @@ rollback() {
   # Delete log file
   rm -f "${LOG_FILE:-}"
   rmdir "${LOG_DIR:-}" 2>/dev/null || true
-  # Delete FIFO
+  # Delete FIFO and state file
   rm -f "${FIFO:-}"
+  rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.state"
 }
 trap rollback ERR
 
@@ -82,6 +84,9 @@ trap rollback ERR
 mkdir -p "$CEKERNEL_IPC_DIR"
 FIFO="${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}"
 [[ -p "$FIFO" ]] || mkfifo "$FIFO"
+
+# ── State: NEW (Worker spawned, worktree being created) ──
+worker_state_write "$ISSUE_NUMBER" NEW "spawning"
 
 # ── Create log file ──
 LOG_DIR="${CEKERNEL_IPC_DIR}/logs"
@@ -166,6 +171,9 @@ MAIN_PANE=$(terminal_spawn_worker_layout "$WORKTREE" "$WORKSPACE" "$LAYOUT_PAYLO
 
 # Save pane ID (used by health-check / cleanup)
 echo "$MAIN_PANE" > "${CEKERNEL_IPC_DIR}/pane-${ISSUE_NUMBER}"
+
+# ── State: READY (Worktree ready, Claude agent starting) ──
+worker_state_write "$ISSUE_NUMBER" READY "agent-starting"
 
 # ── Record lifecycle event in log ──
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] SPAWN issue=#${ISSUE_NUMBER} branch=${BRANCH}" >> "$LOG_FILE"
