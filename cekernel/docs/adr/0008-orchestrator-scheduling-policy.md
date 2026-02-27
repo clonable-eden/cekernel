@@ -66,7 +66,8 @@ When a high-priority issue arrives and all Worker slots are full, the Orchestrat
 1. Preemption is triggered only when: (a) all slots are full, AND (b) the incoming issue's nice value is strictly lower than the highest nice value among running Workers
 2. The Worker with the highest nice value (lowest priority) is selected for SUSPEND
 3. On ties, the Worker with the longest elapsed time is selected (it has had the most opportunity to make progress)
-4. The Orchestrator sends SUSPEND signal, waits for the Worker to reach a phase boundary and checkpoint, then spawns the high-priority issue in the freed slot
+4. The Orchestrator sends SUSPEND signal, waits up to `CEKERNEL_TERM_GRACE_PERIOD` (default: 120s) for the Worker to checkpoint and exit, then spawns the high-priority issue in the freed slot
+5. If the Worker does not exit within the grace period, escalate: send TERM, wait another grace period, then force-kill via `cleanup-worktree.sh --force`
 
 ```
 incoming issue (nice=0, critical) arrives, all 3 slots full:
@@ -84,6 +85,19 @@ incoming issue (nice=0, critical) arrives, all 3 slots full:
 - At most one preemption per scheduling cycle. The Orchestrator does not cascade-suspend multiple Workers in a single decision.
 
 **New environment variable**: `CEKERNEL_MIN_RUNTIME` (default: 300 seconds).
+
+**Escalation chain** (reuses `CEKERNEL_TERM_GRACE_PERIOD` — no new variable):
+
+```
+SUSPEND signal sent
+  → wait CEKERNEL_TERM_GRACE_PERIOD (default: 120s)
+  → if Worker checkpointed and exited: done (slot freed)
+  → if still alive: send TERM signal (escalate to graceful shutdown)
+    → wait CEKERNEL_TERM_GRACE_PERIOD again
+    → if still alive: cleanup-worktree.sh --force (KILL equivalent)
+```
+
+This mirrors the timeout escalation (Decision 2) and reuses the same grace period variable, keeping configuration surface minimal.
 
 ### 4. Auto-resume of SUSPENDED Workers
 
@@ -122,6 +136,8 @@ State transitions map to Worker protocol phases:
 This uses the 6-state model already implemented in `worker-state.sh` (NEW, READY, RUNNING, WAITING, SUSPENDED, TERMINATED) rather than the 10-state model proposed in ADR-0004. The detail field provides phase-level granularity without expanding the state enum.
 
 **Rationale for 6 states over 10**: The `worker_state_write` API already accepts a free-text detail parameter (`STATE:TIMESTAMP:detail`). Phase-specific information belongs in the detail field, not in the state enum. Adding states like `PR_CREATED`, `CI_WAITING`, `CI_FIXING`, `MERGING` to the enum would require changes to `worker-state.sh` validation, `health-check.sh` case statements, and any future consumer. The detail field achieves the same diagnostic value with zero code changes.
+
+**Relationship with ADR-0004**: ADR-0004 proposed a 10-state enum (SPAWNING, PLANNING, RUNNING, PR_CREATED, CI_WAITING, CI_FIXING, MERGING, COMPLETED, FAILED, CANCELLED) as the state model. The implementation (`worker-state.sh`) adopted a simplified 6-state enum (NEW, READY, RUNNING, WAITING, SUSPENDED, TERMINATED). This ADR formalizes the 6-state model as the definitive state enum, with the detail field providing the phase-level granularity that ADR-0004's additional states intended. ADR-0004's state definitions should be read as the conceptual model; the implementation mapping is: SPAWNING→NEW, PLANNING/RUNNING/CI_FIXING/MERGING→RUNNING, PR_CREATED/CI_WAITING→WAITING, COMPLETED/FAILED/CANCELLED→TERMINATED (with detail field distinguishing success/failure/cancellation).
 
 ### UNIX Philosophy Alignment
 
