@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# watch-worker.sh — Monitor multiple Worker completions in parallel
+# watch-worker.sh — Monitor Worker completion via FIFO
 #
 # Usage: watch-worker.sh <issue-number> [issue-number...]
 #

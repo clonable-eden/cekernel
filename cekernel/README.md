@@ -55,7 +55,7 @@ cekernel/
   scripts/
     orchestrator/
       spawn-worker.sh        # Create worktree + launch WezTerm window (with concurrency guard)
-      watch-worker.sh       # Monitor multiple Worker completions in parallel
+      watch-worker.sh        # Monitor Worker completion via FIFO
       watch-logs.sh          # Real-time Worker log monitoring
       cleanup-worktree.sh    # Remove worktree + branch + logs
       health-check.sh        # Detect zombie Workers
@@ -126,7 +126,7 @@ source cekernel/scripts/shared/session-id.sh && echo $CEKERNEL_SESSION_ID
 # 2. Execute scripts (all require CEKERNEL_SESSION_ID; export each time if shells are separate)
 export CEKERNEL_SESSION_ID=glimmer-7861a821 && cekernel/scripts/orchestrator/spawn-worker.sh 4
 export CEKERNEL_SESSION_ID=glimmer-7861a821 && cekernel/scripts/orchestrator/worker-status.sh
-export CEKERNEL_SESSION_ID=glimmer-7861a821 && cekernel/scripts/orchestrator/watch-worker.sh 4 5 6
+export CEKERNEL_SESSION_ID=glimmer-7861a821 && cekernel/scripts/orchestrator/watch-worker.sh 4  # run_in_background: true
 export CEKERNEL_SESSION_ID=glimmer-7861a821 && cekernel/scripts/orchestrator/watch-logs.sh
 export CEKERNEL_SESSION_ID=glimmer-7861a821 && cekernel/scripts/orchestrator/watch-logs.sh 4
 export CEKERNEL_SESSION_ID=glimmer-7861a821 && cekernel/scripts/orchestrator/cleanup-worktree.sh 4
