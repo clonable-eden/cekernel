@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# watch-workers.sh — Monitor multiple Worker completions in parallel
+# watch-worker.sh — Monitor Worker completion via FIFO
 #
-# Usage: watch-workers.sh <issue-number> [issue-number...]
+# Usage: watch-worker.sh <issue-number> [issue-number...]
 #
 # Environment:
 #   CEKERNEL_WORKER_TIMEOUT — Worker timeout in seconds (default: 3600)
@@ -14,7 +14,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../shared/session-id.sh"
 
 ISSUE_NUMBERS=("$@")
-[[ ${#ISSUE_NUMBERS[@]} -gt 0 ]] || { echo "Usage: watch-workers.sh <issue-number> [...]" >&2; exit 1; }
+[[ ${#ISSUE_NUMBERS[@]} -gt 0 ]] || { echo "Usage: watch-worker.sh <issue-number> [...]" >&2; exit 1; }
 
 FIFO_DIR="$CEKERNEL_IPC_DIR"
 RESULT_DIR=$(mktemp -d)
