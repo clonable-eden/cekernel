@@ -135,18 +135,22 @@ echo "branch:   $BRANCH" >&2
 # Create Worker in the same workspace as Orchestrator
 WORKSPACE=$(terminal_resolve_workspace)
 MAIN_PANE=$(terminal_spawn_window "$WORKTREE" "$WORKSPACE")
+sleep 0.3  # Let WezTerm finish window creation before sending commands
 
 # Save pane ID (used by health-check / cleanup)
 echo "$MAIN_PANE" > "${CEKERNEL_IPC_DIR}/pane-${ISSUE_NUMBER}"
 # Explicit cd in case --cwd doesn't take effect reliably
 terminal_run_command "$MAIN_PANE" "cd '${WORKTREE}' && export CEKERNEL_SESSION_ID='${CEKERNEL_SESSION_ID}'"
+sleep 0.2  # Let WezTerm settle before splitting panes
 
 # Bottom: auto-refresh git log
 terminal_split_pane bottom 25 "$MAIN_PANE" "$WORKTREE" \
   watch -n3 -t -c "git --no-pager log --oneline --graph --color=always"
+sleep 0.2
 
 # Right: general-purpose terminal
 terminal_split_pane right 40 "$MAIN_PANE" "$WORKTREE"
+sleep 0.2
 
 # Launch Claude Code in main pane
 # Initial prompt for Worker:

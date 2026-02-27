@@ -60,10 +60,14 @@ terminal_spawn_window() {
 }
 
 # terminal_run_command <pane-id> <command>
+# Small delay between send-text calls to prevent WezTerm UI freeze.
+# WezTerm's CLI communicates via Unix domain socket; rapid-fire commands
+# can overwhelm its event loop and freeze the entire UI.
 terminal_run_command() {
   local pane_id="$1"
   local cmd="$2"
   wezterm cli send-text --pane-id "$pane_id" -- "$cmd"
+  sleep 0.1
   wezterm cli send-text --pane-id "$pane_id" --no-paste $'\r'
 }
 
