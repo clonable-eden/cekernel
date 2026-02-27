@@ -51,7 +51,8 @@ cekernel defines only the lifecycle skeleton for Workers:
 4. Read issue content from `.cekernel-task.md` in the worktree (pre-extracted at spawn time)
    - If `.cekernel-task.md` does not exist, fall back to `gh issue view`
 5. Understand the issue requirements
-6. Post Execution Plan as a comment on the issue (or a Resume Plan if resuming)
+6. Write state: `source worker-state.sh && worker_state_write <issue-number> RUNNING "phase0:plan"`
+7. Post Execution Plan as a comment on the issue (or a Resume Plan if resuming)
 
 ```bash
 gh issue comment <issue-number> --body "$(cat <<'EOF'
@@ -126,9 +127,31 @@ Phase 3 (CI verify + merge)
 Phase 4 (Notify)
 ```
 
+## State Reporting
+
+Workers report their state at each phase boundary using `worker_state_write`. This makes Worker activity visible to `worker-status.sh`, `health-check.sh`, and the Orchestrator.
+
+```bash
+source worker-state.sh && worker_state_write <issue-number> RUNNING "phase1:implement"
+```
+
+Write state at the **start** of each phase:
+
+| Phase | State | Detail | When |
+|---|---|---|---|
+| Phase 0 | RUNNING | `phase0:plan` | Before reading issue and posting plan |
+| Phase 1 | RUNNING | `phase1:implement` | Before starting implementation |
+| Phase 2 | RUNNING | `phase2:create-pr` | Before `git push` and `gh pr create` |
+| Phase 3 (CI wait) | WAITING | `phase3:ci-waiting` | Before `gh pr checks --watch` |
+| Phase 3 (CI fix) | RUNNING | `phase3:ci-fixing` | When fixing CI failures |
+| Phase 3 (merge) | RUNNING | `phase3:merging` | Before `gh pr merge` |
+| Phase 4 | — | — | `notify-complete.sh` writes TERMINATED automatically |
+
 ## Lifecycle Protocol
 
 ### Phase 1: Implementation
+
+> State: `source worker-state.sh && worker_state_write <issue> RUNNING "phase1:implement"`
 
 Implement **following the target repository's rules**.
 
@@ -142,6 +165,8 @@ Implement **following the target repository's rules**.
 For issues involving code changes, follow [TDD](../docs/tdd.md) with test-first development.
 
 ### Phase 2: Create PR
+
+> State: `source worker-state.sh && worker_state_write <issue> RUNNING "phase2:create-pr"`
 
 ```bash
 git push -u origin HEAD
@@ -168,6 +193,10 @@ EOF
 
 ### Phase 3: CI Verification + Merge
 
+> State: `source worker-state.sh && worker_state_write <issue> WAITING "phase3:ci-waiting"` (before CI wait)
+> On CI fix: `source worker-state.sh && worker_state_write <issue> RUNNING "phase3:ci-fixing"`
+> On merge: `source worker-state.sh && worker_state_write <issue> RUNNING "phase3:merging"`
+
 ```bash
 # Wait for CI to complete
 gh pr checks <pr-number> --watch
@@ -180,6 +209,8 @@ Merge strategy (`--merge`, `--squash`, `--rebase`) follows the target repository
 If no convention exists, defer to the repository's default settings (don't specify a flag).
 
 ### Phase 4: Completion Notification
+
+> State: TERMINATED is written automatically by `notify-complete.sh` — no manual call needed.
 
 First post the Result as a comment on the issue, then notify the Orchestrator.
 Cleanup may run after `notify-complete.sh`, so complete the Result posting first.

@@ -126,6 +126,15 @@ Each Worker is watched individually via `run_in_background: true`. Cleanup proce
 
 ## Scheduling
 
+### Environment Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `CEKERNEL_MAX_WORKERS` | 3 | Maximum concurrent Workers |
+| `CEKERNEL_WORKER_TIMEOUT` | 3600 | Worker timeout in seconds |
+| `CEKERNEL_TERM_GRACE_PERIOD` | 120 | Grace period (seconds) after TERM before force-kill |
+| `CEKERNEL_MIN_RUNTIME` | 300 | Minimum Worker runtime (seconds) before suspension allowed |
+
 ### Concurrency Limit
 
 The `CEKERNEL_MAX_WORKERS` environment variable (default: 3) limits concurrent Workers.
@@ -160,9 +169,9 @@ Numeric values 0-19 are also accepted for finer control.
 
 When the number of issues exceeds `CEKERNEL_MAX_WORKERS`, the Orchestrator uses a waiting queue model:
 
-1. Sort queued issues by priority (lower nice value first)
+1. Sort queued issues by priority (lower nice value first). On ties (equal nice value), preserve original order (FIFO within priority class).
 2. Spawn the first `MAX_WORKERS` issues, each with an individual `watch-worker.sh <issue>` in background (`run_in_background: true`)
-3. When any background watch completes → cleanup that Worker → spawn the next highest-priority issue from the queue (with its own background watch)
+3. When any background watch completes → cleanup that Worker (skip cleanup if SUSPENDED — preserve worktree for resume) → check Suspended Issues List, then queue, for the next issue to spawn (see Auto-Resume)
 4. Periodically report status via `worker-status.sh` while waiting
 5. Repeat until the queue is empty and all Workers have completed
 
@@ -189,6 +198,97 @@ export CEKERNEL_SESSION_ID=<ID> && watch-worker.sh 7  # run_in_background: true
 # Queue remaining: [8(low), 9(low)]
 
 # ... repeat until queue empty and all Workers complete
+```
+
+### Preemption
+
+When a high-priority issue arrives and all Worker slots are full, suspend the lowest-priority Worker to free a slot.
+
+**Decision rules** (evaluate in order):
+
+1. All slots must be full (`worker-status.sh` shows `CEKERNEL_MAX_WORKERS` active Workers)
+2. The incoming issue's nice value must be **strictly lower** than the highest nice value among running Workers
+3. The candidate Worker must be in state RUNNING or WAITING (not TERMINATED, SUSPENDED, or NEW/READY)
+4. The candidate Worker must have been running for at least `CEKERNEL_MIN_RUNTIME` (default: 300s) — check uptime from `worker-status.sh`
+5. If no candidate meets all criteria, queue the issue normally (do not preempt)
+6. At most **one preemption per scheduling cycle** — do not cascade-suspend multiple Workers
+
+**Preemption procedure**:
+
+```bash
+# 1. Identify the lowest-priority Worker (highest nice value; on ties, longest uptime)
+export CEKERNEL_SESSION_ID=<ID> && worker-status.sh
+
+# 2. Send SUSPEND signal
+export CEKERNEL_SESSION_ID=<ID> && send-signal.sh <victim-issue> SUSPEND
+
+# 3. Wait for Worker to checkpoint and exit (grace period)
+sleep ${CEKERNEL_TERM_GRACE_PERIOD:-120}
+
+# 4. Check if Worker exited
+export CEKERNEL_SESSION_ID=<ID> && health-check.sh <victim-issue>
+
+# 5. If still alive, escalate: TERM → grace → force-kill
+export CEKERNEL_SESSION_ID=<ID> && send-signal.sh <victim-issue> TERM
+sleep ${CEKERNEL_TERM_GRACE_PERIOD:-120}
+export CEKERNEL_SESSION_ID=<ID> && cleanup-worktree.sh --force <victim-issue>
+
+# 6. Spawn the high-priority issue in the freed slot
+export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && export CEKERNEL_AGENT_WORKER=<agent-name> && spawn-worker.sh --priority <priority> <issue>
+export CEKERNEL_SESSION_ID=<ID> && watch-worker.sh <issue>  # run_in_background: true
+```
+
+**IMPORTANT**: Do NOT call `cleanup-worktree.sh` on the suspended Worker — its worktree must be preserved for future resume. The SUSPEND-ed Worker's completion notification (status: `cancelled`, detail: `"SUSPEND signal received"`) indicates that the issue should be added to the **Suspended Issues List** for auto-resume.
+
+**Example**:
+
+```
+Incoming issue #42 (nice=0, critical), all 3 slots full:
+  Worker #4: nice=5  (high),   uptime=15m, state=RUNNING
+  Worker #5: nice=10 (normal), uptime=8m,  state=RUNNING
+  Worker #7: nice=15 (low),    uptime=12m, state=RUNNING
+  → Worker #7 has highest nice value (15) and uptime > CEKERNEL_MIN_RUNTIME (300s)
+  → SUSPEND Worker #7 → add #7 to Suspended Issues List → spawn #42 in freed slot
+```
+
+### Auto-Resume
+
+When a Worker slot becomes available, check for SUSPENDED Workers before spawning from the queue.
+
+The Orchestrator maintains a **Suspended Issues List** in its working memory. When a Worker exits with status `cancelled` and detail `"SUSPEND signal received"`, add that issue to the list. When the issue is resumed, remove it from the list.
+
+**Decision rules**:
+
+1. After cleanup of a completed/failed Worker, check the Suspended Issues List
+2. SUSPENDED Workers take precedence over queued (not-yet-started) issues at the **same or higher** nice value — they have already made progress and are cheaper to resume
+3. Among SUSPENDED Workers, resume the one with the **lowest nice value** (highest priority) first
+4. Resume using `--resume`:
+
+   ```bash
+   export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && export CEKERNEL_AGENT_WORKER=<agent-name> && spawn-worker.sh --resume <issue>
+   export CEKERNEL_SESSION_ID=<ID> && watch-worker.sh <issue>  # run_in_background: true
+   ```
+
+**Slot-fill priority order**:
+
+```
+1. SUSPENDED Worker with lowest nice value
+2. Queued issue with lowest nice value
+(SUSPENDED beats queued at equal nice value)
+```
+
+**Example**:
+
+```
+Worker #4 completes → slot freed
+  Suspended Issues List: [#7 (nice=15)]
+  Queued: [#9 (nice=15), #10 (nice=10)]
+  → #10 has lower nice value (10) than #7 (15) → spawn #10 first
+
+Worker #10 completes → slot freed
+  Suspended Issues List: [#7 (nice=15)]
+  Queued: [#9 (nice=15)]
+  → Equal nice value: SUSPENDED takes precedence → resume #7
 ```
 
 ### Checking Worker Status
@@ -294,10 +394,25 @@ cleanup-worktree.sh --force 4
 | `SIGALRM` / watchdog | `CEKERNEL_WORKER_TIMEOUT` |
 | `kill -9` (SIGKILL) | `cleanup-worktree.sh --force` |
 | zombie reaping (`waitpid` + `WNOHANG`) | `health-check.sh` |
+| SIGSTOP / SIGCONT | send-signal.sh SUSPEND / spawn-worker.sh --resume |
 
 ## Error Handling
 
-- Worker unresponsive: check log last modification time, detect zombie with `health-check.sh` → force terminate with `cleanup-worktree.sh --force`
+- Worker unresponsive: check log last modification time, detect zombie with `health-check.sh` → send TERM via `send-signal.sh <issue> TERM` → wait `CEKERNEL_TERM_GRACE_PERIOD` (default: 120s) → if still alive, force terminate with `cleanup-worktree.sh --force`
 - Merge conflict: Worker attempts to resolve. If impossible, sends error notification via FIFO
 - CI failure: Worker attempts to fix. After 3 failures, escalate to human
-- Timeout: `watch-worker.sh` automatically detects and returns `timeout` status
+- Timeout: When `watch-worker.sh` returns `timeout` status, follow the graceful shutdown escalation:
+
+  ```bash
+  # 1. Send TERM signal
+  export CEKERNEL_SESSION_ID=<ID> && send-signal.sh <issue> TERM
+
+  # 2. Wait grace period
+  sleep ${CEKERNEL_TERM_GRACE_PERIOD:-120}
+
+  # 3. Check if Worker exited
+  export CEKERNEL_SESSION_ID=<ID> && health-check.sh <issue>
+
+  # 4. If still alive, force-kill
+  export CEKERNEL_SESSION_ID=<ID> && cleanup-worktree.sh --force <issue>
+  ```
