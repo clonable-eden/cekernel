@@ -139,7 +139,7 @@ Write state at the **start** of each phase:
 
 | Phase | State | Detail | When |
 |---|---|---|---|
-| Phase 0 | RUNNING | `phase0:plan` | Before reading issue and posting plan |
+| Phase 0 | RUNNING | `phase0:plan` | Before posting execution plan |
 | Phase 1 | RUNNING | `phase1:implement` | Before starting implementation |
 | Phase 2 | RUNNING | `phase2:create-pr` | Before `git push` and `gh pr create` |
 | Phase 3 (CI wait) | WAITING | `phase3:ci-waiting` | Before `gh pr checks --watch` |

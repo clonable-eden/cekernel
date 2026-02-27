@@ -238,7 +238,7 @@ export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && export CEKER
 export CEKERNEL_SESSION_ID=<ID> && watch-worker.sh <issue>  # run_in_background: true
 ```
 
-**IMPORTANT**: Do NOT call `cleanup-worktree.sh` on the suspended Worker — its worktree must be preserved for future resume. The SUSPEND-ed Worker's completion notification (status: `cancelled`, detail: `"SUSPEND signal received"`) indicates that the issue should be added to the **Suspended Issues List** for auto-resume.
+**IMPORTANT**: Do NOT call `cleanup-worktree.sh` on a successfully suspended Worker — its worktree must be preserved for future resume. If the Worker fails to exit after escalation (step 5 above), `cleanup-worktree.sh --force` is the last resort and the worktree is no longer recoverable. The SUSPEND-ed Worker's completion notification (status: `cancelled`, detail: `"SUSPEND signal received"`) indicates that the issue should be added to the **Suspended Issues List** for auto-resume.
 
 **Example**:
 
