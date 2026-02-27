@@ -32,6 +32,7 @@ For multiple issues, additionally:
 Launch the `cekernel:orchestrator` subagent via the Task tool:
 
 - `subagent_type`: `cekernel:orchestrator`
+- `run_in_background`: `true`
 - `prompt`: Include issue numbers, base branch (if specified), and execution order (if determined in Step 1)
 
 The Orchestrator autonomously executes:
@@ -41,6 +42,3 @@ The Orchestrator autonomously executes:
 3. Completion monitoring
 4. Cleanup
 
-### Step 3: Report Results
-
-Report the Orchestrator's results to the user.
