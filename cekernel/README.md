@@ -53,6 +53,11 @@ cekernel/
   skills/
     orchestrate/
       SKILL.md               # /cekernel:orchestrate skill
+  envs/
+    README.md                # Environment variable catalog
+    default.env              # Default profile (wezterm, 3 workers)
+    headless.env             # Headless profile (headless, 5 workers)
+    ci.env                   # CI profile (headless, 1800s timeout)
   scripts/
     orchestrator/
       spawn-worker.sh        # Create worktree + launch Worker via backend (with concurrency guard)
@@ -68,6 +73,7 @@ cekernel/
       claude-json-helper.sh  # ~/.claude.json trust entry read/write helper
       backend-adapter.sh     # Backend abstraction layer (wezterm/tmux/headless)
       task-file.sh           # Local task file extraction (session memory: page cache)
+      load-env.sh            # Environment profile loader (multi-layer search)
   tests/
     run-tests.sh             # Test runner
     helpers.sh               # Assertion helpers
@@ -115,6 +121,33 @@ Install from the Claude Code plugin marketplace:
 
 > **Note**: `/plugin update` alone may not update the marketplace local clone.
 > Always run `/plugin marketplace update` first.
+
+## Configuration
+
+cekernel is configured via `CEKERNEL_*` environment variables. See [`envs/README.md`](./envs/README.md) for the full catalog.
+
+Named profiles (`.env` files) provide coherent sets of defaults for common scenarios:
+
+| Profile | Use case |
+|---------|----------|
+| `default.env` | Local development with WezTerm |
+| `headless.env` | Terminal-free execution (CI, cron) |
+| `ci.env` | CI-specific settings |
+
+Select a profile via `CEKERNEL_ENV`:
+
+```bash
+export CEKERNEL_ENV=headless   # default: "default"
+```
+
+Profiles are loaded with multi-layer priority (lowest → highest):
+
+1. Script defaults (`${VAR:-default}`)
+2. Plugin profile (`${CLAUDE_PLUGIN_ROOT}/envs/${CEKERNEL_ENV}.env`)
+3. Project override (`.cekernel/envs/${CEKERNEL_ENV}.env`)
+4. Explicit environment variables
+
+Projects can override plugin defaults by placing `.env` files in `.cekernel/envs/`. These survive `/plugin update`. See ADR-0006 for design details.
 
 ## Usage
 
