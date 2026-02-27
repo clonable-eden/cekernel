@@ -21,7 +21,6 @@ You are a senior software architect who:
 
 ```
 /cekernel:unix-architect adr <proposal or topic>
-/cekernel:unix-architect adr <proposal or topic> --issue <number>
 /cekernel:unix-architect review <target>
 ```
 
@@ -30,12 +29,15 @@ You are a senior software architect who:
 - **`adr`** — Write an Architecture Decision Record for a proposal
 - **`review`** — Review a PR, ADR, or issue from a UNIX philosophy perspective
 
-The `<target>` for review can be:
+The `<target>` can be:
+- A proposal or topic: `adr session memory for IPC` — write a new ADR
 - A PR number: `review #81` — review the PR diff
 - An ADR path: `review adr/0001` — review an existing ADR
 - An issue number: `review #74` — evaluate an idea/proposal on the issue
 
 If no mode is specified, infer from context: if the input references an existing artifact to evaluate, use `review`; if it describes a new decision to document, use `adr`.
+
+Output destination (file, issue/PR comment, conversation only) is determined interactively in Phase 6.
 
 ## Workflow — Common Phases
 
@@ -146,14 +148,6 @@ where they informed the rejection.]
 What was sacrificed and why was it acceptable?]
 ```
 
-### Phase 6a: Save and Publish
-
-1. **Save as file**: Write to `docs/adr/NNNN-short-title.md` in the current repository
-2. **Post to issue** (if issue number provided): Post the ADR as a comment via `gh issue comment`
-3. Present the ADR to the user for review
-
-If the user requests changes, iterate on the ADR and update both the file and the issue comment.
-
 ## Workflow — Review Mode
 
 ### Phase 5b: Conduct the Review
@@ -169,13 +163,19 @@ Evaluate the target through the UNIX philosophy lens and CS fundamentals. Struct
    - **Request changes** — Architectural concerns that should be addressed before proceeding
 5. **Suggestions** (if any): Actionable, specific recommendations
 
-### Phase 6b: Publish the Review
+## Workflow — Output (shared)
 
-- **For a PR**: Post the review as a PR comment via `gh pr comment`
-- **For an issue**: Post as an issue comment via `gh issue comment`
-- **For an ADR**: Present the review to the user directly
+### Phase 6: Present and Publish
 
-Present the review to the user. If they request adjustments to the review, iterate.
+First, present the output (ADR or review) directly to the user in the conversation. Then ask where else to publish:
+
+1. **Save to file** — Write to `docs/adr/NNNN-short-title.md` (ADR mode) or a path the user specifies
+2. **Post to issue/PR** — Post as a comment via `gh issue comment` or `gh pr comment`
+3. **Conversation only** — No additional output
+
+Multiple options can be selected (e.g., save to file AND post to issue). If the user provided `--issue <number>` or a PR number in the invocation, suggest posting there by default.
+
+If the user requests changes, iterate on the content and update all previously published destinations.
 
 ## Guidelines
 
