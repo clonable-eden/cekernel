@@ -44,6 +44,7 @@ fi
 PATH="$OLD_PATH"
 
 # ── Test 3: terminal_resolve_workspace — returns tmux session name ──
+export TMUX="/tmp/tmux-501/default,12345,0"
 tmux() {
   if [[ "$1" == "display-message" ]]; then
     echo "my-session"
@@ -52,6 +53,13 @@ tmux() {
 export -f tmux
 RESULT=$(terminal_resolve_workspace)
 assert_eq "resolve_workspace returns tmux session name" "my-session" "$RESULT"
+
+# ── Test 3b: terminal_resolve_workspace — no TMUX env var ──
+(
+  unset TMUX 2>/dev/null || true
+  RESULT=$(terminal_resolve_workspace)
+  assert_eq "resolve_workspace: no TMUX returns empty" "" "$RESULT"
+)
 
 # ── Test 4: terminal_spawn_window — creates new window ──
 MOCK_LOG=$(mktemp)
@@ -90,6 +98,7 @@ tmux() {
 }
 export -f tmux
 RESULT=$(terminal_split_pane bottom 25 "my-session:1.0" "/tmp/cwd" "watch git log")
+LOGGED=$(cat "$MOCK_LOG")
 assert_match "split_pane uses -v for bottom" ".*-v.*" "$LOGGED"
 rm -f "$MOCK_LOG"
 
