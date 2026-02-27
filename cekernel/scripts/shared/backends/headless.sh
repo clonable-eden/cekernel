@@ -34,10 +34,14 @@ backend_spawn_worker() {
   # Bash creates a new process group for background jobs automatically,
   # so kill -- -$PID can terminate the entire group.
   # SESSION_ID is propagated as a direct environment variable.
+  # Unset Claude Code session markers to avoid nested-session detection.
+  # Use -p (print mode) for non-TTY execution.
+  # NOTE: -p may hang without TTY due to upstream bug (claude-code#9026).
   (
     cd "$worktree" && \
+    unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT && \
     CEKERNEL_SESSION_ID="${CEKERNEL_SESSION_ID:-}" \
-    exec claude --agent cekernel:worker "$prompt"
+    exec claude -p --agent cekernel:worker "$prompt"
   ) > "$log_file" 2>&1 &
   local pid=$!
 
