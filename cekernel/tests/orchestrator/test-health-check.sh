@@ -19,8 +19,8 @@ trap cleanup EXIT
 
 mkdir -p "$CEKERNEL_IPC_DIR"
 
-# Use wezterm backend for tests (default)
-export CEKERNEL_BACKEND=wezterm
+# Use headless backend for tests (always available, even on CI without terminal)
+export CEKERNEL_BACKEND=headless
 
 # ── Test 1: No FIFO → completed ──
 RESULT=$(bash "${CEKERNEL_DIR}/scripts/orchestrator/health-check.sh" 70 2>/dev/null)
