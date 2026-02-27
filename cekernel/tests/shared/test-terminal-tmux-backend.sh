@@ -55,11 +55,11 @@ RESULT=$(terminal_resolve_workspace)
 assert_eq "resolve_workspace returns tmux session name" "my-session" "$RESULT"
 
 # ── Test 3b: terminal_resolve_workspace — no TMUX env var ──
-(
-  unset TMUX 2>/dev/null || true
-  RESULT=$(terminal_resolve_workspace)
-  assert_eq "resolve_workspace: no TMUX returns empty" "" "$RESULT"
-)
+OLD_TMUX="${TMUX:-}"
+unset TMUX 2>/dev/null || true
+RESULT=$(terminal_resolve_workspace)
+assert_eq "resolve_workspace: no TMUX returns empty" "" "$RESULT"
+export TMUX="$OLD_TMUX"
 
 # ── Test 4: terminal_spawn_window — creates new window ──
 MOCK_LOG=$(mktemp)
