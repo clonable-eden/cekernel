@@ -38,6 +38,7 @@ Key mappings:
 | IPC pipe | named pipe (FIFO) |
 | IPC namespace | `CEKERNEL_SESSION_ID` |
 | process state | `worker-state.sh` (NEW/READY/RUNNING/WAITING/TERMINATED) |
+| `nice` / priority | `worker-priority.sh` (0-19 nice value) |
 | page cache | `.cekernel-task.md` |
 
 ## Scripts
@@ -92,6 +93,21 @@ worker_state_read "$ISSUE"                               # Read state → JSON
 State machine: `NEW → READY → RUNNING → WAITING → TERMINATED` (with `RUNNING ↔ WAITING` transitions).
 
 State file format: `STATE:TIMESTAMP:detail` (atomic write via temp+rename). `worker_state_read` returns `UNKNOWN` for missing state files.
+
+### shared/worker-priority.sh
+
+Worker priority (nice value) management. Each Worker has a priority file (`worker-{issue}.priority`) in the session IPC directory.
+
+```bash
+source "${SCRIPT_DIR}/../shared/worker-priority.sh"
+worker_priority_write "$ISSUE" high           # Write priority (name or number)
+worker_priority_write "$ISSUE" 3              # Numeric nice value (0-19)
+worker_priority_read "$ISSUE"                 # Read priority → JSON
+```
+
+Nice value range: 0-19 (lower = higher priority, like Unix `nice`). Named aliases: `critical=0`, `high=5`, `normal=10` (default), `low=15`.
+
+Priority file format: single numeric value (atomic write via temp+rename). `worker_priority_read` returns default `normal`/10 for missing priority files.
 
 ### Known Pitfalls
 

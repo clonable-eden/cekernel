@@ -102,36 +102,57 @@ The `CEKERNEL_MAX_WORKERS` environment variable (default: 3) limits concurrent W
 export CEKERNEL_MAX_WORKERS=5
 ```
 
+### Priority-Based Scheduling
+
+Workers can be assigned a priority (nice value) at spawn time using the `--priority` flag:
+
+```bash
+export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh --priority high 4
+export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh --priority low 7
+```
+
+Priority levels (lower nice value = higher priority):
+
+| Name | Nice Value | Use Case |
+|------|-----------|----------|
+| `critical` | 0 | Urgent hotfixes |
+| `high` | 5 | Important features |
+| `normal` | 10 | Default / routine work |
+| `low` | 15 | Refactoring, nice-to-have |
+
+Numeric values 0-19 are also accepted for finer control.
+
 ### Queuing Rules
 
 When the number of issues exceeds `CEKERNEL_MAX_WORKERS`, the Orchestrator uses a waiting queue model:
 
-1. Spawn the first `MAX_WORKERS` issues, each with an individual `watch-worker.sh <issue>` in background (`run_in_background: true`)
-2. When any background watch completes → cleanup that Worker → spawn the next issue from the queue (with its own background watch)
-3. Periodically report status via `worker-status.sh` while waiting
-4. Repeat until the queue is empty and all Workers have completed
+1. Sort queued issues by priority (lower nice value first)
+2. Spawn the first `MAX_WORKERS` issues, each with an individual `watch-worker.sh <issue>` in background (`run_in_background: true`)
+3. When any background watch completes → cleanup that Worker → spawn the next highest-priority issue from the queue (with its own background watch)
+4. Periodically report status via `worker-status.sh` while waiting
+5. Repeat until the queue is empty and all Workers have completed
 
-This keeps the number of active Workers at `MAX_WORKERS` at all times, maximizing throughput. Unlike a batch model, a fast Worker's slot is immediately backfilled without waiting for slower Workers.
+This keeps the number of active Workers at `MAX_WORKERS` at all times, maximizing throughput. Unlike a batch model, a fast Worker's slot is immediately backfilled without waiting for slower Workers. Priority ensures that urgent work (e.g., hotfixes) is spawned before routine tasks.
 
 ```bash
 # Example: 6 issues, MAX_WORKERS=3
-# Queue: [4, 5, 6, 7, 8, 9]
+# Queue (sorted by priority): [4(critical), 6(high), 5(normal), 7(normal), 8(low), 9(low)]
 
-# Initial: spawn first 3, each watched individually in background
-export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 4
+# Initial: spawn first 3 (highest priority), each watched individually in background
+export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh --priority critical 4
 export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-worker.sh 4  # run_in_background: true
+export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh --priority high 6
+export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-worker.sh 6  # run_in_background: true
 export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 5
 export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-worker.sh 5  # run_in_background: true
-export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 6
-export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-worker.sh 6  # run_in_background: true
-# Queue remaining: [7, 8, 9]
+# Queue remaining: [7(normal), 8(low), 9(low)]
 
-# Worker 5 completes (background notification arrives)
-export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/cleanup-worktree.sh 5
-# Spawn next from queue
+# Worker 6 completes (background notification arrives)
+export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/cleanup-worktree.sh 6
+# Spawn next highest-priority from queue
 export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/spawn-worker.sh 7
 export CEKERNEL_SESSION_ID=<ID> && ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/watch-worker.sh 7  # run_in_background: true
-# Queue remaining: [8, 9]
+# Queue remaining: [8(low), 9(low)]
 
 # ... repeat until queue empty and all Workers complete
 ```
@@ -233,6 +254,8 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/cleanup-worktree.sh --force 4
 
 | Unix Concept | Kernel Implementation |
 |---|---|
+| `nice` / `renice` | `--priority` flag / `worker-priority.sh` |
+| priority-based scheduling | Priority-sorted queue ordering |
 | `SIGALRM` / watchdog | `CEKERNEL_WORKER_TIMEOUT` |
 | `kill -9` (SIGKILL) | `cleanup-worktree.sh --force` |
 | zombie reaping (`waitpid` + `WNOHANG`) | `health-check.sh` |
