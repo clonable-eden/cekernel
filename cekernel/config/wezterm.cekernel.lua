@@ -17,6 +17,8 @@
 -- Debug: Ctrl+Shift+L opens the WezTerm debug overlay.
 -- Look for [cekernel] prefixed log entries.
 
+local wezterm = require 'wezterm'
+
 wezterm.on('user-var-changed', function(window, pane, name, value)
   if name ~= 'cekernel_worker_layout' then
     return
