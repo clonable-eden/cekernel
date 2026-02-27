@@ -215,7 +215,8 @@ Worker / Orchestrator agent definitions have `tools` configured, granting access
 | `Write` | File writing |
 | `Bash` | All Bash commands including git, gh, shell scripts |
 
-`spawn-worker.sh` launches Workers with `claude --agent cekernel:worker`.
+`spawn-worker.sh` launches Workers with `claude --agent ${CEKERNEL_AGENT_WORKER}`.
+The agent name is resolved dynamically: `cekernel:worker` in plugin mode, `worker` in local mode.
 The `--agent` flag applies the agent definition's `tools`.
 
 Tool auto-approval (without permission prompts) is delegated to the target repository's `.claude/settings.json`.

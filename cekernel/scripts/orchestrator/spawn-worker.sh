@@ -15,6 +15,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
+CEKERNEL_AGENT_WORKER="${CEKERNEL_AGENT_WORKER:-worker}"
 source "${SCRIPT_DIR}/../shared/session-id.sh"
 source "${SCRIPT_DIR}/../shared/load-env.sh"
 source "${SCRIPT_DIR}/../shared/claude-json-helper.sh"
