@@ -35,6 +35,7 @@ Orchestrator (agent1)              Worker (agent2, 3, 4, ...)
 | `syslog` | Lifecycle event log writes |
 | `tail -f` / `journalctl` | `watch-logs.sh` |
 | log rotation | Logs deleted by `cleanup-worktree.sh` |
+| page cache | `.cekernel-task.md` (issue data pre-extracted at spawn) |
 | `ulimit -u` (max processes) | `CEKERNEL_MAX_WORKERS` |
 | `ps aux` | `worker-status.sh` |
 | process scheduler | Orchestrator queuing logic |
@@ -66,6 +67,7 @@ cekernel/
       session-id.sh          # Session ID generation + IPC directory derivation
       claude-json-helper.sh  # ~/.claude.json trust entry read/write helper
       terminal-adapter.sh    # Terminal multiplexer abstraction layer
+      task-file.sh           # Local task file extraction (session memory: page cache)
   tests/
     run-tests.sh             # Test runner
     helpers.sh               # Assertion helpers
