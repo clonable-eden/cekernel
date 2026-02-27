@@ -37,8 +37,9 @@ Key mappings:
 | address space | git worktree |
 | IPC pipe | named pipe (FIFO) |
 | IPC namespace | `CEKERNEL_SESSION_ID` |
-| process state | `worker-state.sh` (NEW/READY/RUNNING/WAITING/TERMINATED) |
+| process state | `worker-state.sh` (NEW/READY/RUNNING/WAITING/SUSPENDED/TERMINATED) |
 | page cache | `.cekernel-task.md` |
+| hibernate / swap | `.cekernel-checkpoint.md` (context swap) |
 
 ## Scripts
 
@@ -89,9 +90,21 @@ worker_state_write "$ISSUE" RUNNING "phase1:implement"  # Write state
 worker_state_read "$ISSUE"                               # Read state → JSON
 ```
 
-State machine: `NEW → READY → RUNNING → WAITING → TERMINATED` (with `RUNNING ↔ WAITING` transitions).
+State machine: `NEW → READY → RUNNING → WAITING → SUSPENDED → TERMINATED` (with `RUNNING ↔ WAITING` and `RUNNING → SUSPENDED` transitions).
 
 State file format: `STATE:TIMESTAMP:detail` (atomic write via temp+rename). `worker_state_read` returns `UNKNOWN` for missing state files.
+
+### shared/checkpoint-file.sh
+
+A helper for writing/reading `.cekernel-checkpoint.md` files in the worktree. Workers save their progress before suspending, enabling a new Worker to resume from the checkpoint (OS analogy: hibernate / swap to disk).
+
+```bash
+source "${SCRIPT_DIR}/../shared/checkpoint-file.sh"
+create_checkpoint_file "$WORKTREE" "Phase 1" "2/5 done" "implement remaining" "chose X"
+checkpoint_file_path "$WORKTREE"      # Returns path to .cekernel-checkpoint.md
+checkpoint_file_exists "$WORKTREE"    # Returns 0 if file exists
+read_checkpoint_file "$WORKTREE"      # Returns JSON with phase/completed/next/decisions
+```
 
 ### Known Pitfalls
 
