@@ -24,22 +24,34 @@ cleanup() {
 trap cleanup EXIT
 
 # ── Mock gh command ──
-# Create a mock gh that returns predictable issue data
+# Create a mock gh that returns predictable issue data (with comments)
 MOCK_BIN="${TMPDIR_TEST}/bin"
 mkdir -p "$MOCK_BIN"
 cat > "${MOCK_BIN}/gh" << 'MOCK_GH'
 #!/usr/bin/env bash
-# Mock gh: return predictable issue data
+# Mock gh: return predictable issue data with comments
 if [[ "${1:-}" == "issue" && "${2:-}" == "view" ]]; then
   ISSUE_NUM="${3:-}"
   # Check for --json flag
   for arg in "$@"; do
-    if [[ "$arg" == "title,body,labels" ]]; then
+    if [[ "$arg" == "title,body,labels,comments" ]]; then
       cat <<ENDJSON
 {
   "title": "feat: add widget support",
   "body": "## Description\nAdd widget support to the system.\n\n## Requirements\n- Support widget A\n- Support widget B",
-  "labels": [{"name": "enhancement"}, {"name": "priority:high"}]
+  "labels": [{"name": "enhancement"}, {"name": "priority:high"}],
+  "comments": [
+    {
+      "author": {"login": "alice"},
+      "createdAt": "2025-01-15T10:30:00Z",
+      "body": "I think we should use approach A for this."
+    },
+    {
+      "author": {"login": "bob"},
+      "createdAt": "2025-01-16T14:00:00Z",
+      "body": "Agreed. See ADR-0010 for details."
+    }
+  ]
 }
 ENDJSON
       exit 0
@@ -74,6 +86,21 @@ assert_match "Task file contains labels" "enhancement" "$CONTENT"
 # ── Test 5: Task file contains body ──
 assert_match "Task file contains body content" "Add widget support" "$CONTENT"
 
+# ── Test 5a: Task file contains Comments section ──
+assert_match "Task file contains Comments heading" "## Comments" "$CONTENT"
+
+# ── Test 5b: Task file contains comment author ──
+assert_match "Task file contains first comment author" "alice" "$CONTENT"
+assert_match "Task file contains second comment author" "bob" "$CONTENT"
+
+# ── Test 5c: Task file contains comment timestamps ──
+assert_match "Task file contains first comment date" "2025-01-15" "$CONTENT"
+assert_match "Task file contains second comment date" "2025-01-16" "$CONTENT"
+
+# ── Test 5d: Task file contains comment body ──
+assert_match "Task file contains first comment body" "approach A" "$CONTENT"
+assert_match "Task file contains second comment body" "ADR-0010" "$CONTENT"
+
 # ── Test 6: task_file_path returns correct path ──
 TASK_PATH=$(task_file_path "$MOCK_WORKTREE")
 assert_eq "task_file_path returns correct path" "${MOCK_WORKTREE}/.cekernel-task.md" "$TASK_PATH"
@@ -98,18 +125,19 @@ else
   TESTS_PASSED=$((TESTS_PASSED + 1))
 fi
 
-# ── Test 9: create_task_file with empty body ──
-# Update mock to return empty body
+# ── Test 9: create_task_file with empty body and no comments ──
+# Update mock to return empty body with no comments
 cat > "${MOCK_BIN}/gh" << 'MOCK_GH2'
 #!/usr/bin/env bash
 if [[ "${1:-}" == "issue" && "${2:-}" == "view" ]]; then
   for arg in "$@"; do
-    if [[ "$arg" == "title,body,labels" ]]; then
+    if [[ "$arg" == "title,body,labels,comments" ]]; then
       cat <<ENDJSON
 {
   "title": "chore: empty body issue",
   "body": "",
-  "labels": []
+  "labels": [],
+  "comments": []
 }
 ENDJSON
       exit 0
@@ -128,5 +156,14 @@ assert_file_exists "Task file created with empty body" "${EMPTY_BODY_WORKTREE}/.
 CONTENT_EMPTY=$(cat "${EMPTY_BODY_WORKTREE}/.cekernel-task.md")
 assert_match "Empty body task file has title" "chore: empty body issue" "$CONTENT_EMPTY"
 assert_match "Empty body task file has issue number" "issue: 99" "$CONTENT_EMPTY"
+
+# ── Test 10: No Comments section when comments array is empty ──
+if [[ "$CONTENT_EMPTY" =~ "## Comments" ]]; then
+  echo "  FAIL: No Comments section when no comments exist"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+else
+  echo "  PASS: No Comments section when no comments exist"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+fi
 
 report_results
