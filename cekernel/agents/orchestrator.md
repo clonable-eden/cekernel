@@ -46,7 +46,7 @@ export CEKERNEL_SESSION_ID=glimmer-7861a821 && cleanup-worktree.sh 4
 
 ### CEKERNEL_AGENT_WORKER Propagation
 
-When the `/orchestrate` skill detects plugin mode (`CLAUDE_PLUGIN_ROOT` is set), it determines the correct agent name (`cekernel:worker` for plugin mode, `worker` for local mode) and passes `CEKERNEL_AGENT_WORKER` to the Orchestrator. The Orchestrator must propagate this to all `spawn-worker.sh` invocations.
+When the `/orchestrate` skill detects plugin mode (skill namespace prefix `cekernel:`), it determines the correct agent name (`cekernel:worker` for plugin mode, `worker` for local mode) and passes `CEKERNEL_AGENT_WORKER` to the Orchestrator. The Orchestrator must propagate this to all `spawn-worker.sh` invocations.
 
 ```bash
 # Example: propagate agent name to spawn-worker.sh

@@ -172,7 +172,7 @@ export CEKERNEL_ENV=headless   # default: "default"
 Profiles are loaded with multi-layer priority (lowest → highest):
 
 1. Script defaults (`${VAR:-default}`)
-2. Plugin profile (`${CLAUDE_PLUGIN_ROOT}/envs/${CEKERNEL_ENV}.env`)
+2. Plugin profile (`cekernel/envs/${CEKERNEL_ENV}.env`)
 3. Project override (`.cekernel/envs/${CEKERNEL_ENV}.env`)
 4. Explicit environment variables
 

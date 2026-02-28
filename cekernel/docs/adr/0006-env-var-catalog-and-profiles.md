@@ -25,7 +25,7 @@ Additionally, common configurations recur: "local dev with WezTerm", "headless C
 
 ### Plugin context
 
-cekernel is distributed as a Claude Code plugin. When installed via `/plugin install cekernel@clonable-eden-glimmer`, the plugin files reside in the Claude Code plugin directory (`.claude/plugins/` hierarchy). `CLAUDE_PLUGIN_ROOT` points to this installation directory. Files within it are **overwritten on `/plugin update`** — users should not edit plugin-internal files for project-specific configuration.
+cekernel is distributed as a Claude Code plugin. When installed via `/plugin install cekernel@clonable-eden-glimmer`, the plugin files reside in the Claude Code plugin directory (`.claude/plugins/` hierarchy). Files within it are **overwritten on `/plugin update`** — users should not edit plugin-internal files for project-specific configuration.
 
 This creates a tension: the plugin ships sensible defaults, but each project may need different settings (e.g., one project uses WezTerm, another uses headless for CI). Configuration must live in a place that survives plugin updates and is scoped to the project.
 
@@ -79,13 +79,13 @@ The `/orchestrate` skill's Step 2 and the Orchestrator agent source profiles at 
 
 | Layer | Path | Provider | Survives update |
 |-------|------|----------|:-:|
-| Plugin defaults | `${CLAUDE_PLUGIN_ROOT}/envs/${CEKERNEL_ENV}.env` | cekernel plugin | No (`/plugin update` overwrites) |
+| Plugin defaults | `cekernel/envs/${CEKERNEL_ENV}.env` | cekernel plugin | No (`/plugin update` overwrites) |
 | Project override | `.cekernel/envs/${CEKERNEL_ENV}.env` | Project developer | Yes (git-managed) |
 
 The full priority order (lowest to highest):
 
 1. **Script defaults** — `${VAR:-default}` in each script (lowest priority)
-2. **Plugin profile** — `${CLAUDE_PLUGIN_ROOT}/envs/${CEKERNEL_ENV}.env`
+2. **Plugin profile** — `cekernel/envs/${CEKERNEL_ENV}.env`
 3. **Project profile** — `.cekernel/envs/${CEKERNEL_ENV}.env`
 4. **Environment variables** — explicitly `export`-ed before invocation (highest priority)
 
@@ -111,7 +111,7 @@ _cekernel_load_env() {
 _cekernel_load_env ".cekernel/envs/${CEKERNEL_ENV}.env"
 
 # Layer 2: Plugin defaults (fills remaining unset vars)
-_cekernel_load_env "${CLAUDE_PLUGIN_ROOT}/envs/${CEKERNEL_ENV}.env"
+_cekernel_load_env "${_LOAD_ENV_DIR}/../../envs/${CEKERNEL_ENV}.env"
 ```
 
 Note the reversed source order: project profile is loaded **first** because it fills in unset variables. Any variable set by the project profile will not be overwritten by the plugin profile. Any variable set via `export` before invocation will not be overwritten by either profile.
@@ -252,3 +252,9 @@ The `/cekernel:orchestrate` skill accepts `--env <profile>` as an optional argum
 **Named profiles vs. ad-hoc exports**: Profiles impose a small amount of structure (predefined `.env` files). Users who prefer `export CEKERNEL_BACKEND=headless` can continue to do so — profiles only fill unset variables, never overwrite explicit environment settings. This ensures user intent always wins.
 
 **Plugin defaults vs. project overrides**: The two-layer search adds complexity over a single-layer approach. However, the alternative — editing plugin-internal files — is fragile (`/plugin update` destroys changes) and surprising (configuration lives outside the project). The two-layer model follows the Unix convention and costs only one additional `if [[ -f ... ]]; then source ...; fi` block.
+
+## Amendments
+
+### 2026-02-28: Remove CLAUDE_PLUGIN_ROOT dependency (#132)
+
+`CLAUDE_PLUGIN_ROOT` is set by Claude Code only when executed via a skill, making it unreliable in shell scripts. `load-env.sh` now resolves the plugin envs directory via `BASH_SOURCE[0]` (`_LOAD_ENV_DIR`), following the same pattern as `backend-adapter.sh` (`_BACKEND_ADAPTER_DIR`). All references to `CLAUDE_PLUGIN_ROOT` in this ADR have been updated to reflect the new path resolution.

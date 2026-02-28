@@ -38,7 +38,7 @@ Profiles are **partial** — they only set variables that differ from defaults.
 ### Loading Priority (lowest to highest)
 
 1. **Script defaults** — `${VAR:-default}` in each script
-2. **Plugin profile** — `${CLAUDE_PLUGIN_ROOT}/envs/${CEKERNEL_ENV}.env`
+2. **Plugin profile** — `cekernel/envs/${CEKERNEL_ENV}.env`
 3. **Project profile** — `.cekernel/envs/${CEKERNEL_ENV}.env`
 4. **Environment variables** — explicit `export` before invocation
 

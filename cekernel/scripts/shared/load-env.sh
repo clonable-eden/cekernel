@@ -8,7 +8,7 @@
 #
 # Loading order (lowest to highest priority):
 #   1. Script defaults (${VAR:-default} in each script)
-#   2. Plugin profile (${CLAUDE_PLUGIN_ROOT}/envs/${CEKERNEL_ENV}.env)
+#   2. Plugin profile (cekernel/envs/${CEKERNEL_ENV}.env)
 #   3. Project profile (.cekernel/envs/${CEKERNEL_ENV}.env)
 #   4. Environment variables (explicit export)
 #
@@ -20,6 +20,8 @@
 #   _CEKERNEL_PROJECT_ENVS_DIR — Override project envs directory
 
 CEKERNEL_ENV="${CEKERNEL_ENV:-default}"
+
+_LOAD_ENV_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # _cekernel_load_env <env-file>
 # Reads KEY=VALUE lines from a file, exporting only variables not already set.
@@ -41,7 +43,7 @@ _cekernel_load_env() {
 
 # Resolve paths (testable via override variables)
 _CEKERNEL_PROJECT_ENVS_DIR="${_CEKERNEL_PROJECT_ENVS_DIR:-.cekernel/envs}"
-_CEKERNEL_PLUGIN_ENVS_DIR="${_CEKERNEL_PLUGIN_ENVS_DIR:-${CLAUDE_PLUGIN_ROOT:-}/envs}"
+_CEKERNEL_PLUGIN_ENVS_DIR="${_CEKERNEL_PLUGIN_ENVS_DIR:-${_LOAD_ENV_DIR}/../../envs}"
 
 # Layer 1: Project override (checked first — fills unset vars)
 _cekernel_load_env "${_CEKERNEL_PROJECT_ENVS_DIR}/${CEKERNEL_ENV}.env"

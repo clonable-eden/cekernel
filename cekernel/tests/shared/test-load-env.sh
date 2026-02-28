@@ -30,7 +30,7 @@ ENVFILE
 RESULT=$(
   unset CEKERNEL_TEST_VAR1 CEKERNEL_TEST_VAR2 2>/dev/null || true
   export CEKERNEL_ENV=test1
-  export CLAUDE_PLUGIN_ROOT="$TEST_TMPDIR/nonexistent"
+
   # Provide the plugin envs dir directly
   _CEKERNEL_PLUGIN_ENVS_DIR="$PLUGIN_ENVS" \
   _CEKERNEL_PROJECT_ENVS_DIR="${TEST_TMPDIR}/nonexistent-project" \
@@ -49,7 +49,7 @@ RESULT=$(
   export CEKERNEL_TEST_VAR1="from-env"
   unset CEKERNEL_TEST_VAR2 2>/dev/null || true
   export CEKERNEL_ENV=test2
-  export CLAUDE_PLUGIN_ROOT="$TEST_TMPDIR/nonexistent"
+
   _CEKERNEL_PLUGIN_ENVS_DIR="$PLUGIN_ENVS" \
   _CEKERNEL_PROJECT_ENVS_DIR="${TEST_TMPDIR}/nonexistent-project" \
   source "$LOAD_ENV_SCRIPT"
@@ -70,7 +70,7 @@ ENVFILE
 RESULT=$(
   unset CEKERNEL_TEST_VAR1 CEKERNEL_TEST_VAR2 2>/dev/null || true
   export CEKERNEL_ENV=test3
-  export CLAUDE_PLUGIN_ROOT="$TEST_TMPDIR/nonexistent"
+
   _CEKERNEL_PLUGIN_ENVS_DIR="$PLUGIN_ENVS" \
   _CEKERNEL_PROJECT_ENVS_DIR="$PROJECT_ENVS" \
   source "$LOAD_ENV_SCRIPT"
@@ -82,7 +82,7 @@ assert_eq "Project profile overrides plugin profile" "from-project|from-plugin" 
 RESULT=$(
   unset CEKERNEL_TEST_VAR1 2>/dev/null || true
   export CEKERNEL_ENV=nonexistent-profile
-  export CLAUDE_PLUGIN_ROOT="$TEST_TMPDIR/nonexistent"
+
   _CEKERNEL_PLUGIN_ENVS_DIR="$PLUGIN_ENVS" \
   _CEKERNEL_PROJECT_ENVS_DIR="$PROJECT_ENVS" \
   source "$LOAD_ENV_SCRIPT" 2>&1
@@ -103,7 +103,7 @@ ENVFILE
 RESULT=$(
   unset CEKERNEL_TEST_VAR1 CEKERNEL_TEST_VAR2 2>/dev/null || true
   export CEKERNEL_ENV=test5
-  export CLAUDE_PLUGIN_ROOT="$TEST_TMPDIR/nonexistent"
+
   _CEKERNEL_PLUGIN_ENVS_DIR="$PLUGIN_ENVS" \
   _CEKERNEL_PROJECT_ENVS_DIR="${TEST_TMPDIR}/nonexistent-project" \
   source "$LOAD_ENV_SCRIPT"
@@ -118,7 +118,7 @@ ENVFILE
 
 RESULT=$(
   unset CEKERNEL_TEST_VAR1 CEKERNEL_ENV 2>/dev/null || true
-  export CLAUDE_PLUGIN_ROOT="$TEST_TMPDIR/nonexistent"
+
   _CEKERNEL_PLUGIN_ENVS_DIR="$PLUGIN_ENVS" \
   _CEKERNEL_PROJECT_ENVS_DIR="${TEST_TMPDIR}/nonexistent-project" \
   source "$LOAD_ENV_SCRIPT"
@@ -135,7 +135,7 @@ ENVFILE
 RESULT=$(
   unset CEKERNEL_TEST_VAR1 CEKERNEL_TEST_VAR2 2>/dev/null || true
   export CEKERNEL_ENV=test7
-  export CLAUDE_PLUGIN_ROOT="$TEST_TMPDIR/nonexistent"
+
   _CEKERNEL_PLUGIN_ENVS_DIR="$PLUGIN_ENVS" \
   _CEKERNEL_PROJECT_ENVS_DIR="${TEST_TMPDIR}/nonexistent-project" \
   source "$LOAD_ENV_SCRIPT"
@@ -159,7 +159,7 @@ RESULT=$(
   export CEKERNEL_TEST_VAR1="from-env"
   unset CEKERNEL_TEST_VAR2 CEKERNEL_TEST_VAR3 2>/dev/null || true
   export CEKERNEL_ENV=test8
-  export CLAUDE_PLUGIN_ROOT="$TEST_TMPDIR/nonexistent"
+
   _CEKERNEL_PLUGIN_ENVS_DIR="$PLUGIN_ENVS" \
   _CEKERNEL_PROJECT_ENVS_DIR="$PROJECT_ENVS" \
   source "$LOAD_ENV_SCRIPT"
