@@ -16,7 +16,6 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 source "${SCRIPT_DIR}/../shared/session-id.sh"
 
 ISSUE_NUMBER="${1:?Usage: send-signal.sh <issue-number> <signal>}"
