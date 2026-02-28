@@ -41,7 +41,7 @@ backend_spawn_worker() {
 
   # Send OSC user-var to trigger Lua handler (IPC 2-3)
   local payload_b64
-  payload_b64=$(printf '%s' "$layout_payload" | base64)
+  payload_b64=$(printf '%s' "$layout_payload" | base64 | tr -d '\n')
   local osc_cmd="printf '\\033]1337;SetUserVar=%s=%s\\007' cekernel_worker_layout '${payload_b64}'"
   wezterm cli send-text --pane-id "$pane_id" -- "$osc_cmd"
   sleep 0.1
