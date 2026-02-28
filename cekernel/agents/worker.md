@@ -197,6 +197,17 @@ EOF
 > On CI fix: `source worker-state.sh && worker_state_write <issue> RUNNING "phase3:ci-fixing"`
 > On merge: `source worker-state.sh && worker_state_write <issue> RUNNING "phase3:merging"`
 
+#### Load environment profile
+
+On entering Phase 3, source `load-env.sh` (`scripts/shared/load-env.sh`) to load Worker-side configuration. `CEKERNEL_ENV` (profile name) is propagated from the Orchestrator via the launch prompt. Source from the worktree root directory so that project profiles (`.cekernel/envs/`) are found correctly.
+
+```bash
+# Source load-env.sh once at Phase 3 entry (reads CEKERNEL_CI_MAX_RETRIES etc.)
+source load-env.sh
+```
+
+If `load-env.sh` cannot be sourced (path resolution error, file not found), fall back to the default values stated in this document.
+
 ```bash
 # Wait for CI to complete
 gh pr checks <pr-number> --watch
