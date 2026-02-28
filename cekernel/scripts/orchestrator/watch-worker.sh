@@ -7,15 +7,17 @@
 #   CEKERNEL_WORKER_TIMEOUT — Worker timeout in seconds (default: 3600)
 #   CEKERNEL_POLL_INTERVAL  — State file poll interval in seconds (default: 30)
 #
-# Monitors each Worker via dual-path detection:
+# Monitors each Worker via triple-path detection:
 #   1. FIFO (primary, sub-second latency)
 #   2. State file polling (fallback, up to POLL_INTERVAL latency)
+#   3. Process crash detection (backend_worker_alive check)
 # Outputs results to stdout as JSON Lines.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../shared/session-id.sh"
 source "${SCRIPT_DIR}/../shared/worker-state.sh"
+source "${SCRIPT_DIR}/../shared/backend-adapter.sh"
 
 ISSUE_NUMBERS=("$@")
 [[ ${#ISSUE_NUMBERS[@]} -gt 0 ]] || { echo "Usage: watch-worker.sh <issue-number> [...]" >&2; exit 1; }
@@ -95,6 +97,17 @@ watch_one() {
       break
     fi
 
+    # Crash detection: if handle file exists but Worker process is dead, it crashed
+    # Only check when handle file is present (without it, we can't verify process status)
+    if [[ -f "${CEKERNEL_IPC_DIR}/handle-${issue}" ]] && ! backend_worker_alive "$issue" 2>/dev/null; then
+      result="{\"issue\":${issue},\"status\":\"crashed\",\"detail\":\"Worker process died without completing\"}"
+      echo "Error: issue #${issue} Worker process crashed (state: ${state})." >&2
+      log_event "$issue" "WORKER_CRASH" "issue=#${issue} state=${state}"
+      [[ $has_fifo -eq 1 ]] && exec 3>&-
+      rm -f "$fifo"
+      break
+    fi
+
     elapsed=$((elapsed + wait_time))
   done
 
@@ -108,7 +121,9 @@ watch_one() {
   fi
 
   echo "$result" > "${RESULT_DIR}/${issue}"
-  [[ "$(echo "$result" | jq -r '.status')" != "timeout" && "$(echo "$result" | jq -r '.status')" != "error" ]]
+  local result_status
+  result_status=$(echo "$result" | jq -r '.status')
+  [[ "$result_status" != "timeout" && "$result_status" != "error" && "$result_status" != "crashed" ]]
 }
 
 for issue in "${ISSUE_NUMBERS[@]}"; do
