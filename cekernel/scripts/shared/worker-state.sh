@@ -30,19 +30,14 @@ worker_state_write() {
   local state="${2:?State required: NEW|READY|RUNNING|WAITING|SUSPENDED|TERMINATED}"
   local detail="${3:-}"
 
-  # Validate state
-  local valid=0
-  for s in $_CEKERNEL_VALID_STATES; do
-    if [[ "$s" == "$state" ]]; then
-      valid=1
-      break
-    fi
-  done
-
-  if [[ "$valid" -eq 0 ]]; then
-    echo "Error: invalid state '${state}'. Valid: ${_CEKERNEL_VALID_STATES}" >&2
-    return 1
-  fi
+  # Validate state using case statement (immune to IFS changes — fixes #141)
+  case "$state" in
+    NEW|READY|RUNNING|WAITING|SUSPENDED|TERMINATED) ;;
+    *)
+      echo "Error: invalid state '${state}'. Valid: ${_CEKERNEL_VALID_STATES}" >&2
+      return 1
+      ;;
+  esac
 
   local state_file="${CEKERNEL_IPC_DIR}/worker-${issue}.state"
   local timestamp
