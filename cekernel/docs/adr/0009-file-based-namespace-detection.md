@@ -170,7 +170,7 @@ Hooks execute in JSON configuration context where `${CLAUDE_PLUGIN_ROOT}` works,
 - Self-hosting always uses local definitions — no silent fallback to outdated plugin versions
 - Detection is inspectable: `ls cekernel/agents/` reveals the mode immediately
 - No dependency on Claude Code internals (`<command-name>` tag format, `${CLAUDE_PLUGIN_ROOT}` expansion)
-- Future-proof: when Claude Code adds proper namespace detection, migration is a single point of change (the detection script)
+- Future-proof: when Claude Code adds proper namespace detection, the inline Bash snippet in each SKILL.md is the only code to update — no mechanism scripts, agent definitions, or hook configurations are involved
 
 ### Negative
 
