@@ -96,4 +96,37 @@ worker_state_write 51 NEW
 STATE=$(worker_state_read 51)
 assert_match "State includes timestamp" '"timestamp":"[0-9]{4}-[0-9]{2}-[0-9]{2}T' "$STATE"
 
+# ── Test 14: worker_state_write fails when CEKERNEL_IPC_DIR is unset (issue #146) ──
+SAVED_IPC_DIR="$CEKERNEL_IPC_DIR"
+unset CEKERNEL_IPC_DIR
+EXIT_CODE=0
+ERR_MSG=$(worker_state_write 60 RUNNING "test" 2>&1) || EXIT_CODE=$?
+export CEKERNEL_IPC_DIR="$SAVED_IPC_DIR"
+assert_eq "write fails with exit 1 when CEKERNEL_IPC_DIR unset" "1" "$EXIT_CODE"
+assert_match "write error mentions CEKERNEL_IPC_DIR" "CEKERNEL_IPC_DIR" "$ERR_MSG"
+
+# ── Test 15: worker_state_read fails when CEKERNEL_IPC_DIR is unset (issue #146) ──
+unset CEKERNEL_IPC_DIR
+EXIT_CODE=0
+ERR_MSG=$(worker_state_read 60 2>&1) || EXIT_CODE=$?
+export CEKERNEL_IPC_DIR="$SAVED_IPC_DIR"
+assert_eq "read fails with exit 1 when CEKERNEL_IPC_DIR unset" "1" "$EXIT_CODE"
+assert_match "read error mentions CEKERNEL_IPC_DIR" "CEKERNEL_IPC_DIR" "$ERR_MSG"
+
+# ── Test 16: worker_state_write fails when CEKERNEL_IPC_DIR is empty (issue #146) ──
+export CEKERNEL_IPC_DIR=""
+EXIT_CODE=0
+ERR_MSG=$(worker_state_write 60 RUNNING "test" 2>&1) || EXIT_CODE=$?
+export CEKERNEL_IPC_DIR="$SAVED_IPC_DIR"
+assert_eq "write fails with exit 1 when CEKERNEL_IPC_DIR empty" "1" "$EXIT_CODE"
+assert_match "write error mentions CEKERNEL_IPC_DIR (empty)" "CEKERNEL_IPC_DIR" "$ERR_MSG"
+
+# ── Test 17: worker_state_read fails when CEKERNEL_IPC_DIR is empty (issue #146) ──
+export CEKERNEL_IPC_DIR=""
+EXIT_CODE=0
+ERR_MSG=$(worker_state_read 60 2>&1) || EXIT_CODE=$?
+export CEKERNEL_IPC_DIR="$SAVED_IPC_DIR"
+assert_eq "read fails with exit 1 when CEKERNEL_IPC_DIR empty" "1" "$EXIT_CODE"
+assert_match "read error mentions CEKERNEL_IPC_DIR (empty)" "CEKERNEL_IPC_DIR" "$ERR_MSG"
+
 report_results
