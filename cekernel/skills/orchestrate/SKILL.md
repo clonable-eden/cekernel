@@ -19,21 +19,24 @@ Optional flags:
 Examples:
 
 ```
-/cekernel:orchestrate #108
-/cekernel:orchestrate --env headless #108 #109
-/cekernel:orchestrate --env ci #42
+/orchestrate #108
+/orchestrate --env headless #108 #109
+/orchestrate --env ci #42
 ```
+
+Note: In plugin mode, `/cekernel:orchestrate` also works.
 
 ## Workflow
 
 ### Step 0: Detect Agent Names
 
-Determine whether cekernel is running as a plugin (with namespace prefix) or locally (without prefix).
+Detect whether cekernel is running as a plugin or locally using file-based detection (ADR-0009).
 
-Check whether the skill was invoked with a namespace prefix (e.g., `cekernel:orchestrate` vs `orchestrate`).
-
-- If namespaced (plugin mode): `CEKERNEL_AGENT_ORCHESTRATOR=cekernel:orchestrator`, `CEKERNEL_AGENT_WORKER=cekernel:worker`
-- If not namespaced (local mode): `CEKERNEL_AGENT_ORCHESTRATOR=orchestrator`, `CEKERNEL_AGENT_WORKER=worker`
+1. Read `cekernel/skills/references/namespace-detection.md` from the repository root (`$(git rev-parse --show-toplevel)/cekernel/skills/references/namespace-detection.md`). If the Read fails (file not found), you are in plugin mode.
+2. Execute the detection Bash snippet from the reference file.
+3. Set agent names based on the result:
+   - If `CEKERNEL_NS=local`: `CEKERNEL_AGENT_ORCHESTRATOR=orchestrator`, `CEKERNEL_AGENT_WORKER=worker`
+   - If `CEKERNEL_NS=plugin`: `CEKERNEL_AGENT_ORCHESTRATOR=cekernel:orchestrator`, `CEKERNEL_AGENT_WORKER=cekernel:worker`
 
 Store these values for use in subsequent steps.
 

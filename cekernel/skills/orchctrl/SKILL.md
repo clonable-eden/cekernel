@@ -11,15 +11,17 @@ Worker control interface for cekernel. Like `systemctl` / `supervisorctl`, provi
 ## Usage
 
 ```
-/cekernel:orchctrl ls
-/cekernel:orchctrl log <target>
-/cekernel:orchctrl inspect <target>
-/cekernel:orchctrl suspend <target>
-/cekernel:orchctrl resume <target>
-/cekernel:orchctrl term <target>
-/cekernel:orchctrl kill <target>
-/cekernel:orchctrl nice <target> <priority>
+/orchctrl ls
+/orchctrl log <target>
+/orchctrl inspect <target>
+/orchctrl suspend <target>
+/orchctrl resume <target>
+/orchctrl term <target>
+/orchctrl kill <target>
+/orchctrl nice <target> <priority>
 ```
+
+Note: In plugin mode, `/cekernel:orchctrl` also works.
 
 ## Addressing: `<target>`
 
@@ -39,20 +41,13 @@ Rules:
 
 ## Workflow
 
-### Step 1: Determine Script Location
+### Step 1: Detect Namespace and Determine Script Location
 
-Locate `orchctrl.sh` relative to the plugin:
-
-```bash
-# If cekernel is installed as a plugin, find the script path
-ORCHCTRL="$(dirname "$(dirname "$(which spawn-worker.sh 2>/dev/null || echo "")")")/scripts/orchestrator/orchctrl.sh"
-```
-
-Or use the path directly when running from within the cekernel repository:
-
-```bash
-ORCHCTRL="cekernel/scripts/orchestrator/orchctrl.sh"
-```
+1. Read `cekernel/skills/references/namespace-detection.md` from the repository root (`$(git rev-parse --show-toplevel)/cekernel/skills/references/namespace-detection.md`). If the Read fails (file not found), you are in plugin mode.
+2. Execute the detection Bash snippet from the reference file.
+3. Set the script path based on the result:
+   - If `CEKERNEL_NS=local`: `ORCHCTRL="cekernel/scripts/orchestrator/orchctrl.sh"`
+   - If `CEKERNEL_NS=plugin`: `ORCHCTRL="$(dirname "$(dirname "$(which spawn-worker.sh 2>/dev/null || echo "")")")/scripts/orchestrator/orchctrl.sh"`
 
 ### Step 2: Parse User Command and Execute
 
