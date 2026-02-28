@@ -39,15 +39,16 @@ create_task_file() {
   local task_file
   task_file="$(task_file_path "$worktree")"
 
-  # Fetch issue data as JSON
+  # Fetch issue data as JSON (including comments for full context)
   local issue_json
-  issue_json=$(gh issue view "$issue_number" --json title,body,labels)
+  issue_json=$(gh issue view "$issue_number" --json title,body,labels,comments)
 
   # Extract fields
-  local title body labels
+  local title body labels comments_count
   title=$(echo "$issue_json" | jq -r '.title')
   body=$(echo "$issue_json" | jq -r '.body // ""')
   labels=$(echo "$issue_json" | jq -r '(.labels // []) | map(.name) | join(", ")')
+  comments_count=$(echo "$issue_json" | jq -r '(.comments // []) | length')
 
   # Write task file
   {
@@ -63,6 +64,17 @@ create_task_file() {
     echo ""
     if [[ -n "$body" ]]; then
       echo "$body"
+    fi
+
+    # Append comments section if comments exist
+    if [[ "$comments_count" -gt 0 ]]; then
+      echo ""
+      echo "## Comments"
+      echo ""
+      echo "$issue_json" | jq -r '
+        .comments[] |
+        "### @\(.author.login) (\(.createdAt))\n\n\(.body)\n"
+      '
     fi
   } > "$task_file"
 }
