@@ -258,3 +258,7 @@ The `/cekernel:orchestrate` skill accepts `--env <profile>` as an optional argum
 ### 2026-02-28: Remove CLAUDE_PLUGIN_ROOT dependency (#132)
 
 `CLAUDE_PLUGIN_ROOT` is set by Claude Code only when executed via a skill, making it unreliable in shell scripts. `load-env.sh` now resolves the plugin envs directory via `BASH_SOURCE[0]` (`_LOAD_ENV_DIR`), following the same pattern as `backend-adapter.sh` (`_BACKEND_ADAPTER_DIR`). All references to `CLAUDE_PLUGIN_ROOT` in this ADR have been updated to reflect the new path resolution.
+
+### 2026-02-28: Worker-side profile loading (ADR-0010)
+
+The key observation in the Context section — "No user-configurable environment variable needs to reach the Worker agent" — is amended by [ADR-0010](./0010-worker-env-profile-loading.md). Workers now receive `CEKERNEL_ENV` (profile name) via the launch prompt and source `load-env.sh` on demand to read Worker-side configuration (e.g., `CEKERNEL_CI_MAX_RETRIES`). The profile mechanism, loading order, and `.env` format remain unchanged. See ADR-0010 for details.

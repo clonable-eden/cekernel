@@ -60,14 +60,25 @@ Only the **profile name** is propagated — not individual configuration values.
 
 ### 2. Workers source `load-env.sh` to self-load configuration
 
-When a Worker needs a configurable value, it sources `load-env.sh` via a Bash command:
+When a Worker needs a configurable value, it sources `load-env.sh` via a Bash command. The path resolution differs by mode (paralleling ADR-0009's namespace detection):
 
-```bash
-source "$(dirname "$(which spawn-worker.sh)")/shared/load-env.sh"
-echo "$CEKERNEL_CI_MAX_RETRIES"
-```
+- **Local mode** (`cekernel/agents/` exists in repo root): `load-env.sh` is in the worktree at a known relative path
+
+  ```bash
+  source "$(git rev-parse --show-toplevel)/cekernel/scripts/shared/load-env.sh"
+  ```
+
+- **Plugin mode**: `load-env.sh` is co-located with `spawn-worker.sh` in the plugin directory hierarchy
+
+  ```bash
+  source "$(dirname "$(which spawn-worker.sh)")/shared/load-env.sh"
+  ```
+
+`worker.md` instructs the Worker to use the appropriate path based on the namespace detection result already performed in Phase 0.
 
 The Worker uses the same `load-env.sh` and the same multi-layer search as the Orchestrator. The profile name (`CEKERNEL_ENV`) selects the same `.env` file on both sides.
+
+**CWD assumption**: `load-env.sh` searches project profiles via relative path (`.cekernel/envs/`). The Worker must source it from the worktree root directory. Since Workers execute Bash commands from the worktree root by default (set by `spawn-worker.sh`), this is satisfied under normal operation.
 
 ### 3. Worker protocol references env variables instead of hardcoding
 
@@ -85,13 +96,31 @@ To:
 
 The Worker reads the value at runtime rather than following a hardcoded instruction. The default (3) preserves current behavior.
 
-### 4. `default.env` includes Worker-side defaults
+### 4. Source timing: once at CI verification entry
+
+The Worker sources `load-env.sh` once when entering the CI verification loop (Phase 3), not at startup or on every retry. This is the earliest point where Worker-side configuration is needed, and ensures the values are available for all subsequent retry decisions.
+
+```
+Phase 0 (Plan) → Phase 1 (Implement) → Phase 2 (Create PR) → Phase 3 (CI verify) ← source here
+```
+
+### 5. `default.env` includes Worker-side defaults
 
 ```
 CEKERNEL_CI_MAX_RETRIES=3
 ```
 
-The env file documents and centralizes the default, even though `worker.md` also states it. The env file is the authoritative source; the markdown default is a fallback for the LLM.
+The env file documents and centralizes the default, even though `worker.md` also states it. The env file is the authoritative source; the markdown default is an intentional fallback — see "Failure mode" below.
+
+### 6. Failure mode: graceful degradation with default
+
+If the Worker fails to source `load-env.sh` (path resolution error, file not found), it falls back to the default value stated in `worker.md` ("default: 3"). This is a deliberate design choice:
+
+- The retry count is not a critical safety parameter — using the default is always a safe behavior
+- The Worker is an LLM agent that can interpret the markdown default independently of the shell environment
+- The failure is **visible**: `source` failures produce stderr output that appears in Worker logs, enabling diagnosis
+
+This follows the Rule of Repair: the failure is noisy (stderr), but the system continues with a safe default rather than aborting the entire CI verification phase.
 
 ### UNIX Philosophy Alignment
 
@@ -105,7 +134,7 @@ Adding a new Worker-side configuration should require only adding a line to `def
 
 > **Rule of Representation**: *"Fold knowledge into data so program logic can be stupid and robust."*
 
-The retry count moves from prose in a markdown file (knowledge embedded in text for LLM interpretation) to a named variable in a data file (knowledge in data, read by `load-env.sh`). The Worker doesn't need to "understand" the retry policy — it reads a number.
+The retry count moves from prose in a markdown file to a named variable in a data file (`.env`), read by `load-env.sh`. However, the Worker is an LLM agent, not a traditional program calling `getenv()`. The Worker still interprets `worker.md` instructions to know *when* to source the file and *how* to use the value. What changes is the **value itself** — externalized from hardcoded prose to configurable data. The "program logic" (LLM reasoning about retry strategy) remains, but the policy parameter it operates on is now in data.
 
 ## Alternatives Considered
 
@@ -162,9 +191,10 @@ The rest of ADR-0006 remains valid: the profile mechanism, loading order, `.env`
 | File | Change |
 |------|--------|
 | `spawn-worker.sh` | Add `export CEKERNEL_ENV=${CEKERNEL_ENV}` to both PROMPT strings (normal and resume) |
-| `worker.md` | On Error section: reference `CEKERNEL_CI_MAX_RETRIES` with `source load-env.sh` instruction |
+| `worker.md` | On Error section: reference `CEKERNEL_CI_MAX_RETRIES` with `source load-env.sh` instruction. Include mode-aware path resolution (local vs plugin) and default value. Source timing: Phase 3 entry |
 | `default.env` | Add `CEKERNEL_CI_MAX_RETRIES=3` |
 | `envs/README.md` | Add `CEKERNEL_CI_MAX_RETRIES` to the catalog |
+| `ADR-0006` | Add amendment cross-reference to this ADR in the Amendments section |
 
 ## Consequences
 
@@ -177,7 +207,7 @@ The rest of ADR-0006 remains valid: the profile mechanism, loading order, `.env`
 
 ### Negative
 
-- Workers must resolve `load-env.sh` path at runtime (via `which spawn-worker.sh` path resolution)
+- Workers must resolve `load-env.sh` path at runtime (mode-aware: `git rev-parse` for local, `which spawn-worker.sh` for plugin)
 - `worker.md` instructions become slightly more complex ("source load-env.sh and read variable" vs. "after 3 failures")
 - ADR-0006's clean "Workers don't need config" boundary is relaxed
 
