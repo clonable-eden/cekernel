@@ -187,9 +187,9 @@ echo "branch:   $BRANCH" >&2
 # 2. Follow kernel's protocol only for lifecycle (PR → CI → merge → notify)
 # 3. Follow the target repository's conventions for implementation
 if [[ "$RESUME" -eq 1 ]]; then
-  PROMPT="Resume issue #${ISSUE_NUMBER}. Read .cekernel-checkpoint.md to understand previous progress, then continue from where the previous Worker left off. First read the target repository's CLAUDE.md and fully follow its conventions. Follow only the kernel Worker Protocol for lifecycle: implement → create PR → verify CI → merge. When done, run notify-complete.sh ${ISSUE_NUMBER} merged <pr-number>. When executing Bash during processing, always prefix with: export CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID} &&"
+  PROMPT="Resume issue #${ISSUE_NUMBER}. Read .cekernel-checkpoint.md to understand previous progress, then continue from where the previous Worker left off. First read the target repository's CLAUDE.md and fully follow its conventions. Follow only the kernel Worker Protocol for lifecycle: implement → create PR → verify CI → merge. When done, run notify-complete.sh ${ISSUE_NUMBER} merged <pr-number>. When executing Bash during processing, always prefix with: export CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID} && export CEKERNEL_ENV=${CEKERNEL_ENV} &&"
 else
-  PROMPT="Resolve issue #${ISSUE_NUMBER}. First read the target repository's CLAUDE.md and fully follow its conventions. Follow only the kernel Worker Protocol for lifecycle: implement → create PR → verify CI → merge. When done, run notify-complete.sh ${ISSUE_NUMBER} merged <pr-number>. When executing Bash during processing, always prefix with: export CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID} &&"
+  PROMPT="Resolve issue #${ISSUE_NUMBER}. First read the target repository's CLAUDE.md and fully follow its conventions. Follow only the kernel Worker Protocol for lifecycle: implement → create PR → verify CI → merge. When done, run notify-complete.sh ${ISSUE_NUMBER} merged <pr-number>. When executing Bash during processing, always prefix with: export CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID} && export CEKERNEL_ENV=${CEKERNEL_ENV} &&"
 fi
 
 # Backend handles workspace resolution, window spawning, and handle file management internally.
