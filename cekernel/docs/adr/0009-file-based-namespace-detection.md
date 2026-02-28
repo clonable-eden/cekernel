@@ -186,7 +186,11 @@ Hooks execute in JSON configuration context where `${CLAUDE_PLUGIN_ROOT}` works,
 
 ## Implementation Scope
 
-This ADR documents the detection **decision** only. The implementation — rewriting `cekernel/skills/orchestrate/SKILL.md` Step 0 to use the Bash-based detection instead of LLM-based `<command-name>` interpretation — is tracked separately. The detection logic should be embedded as Bash instructions in Step 0, replacing the current LLM-inference paragraph. If other skills (e.g., `/probe`, `/orchctrl`) need the same detection, extracting to a shared `detect-namespace.sh` script is recommended.
+This ADR documents the detection **decision** only. The implementation — rewriting `cekernel/skills/orchestrate/SKILL.md` Step 0 to use Bash-based detection instead of LLM-based `<command-name>` interpretation — is tracked separately.
+
+The detection logic **must** be embedded as inline Bash instructions in each SKILL.md, not extracted to a shared shell script. This is a bootstrap constraint: locating `detect-namespace.sh` requires resolving cekernel's path, which itself requires knowing the namespace — a circular dependency. SKILL.md cannot use `BASH_SOURCE[0]` (not a shell script) or `${CLAUDE_PLUGIN_ROOT}` (not expanded in skill markdown). The probe skill (`cekernel/skills/probe/SKILL.md`) already demonstrates this inline pattern.
+
+Each skill that needs namespace detection duplicates the ~5 line Bash snippet. This is an acceptable trade-off: the snippet is trivial, stable, and the duplication cost is far lower than the circular dependency it avoids.
 
 ## References
 
