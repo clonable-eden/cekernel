@@ -233,12 +233,14 @@ notify-complete.sh <issue-number> merged <pr-number>
 
 ## On Error
 
+The maximum number of CI retry attempts is controlled by `CEKERNEL_CI_MAX_RETRIES` (default: 3).
+
 When CI fails:
 
 1. Check failed checks with `gh pr checks`
 2. Fix and push
 3. Wait for CI again
-4. After 3 failures:
+4. After `CEKERNEL_CI_MAX_RETRIES` failures (default: 3):
    1. Post Result as a comment on the issue (Status: failed, describe failure reason in Summary)
    2. Run `notify-complete.sh <issue-number> failed "reason"`
 
