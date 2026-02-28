@@ -26,24 +26,13 @@ Report:
 [LLM Detection] reason = <how you determined the namespace>
 ```
 
-### Step 2: File-based Detection (D2 Proposal)
+### Step 2: File-based Detection (D2 — ADR-0009)
 
-Run the following Bash command to detect namespace via file existence:
-
-```bash
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo '')"
-if [[ -n "$REPO_ROOT" && -d "${REPO_ROOT}/cekernel/agents" ]]; then
-  FILE_DETECTED_NS="local"
-  CEKERNEL_AGENT_PROBE="probe"
-else
-  FILE_DETECTED_NS="cekernel"
-  CEKERNEL_AGENT_PROBE="cekernel:probe"
-fi
-echo "[File Detection] repo_root = ${REPO_ROOT}"
-echo "[File Detection] cekernel/agents exists = $([[ -d "${REPO_ROOT}/cekernel/agents" ]] && echo yes || echo no)"
-echo "[File Detection] namespace = ${FILE_DETECTED_NS}"
-echo "[File Detection] agent_name = ${CEKERNEL_AGENT_PROBE}"
-```
+1. Read `cekernel/skills/references/namespace-detection.md` from the repository root (`$(git rev-parse --show-toplevel)/cekernel/skills/references/namespace-detection.md`). If the Read fails (file not found), you are in plugin mode.
+2. Execute the detection Bash snippet from the reference file.
+3. Map the result for probe reporting:
+   - If `CEKERNEL_NS=local`: `FILE_DETECTED_NS="local"`, `CEKERNEL_AGENT_PROBE="probe"`
+   - If `CEKERNEL_NS=plugin`: `FILE_DETECTED_NS="cekernel"`, `CEKERNEL_AGENT_PROBE="cekernel:probe"`
 
 ### Step 3: Launch Probe Agent
 
