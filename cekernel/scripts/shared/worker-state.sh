@@ -24,8 +24,13 @@ _CEKERNEL_VALID_STATES="NEW READY RUNNING WAITING SUSPENDED TERMINATED"
 
 # worker_state_write <issue-number> <state> [detail]
 #   Write state to the worker state file.
-#   Exit 1 if state is invalid.
+#   Exit 1 if state is invalid or CEKERNEL_IPC_DIR is not set.
 worker_state_write() {
+  if [[ -z "${CEKERNEL_IPC_DIR:-}" ]]; then
+    echo "Error: CEKERNEL_IPC_DIR not set. Source session-id.sh first." >&2
+    return 1
+  fi
+
   local issue="${1:?Usage: worker_state_write <issue-number> <state> [detail]}"
   local state="${2:?State required: NEW|READY|RUNNING|WAITING|SUSPENDED|TERMINATED}"
   local detail="${3:-}"
@@ -54,7 +59,13 @@ worker_state_write() {
 #   Read state from the worker state file.
 #   Outputs JSON: {"issue": N, "state": "...", "detail": "...", "timestamp": "..."}
 #   Returns UNKNOWN state if no state file exists.
+#   Exit 1 if CEKERNEL_IPC_DIR is not set.
 worker_state_read() {
+  if [[ -z "${CEKERNEL_IPC_DIR:-}" ]]; then
+    echo "Error: CEKERNEL_IPC_DIR not set. Source session-id.sh first." >&2
+    return 1
+  fi
+
   local issue="${1:?Usage: worker_state_read <issue-number>}"
   local state_file="${CEKERNEL_IPC_DIR}/worker-${issue}.state"
 
