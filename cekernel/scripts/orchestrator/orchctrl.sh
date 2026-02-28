@@ -294,6 +294,10 @@ cmd_inspect() {
   state_json=$(worker_state_read "$RESOLVED_ISSUE")
   local state
   state=$(echo "$state_json" | jq -r '.state')
+  local detail
+  detail=$(echo "$state_json" | jq -r '.detail')
+  local timestamp
+  timestamp=$(echo "$state_json" | jq -r '.timestamp')
 
   # Priority
   local priority_json
@@ -342,13 +346,15 @@ cmd_inspect() {
     --arg session "$RESOLVED_SESSION" \
     --argjson issue "$RESOLVED_ISSUE" \
     --arg state "$state" \
+    --arg detail "$detail" \
+    --arg timestamp "$timestamp" \
     --argjson priority "$priority" \
     --arg elapsed "${elapsed:-}" \
     --arg backend "$backend" \
     --arg worktree "${worktree:-}" \
     --argjson checkpoint "$checkpoint_json" \
     --argjson logs "$log_files" \
-    '{session: $session, issue: $issue, state: $state, priority: $priority, elapsed: $elapsed, backend: $backend, worktree: $worktree, checkpoint: $checkpoint, logs: $logs}'
+    '{session: $session, issue: $issue, state: $state, detail: $detail, timestamp: $timestamp, priority: $priority, elapsed: $elapsed, backend: $backend, worktree: $worktree, checkpoint: $checkpoint, logs: $logs}'
 }
 
 # ── suspend: Send SUSPEND signal ──

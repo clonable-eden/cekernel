@@ -219,6 +219,12 @@ assert_match "inspect contains state" '"state":"RUNNING"' "$OUTPUT"
 assert_match "inspect contains priority" '"priority":5' "$OUTPUT"
 assert_match "inspect contains session" "$SESSION_A" "$OUTPUT"
 
+# ── Test 27b: inspect output contains detail and timestamp ──
+echo "RUNNING:2026-02-28T10:00:00Z:phase1:implement" > "${IPC_A}/worker-10.state"
+OUTPUT=$(bash "$ORCHCTRL" inspect 10 --session "$SESSION_A" 2>/dev/null)
+assert_match "inspect contains detail" '"detail":"phase1:implement"' "$OUTPUT"
+assert_match "inspect contains timestamp" '"timestamp":"2026-02-28T10:00:00Z"' "$OUTPUT"
+
 # ══════════════════════════════════════════════
 # usage / no command
 # ══════════════════════════════════════════════
