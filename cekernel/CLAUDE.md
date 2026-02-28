@@ -144,7 +144,14 @@ Use `${VAR:-default}` pattern for default values:
 ```bash
 MAX_WORKERS="${CEKERNEL_MAX_WORKERS:-3}"
 TIMEOUT="${CEKERNEL_WORKER_TIMEOUT:-3600}"
+CI_MAX_RETRIES="${CEKERNEL_CI_MAX_RETRIES:-3}"
 ```
+
+| Variable | Default | Description |
+|---|---|---|
+| `CEKERNEL_MAX_WORKERS` | 3 | Maximum concurrent workers per session |
+| `CEKERNEL_WORKER_TIMEOUT` | 3600 | Worker timeout in seconds |
+| `CEKERNEL_CI_MAX_RETRIES` | 3 | Maximum CI retry attempts before Worker reports failure |
 
 Use `BASH_SOURCE[0]`-based path resolution for locating files relative to the script:
 
