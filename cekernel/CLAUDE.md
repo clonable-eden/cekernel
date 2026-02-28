@@ -146,11 +146,10 @@ MAX_WORKERS="${CEKERNEL_MAX_WORKERS:-3}"
 TIMEOUT="${CEKERNEL_WORKER_TIMEOUT:-3600}"
 ```
 
-`CLAUDE_PLUGIN_ROOT` is set automatically by Claude Code only when executed via a skill. Add a `SCRIPT_DIR`-based fallback for direct execution:
+Use `BASH_SOURCE[0]`-based path resolution for locating files relative to the script:
 
 ```bash
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ```
 
 ### Flag Parsing
