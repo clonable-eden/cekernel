@@ -39,10 +39,7 @@ This approach does not scale. Each new Worker-side configuration requires modify
 
 ### Workers can already reach `load-env.sh`
 
-Workers execute in a git worktree. In both local and plugin mode, `load-env.sh` is accessible:
-
-- **Local mode**: The worktree is a checkout of the cekernel source — `cekernel/scripts/shared/load-env.sh` exists
-- **Plugin mode**: `load-env.sh` is in the Claude Code plugin directory, accessible via `which spawn-worker.sh` path resolution (same directory hierarchy)
+Workers are LLM agents that resolve file paths as part of their normal operation — just as they already locate and execute `notify-complete.sh` without a hardcoded path. `load-env.sh` is in `cekernel/scripts/shared/`, a sibling of the `worker/` directory containing `notify-complete.sh`. The Worker can find it through the same mechanisms it uses for other cekernel scripts.
 
 The `load-env.sh` multi-layer search (Project → Plugin → Environment variables) is also meaningful for Workers — a project might want to override CI retry counts for its specific CI infrastructure.
 
@@ -60,25 +57,13 @@ Only the **profile name** is propagated — not individual configuration values.
 
 ### 2. Workers source `load-env.sh` to self-load configuration
 
-When a Worker needs a configurable value, it sources `load-env.sh` via a Bash command. The path resolution differs by mode (paralleling ADR-0009's namespace detection):
+When a Worker needs a configurable value, it sources `load-env.sh` via a Bash command. The file is located at `cekernel/scripts/shared/load-env.sh` relative to the plugin or repository root — the same file that `spawn-worker.sh` already sources on the Orchestrator side.
 
-- **Local mode** (`cekernel/agents/` exists in repo root): `load-env.sh` is in the worktree at a known relative path
-
-  ```bash
-  source "$(git rev-parse --show-toplevel)/cekernel/scripts/shared/load-env.sh"
-  ```
-
-- **Plugin mode**: `load-env.sh` is co-located with `spawn-worker.sh` in the plugin directory hierarchy
-
-  ```bash
-  source "$(dirname "$(which spawn-worker.sh)")/shared/load-env.sh"
-  ```
-
-`worker.md` instructs the Worker to use the appropriate path based on the namespace detection result already performed in Phase 0.
+The Worker is an LLM agent that resolves file paths as part of its normal operation (just as it already locates and runs `notify-complete.sh` without a prescribed path). `worker.md` instructs the Worker to source `load-env.sh` and states its location within the `scripts/shared/` directory. The Worker determines the concrete path using whatever method it finds appropriate (codebase search, relative path from known scripts, etc.).
 
 The Worker uses the same `load-env.sh` and the same multi-layer search as the Orchestrator. The profile name (`CEKERNEL_ENV`) selects the same `.env` file on both sides.
 
-**CWD assumption**: `load-env.sh` searches project profiles via relative path (`.cekernel/envs/`). The Worker must source it from the worktree root directory. Since Workers execute Bash commands from the worktree root by default (set by `spawn-worker.sh`), this is satisfied under normal operation.
+**CWD note**: `load-env.sh` searches project profiles via relative path (`.cekernel/envs/`). The Worker should source it from the worktree root directory to ensure project profiles are found correctly.
 
 ### 3. Worker protocol references env variables instead of hardcoding
 
@@ -191,7 +176,7 @@ The rest of ADR-0006 remains valid: the profile mechanism, loading order, `.env`
 | File | Change |
 |------|--------|
 | `spawn-worker.sh` | Add `export CEKERNEL_ENV=${CEKERNEL_ENV}` to both PROMPT strings (normal and resume) |
-| `worker.md` | On Error section: reference `CEKERNEL_CI_MAX_RETRIES` with `source load-env.sh` instruction. Include mode-aware path resolution (local vs plugin) and default value. Source timing: Phase 3 entry |
+| `worker.md` | On Error section: reference `CEKERNEL_CI_MAX_RETRIES` with `source load-env.sh` instruction, file location hint (`scripts/shared/`), and default value. Source timing: Phase 3 entry |
 | `default.env` | Add `CEKERNEL_CI_MAX_RETRIES=3` |
 | `envs/README.md` | Add `CEKERNEL_CI_MAX_RETRIES` to the catalog |
 | `ADR-0006` | Add amendment cross-reference to this ADR in the Amendments section |
@@ -207,7 +192,7 @@ The rest of ADR-0006 remains valid: the profile mechanism, loading order, `.env`
 
 ### Negative
 
-- Workers must resolve `load-env.sh` path at runtime (mode-aware: `git rev-parse` for local, `which spawn-worker.sh` for plugin)
+- Workers must locate and source `load-env.sh` at runtime (path resolution delegated to the LLM agent)
 - `worker.md` instructions become slightly more complex ("source load-env.sh and read variable" vs. "after 3 failures")
 - ADR-0006's clean "Workers don't need config" boundary is relaxed
 
