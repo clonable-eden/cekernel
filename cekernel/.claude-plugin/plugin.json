@@ -16,7 +16,8 @@
   ],
   "agents": [
     "./agents/orchestrator.md",
-    "./agents/worker.md"
+    "./agents/worker.md",
+    "./agents/probe.md"
   ],
   "skills": "./skills/"
 }
