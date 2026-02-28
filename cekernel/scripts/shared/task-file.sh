@@ -71,17 +71,10 @@ create_task_file() {
       echo ""
       echo "## Comments"
       echo ""
-      local i
-      for (( i = 0; i < comments_count; i++ )); do
-        local author created_at comment_body
-        author=$(echo "$issue_json" | jq -r ".comments[$i].author.login")
-        created_at=$(echo "$issue_json" | jq -r ".comments[$i].createdAt")
-        comment_body=$(echo "$issue_json" | jq -r ".comments[$i].body")
-        echo "### @${author} (${created_at})"
-        echo ""
-        echo "$comment_body"
-        echo ""
-      done
+      echo "$issue_json" | jq -r '
+        .comments[] |
+        "### @\(.author.login) (\(.createdAt))\n\n\(.body)\n"
+      '
     fi
   } > "$task_file"
 }
