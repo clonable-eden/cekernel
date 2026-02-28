@@ -105,7 +105,7 @@ The probe skill (`cekernel/skills/probe/SKILL.md`) and probe agent (`cekernel/ag
 
 **Key findings:**
 
-- **Scenario 1**: Without symlinks, D2 correctly detects local mode but agent spawn fails — symlinks are a prerequisite
+- **Scenario 1**: Without symlinks, D2 correctly detects local mode but agent spawn fails loudly (`agent not found`) — this is Rule of Repair in action: the missing symlink causes a noisy failure rather than silently using the wrong (plugin) version
 - **Scenario 2**: Full success — D2 detects local, LLM agrees, agent spawns correctly
 - **Scenario 3**: D2 detects `local` while LLM detects `cekernel` — D2 is correct because the local source exists and should be used. The namespaced invocation in a self-hosting context is the user error, not a D2 failure
 - **Scenario 4**: Both methods agree — external repository correctly resolves to plugin mode
@@ -120,9 +120,13 @@ D2 achieved **4/4 correct results** under the convention that self-hosting repos
 
 The namespace decision is encoded in the filesystem (directory existence) rather than in LLM reasoning. The detection logic is a trivial `if [[ -d ... ]]` — no interpretation, no ambiguity, no variability across invocations. The filesystem is the data; the detection script is stupid and robust.
 
+> **Rule of Transparency**: *"Design for visibility to make inspection and debugging easier."*
+
+The primary differentiator between LLM-based and file-based detection is visibility. LLM reasoning is opaque — when the Orchestrator decides on `cekernel:worker`, there is no inspectable state to verify the decision. File-based detection is immediately visible: `ls cekernel/agents/` reveals the mode. The detection input (filesystem), logic (`if [[ -d ... ]]`), and output (agent name) are all inspectable without special tools.
+
 > **Rule of Robustness**: *"Robustness is the child of transparency and simplicity."*
 
-File existence checks are transparent (inspectable with `ls`), simple (single conditional), and deterministic. The LLM-based approach fails the robustness test because it is neither transparent (the LLM's reasoning is opaque) nor simple (it depends on `<command-name>` tag parsing behavior that may change).
+The transparency above and the simplicity of a single conditional combine to produce robustness. The LLM-based approach fails both halves: it is neither transparent (opaque reasoning) nor simple (depends on `<command-name>` tag parsing behavior that may change).
 
 > **Rule of Least Surprise**: *"In interface design, always do the least surprising thing."*
 
@@ -180,10 +184,13 @@ Hooks execute in JSON configuration context where `${CLAUDE_PLUGIN_ROOT}` works,
 
 **Convention vs. automation**: The symlink setup is a manual convention, not an automated process. An `install-self-hosting.sh` script could automate this, but the one-time cost of `ln -s` is low and the explicit setup makes the relationship between `.claude/` and `cekernel/` visible. Automation can be added later without changing the detection mechanism.
 
+## Implementation Scope
+
+This ADR documents the detection **decision** only. The implementation — rewriting `cekernel/skills/orchestrate/SKILL.md` Step 0 to use the Bash-based detection instead of LLM-based `<command-name>` interpretation — is tracked separately. The detection logic should be embedded as Bash instructions in Step 0, replacing the current LLM-inference paragraph. If other skills (e.g., `/probe`, `/orchctrl`) need the same detection, extracting to a shared `detect-namespace.sh` script is recommended.
+
 ## References
 
 - Issue: [#137](https://github.com/clonable-eden/glimmer/issues/137) — Namespace resolution bug
 - Probe verification: [#137 comment](https://github.com/clonable-eden/glimmer/issues/137) — D2 verification results
-- Claude Code limitations: [anthropics/claude-code#9354](https://github.com/anthropics/claude-code/issues/9354), [#11011](https://github.com/anthropics/claude-code/issues/11011), [#10113](https://github.com/anthropics/claude-code/issues/10113)
+- Claude Code limitations: [anthropics/claude-code#9354](https://github.com/anthropics/claude-code/issues/9354), [#11011](https://github.com/anthropics/claude-code/issues/11011), [#10113](https://github.com/anthropics/claude-code/issues/10113), [#12541](https://github.com/anthropics/claude-code/issues/12541)
 - ADR-0006 Amendment: `BASH_SOURCE[0]` migration for `CLAUDE_PLUGIN_ROOT` removal
-- Future implementation: `cekernel/skills/orchestrate/SKILL.md` Step 0 rewrite
