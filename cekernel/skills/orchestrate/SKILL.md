@@ -42,17 +42,9 @@ Store these values for use in subsequent steps.
 
 ### Step 1: Issue Triage and Priority Assessment
 
-Check each issue's content with `gh issue view` and verify:
+Read `cekernel/skills/references/triage.md` from the repository root (`$(git rev-parse --show-toplevel)/cekernel/skills/references/triage.md`) and follow the triage protocol for each issue.
 
-1. **Clarity of requirements**: Are the required changes specifically described?
-2. **Scope**: Can the implementation scope be identified?
-
-If any issue has ambiguous or insufficient requirements, report to the user and confirm action (fix the issue, skip, proceed, etc.). If requirements become clear through user interaction, add supplementary information as a comment on the issue via `gh issue comment` so the Worker can work accurately, then delegate to the Orchestrator.
-
-For multiple issues, additionally:
-
-3. Analyze dependencies between issues (does completing A require B to finish first?)
-4. If dependencies exist, organize into phases and present the execution order to the user for confirmation
+After triage, delegate to the Orchestrator.
 
 ### Step 2: Parse `--env` and Launch Orchestrator Agent
 
