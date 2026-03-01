@@ -37,6 +37,12 @@ This repository also serves as a Claude Code plugin marketplace.
   - `refactor:` Refactoring
   - `release:` Version bump (CI auto-generated)
 
+## Issue Management
+
+- Issues labeled `idea` or exploratory topics should follow: ADR first → then implementation issue(s)
+- Large or complex issues should be broken down into smaller sub-issues that a Worker can complete independently
+- Each issue should be scoped so that a single Worker can implement, test, and merge it without ambiguity
+
 ## Safety
 
 - Never delete the current working directory (CWD) or its parent during a session. If cleanup is needed, `cd` to a safe directory first
