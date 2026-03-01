@@ -70,3 +70,38 @@ If the `CEKERNEL_SESSION_ID` environment variable is already set, it is used as-
 spawn-worker.sh propagates `CEKERNEL_SESSION_ID` to Workers via the backend (WezTerm Lua event, tmux send-keys, or environment variable for headless).
 
 This ensures that multiple orchestrate sessions running concurrently on the same machine do not have FIFO collisions.
+
+### WezTerm Backend: send-text 1024-byte Limit
+
+`wezterm cli send-text` silently truncates payloads exceeding **1024 bytes**. This is a WezTerm CLI limitation, not an OS-level restriction.
+
+When spawning a Worker, the Orchestrator sends a JSON payload (worktree path, session ID, prompt, etc.) via an OSC user-var escape sequence. The payload is base64-encoded and embedded in the `send-text` command. With absolute paths in `BASH_PREFIX`, the total command easily exceeds 1024 bytes, causing the OSC sequence to be silently truncated and the Worker to fail to start.
+
+#### Workaround: File-based Payload
+
+Instead of embedding the base64 payload inline, `backends/wezterm.sh` writes it to a file and uses `$(cat ...)` to read it at execution time:
+
+```
+${CEKERNEL_IPC_DIR}/payload-{issue}.b64
+```
+
+```bash
+# Write payload to file
+printf '%s' "$payload_b64" > "${CEKERNEL_IPC_DIR}/payload-${issue}.b64"
+
+# OSC command references the file instead of embedding the payload (~124 bytes vs ~1173 bytes)
+printf '\033]1337;SetUserVar=%s=%s\007' cekernel_worker_layout "$(cat '${payload_file}')"
+```
+
+This reduces the `send-text` command from ~1173 bytes to ~124 bytes, well within the limit.
+
+#### Payload File Lifecycle
+
+| Event | Action |
+|---|---|
+| `backend_spawn_worker` | Creates `payload-{issue}.b64` |
+| `backend_kill_worker` | Deletes `payload-{issue}.b64` |
+| `spawn-worker.sh` rollback | Deletes `payload-{issue}.b64` |
+| `cleanup-worktree.sh` | Deletes `payload-{issue}.b64` |
+
+Related: #173, PR #175.
