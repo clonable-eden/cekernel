@@ -47,6 +47,7 @@ PATH="$OLD_PATH"
 
 # ── Test 3: backend_spawn_worker — spawns window and saves handle ──
 MOCK_LOG=$(mktemp)
+SPLIT_CALL_COUNT=0
 export TMUX="/tmp/tmux-501/default,12345,0"
 tmux() {
   echo "tmux $*" >> "$MOCK_LOG"
@@ -57,7 +58,12 @@ tmux() {
     echo "my-session"
   fi
   if [[ "$1" == "split-window" ]]; then
-    echo "my-session:1.1"
+    SPLIT_CALL_COUNT=$((SPLIT_CALL_COUNT + 1))
+    if [[ "$SPLIT_CALL_COUNT" -eq 1 ]]; then
+      echo "my-session:1.1"  # right pane
+    else
+      echo "my-session:1.2"  # bottom pane
+    fi
   fi
 }
 export -f tmux
@@ -71,6 +77,10 @@ assert_file_exists "Handle file created after spawn" "$HANDLE_FILE"
 
 HANDLE=$(cat "$HANDLE_FILE")
 assert_eq "Handle contains pane target" "my-session:1.0" "$HANDLE"
+
+# ── Test 3b: backend_spawn_worker — sends watch command to right pane ──
+LOGGED=$(cat "$MOCK_LOG")
+assert_match "watch command sent to right pane" ".*send-keys -t my-session:1.1 watch -n 5.*" "$LOGGED"
 rm -f "$MOCK_LOG"
 
 # ── Test 4: backend_worker_alive — alive pane ──
