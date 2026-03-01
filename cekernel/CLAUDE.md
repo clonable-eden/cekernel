@@ -85,8 +85,8 @@ Agents and skills use different frontmatter key names for tool access:
 
 | Type | File | Key | Example |
 |------|------|-----|---------|
-| Agent | `agents/*.md` | `tools` | `tools: Read, Edit, Write, Bash` |
-| Skill | `skills/*/SKILL.md` | `allowed-tools` | `allowed-tools: Read, Bash, Task` |
+| Agent | [`agents/*.md`](./agents/) | `tools` | `tools: Read, Edit, Write, Bash` |
+| Skill | [`skills/*/SKILL.md`](./skills/) | `allowed-tools` | `allowed-tools: Read, Bash, Task` |
 
 Agent frontmatter:
 
@@ -214,5 +214,5 @@ Inherits from the root [CLAUDE.md](../CLAUDE.md):
 
 ## Self-hosting
 
-cekernel's own issues are also resolved using `/cekernel:orchestrate`.
+cekernel's own issues are also resolved using `/orchestrate`.
 This CLAUDE.md also serves as a guide for Workers developing cekernel itself.
