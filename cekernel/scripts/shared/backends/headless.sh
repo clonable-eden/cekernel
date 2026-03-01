@@ -39,7 +39,7 @@ backend_spawn_worker() {
   # NOTE: -p may hang without TTY due to upstream bug (claude-code#9026).
   (
     cd "$worktree" && \
-    unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT && \
+    unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ACCESS_TOKEN && \
     CEKERNEL_SESSION_ID="${CEKERNEL_SESSION_ID:-}" \
     exec claude -p --agent "${CEKERNEL_AGENT_WORKER:-worker}" "$prompt"
   ) > "$log_file" 2>&1 &
