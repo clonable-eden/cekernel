@@ -85,14 +85,16 @@ Launch the Orchestrator subagent via the Task tool:
 
 - `subagent_type`: Use `CEKERNEL_AGENT_ORCHESTRATOR` determined in Step 0
 - `run_in_background`: `true`
-- `prompt`: Include issue numbers, execution order (if determined in Step 2), `CEKERNEL_ENV` value, and `CEKERNEL_AGENT_WORKER` value. Instruct the Orchestrator to pass `export CEKERNEL_ENV=<profile>` and `export CEKERNEL_AGENT_WORKER=<agent-name>` in all `spawn-worker.sh` invocations.
+- `prompt`: Include issue numbers, execution order (if determined in Step 2), `CEKERNEL_ENV` value, and `CEKERNEL_AGENT_WORKER` value. Instruct the Orchestrator to pass `export CEKERNEL_ENV=<profile>` in **all script invocations** (not just `spawn-worker.sh`, but also `watch-worker.sh`, `worker-status.sh`, `cleanup-worktree.sh`, etc.) and `export CEKERNEL_AGENT_WORKER=<agent-name>` in all `spawn-worker.sh` invocations.
 
 Example prompt fragment:
 
 ```
 Process issues: #42 #55 #61
-Use CEKERNEL_ENV=default and CEKERNEL_AGENT_WORKER=cekernel:worker when spawning workers:
+Use CEKERNEL_ENV=default and CEKERNEL_AGENT_WORKER=cekernel:worker.
+Pass CEKERNEL_ENV to ALL script calls (spawn-worker.sh, watch-worker.sh, worker-status.sh, cleanup-worktree.sh, etc.):
 export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=default && export CEKERNEL_AGENT_WORKER=cekernel:worker && spawn-worker.sh 42
+export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=default && watch-worker.sh 42
 ```
 
 The Orchestrator autonomously executes:
