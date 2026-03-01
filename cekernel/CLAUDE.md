@@ -27,69 +27,9 @@ Source `shared/session-id.sh` to establish session scope:
 source "${SCRIPT_DIR}/../shared/session-id.sh"
 ```
 
-### shared/task-file.sh
+### Shared Helpers
 
-A helper for extracting issue data into a local `.cekernel-task.md` file in the worktree at spawn time. Workers read this file instead of calling `gh issue view`, reducing GitHub API calls and context window consumption (OS analogy: page cache).
-
-```bash
-source "${SCRIPT_DIR}/../shared/task-file.sh"
-create_task_file "$WORKTREE" "$ISSUE_NUMBER"  # Fetch issue and write .cekernel-task.md
-task_file_path "$WORKTREE"                    # Returns path to .cekernel-task.md
-task_file_exists "$WORKTREE"                  # Returns 0 if file exists
-```
-
-### shared/claude-json-helper.sh
-
-A helper for safely reading and writing trust entries in `~/.claude.json`. Shared by `spawn-worker.sh` and `cleanup-worktree.sh`.
-
-```bash
-source "${SCRIPT_DIR}/../shared/claude-json-helper.sh"
-register_trust "$WORKTREE"    # Register trust for the worktree path
-unregister_trust "$WORKTREE"  # Unregister trust for the worktree path
-```
-
-Uses mkdir-based file locking (`acquire_claude_json_lock` / `release_claude_json_lock`) to prevent concurrent writes. In tests, override paths via the `CLAUDE_JSON` / `LOCK_DIR` environment variables.
-
-### shared/worker-state.sh
-
-Worker process state management. Each Worker has a state file (`worker-{issue}.state`) in the session IPC directory.
-
-```bash
-source "${SCRIPT_DIR}/../shared/worker-state.sh"
-worker_state_write "$ISSUE" RUNNING "phase1:implement"  # Write state
-worker_state_read "$ISSUE"                               # Read state → JSON
-```
-
-State machine: `NEW → READY → RUNNING → WAITING → SUSPENDED → TERMINATED` (with `RUNNING ↔ WAITING` and `RUNNING → SUSPENDED` transitions).
-
-State file format: `STATE:TIMESTAMP:detail` (atomic write via temp+rename). `worker_state_read` returns `UNKNOWN` for missing state files.
-
-### shared/checkpoint-file.sh
-
-A helper for writing/reading `.cekernel-checkpoint.md` files in the worktree. Workers save their progress before suspending, enabling a new Worker to resume from the checkpoint (OS analogy: hibernate / swap to disk).
-
-```bash
-source "${SCRIPT_DIR}/../shared/checkpoint-file.sh"
-create_checkpoint_file "$WORKTREE" "Phase 1" "2/5 done" "implement remaining" "chose X"
-checkpoint_file_path "$WORKTREE"      # Returns path to .cekernel-checkpoint.md
-checkpoint_file_exists "$WORKTREE"    # Returns 0 if file exists
-read_checkpoint_file "$WORKTREE"      # Returns JSON with phase/completed/next/decisions
-```
-
-### shared/worker-priority.sh
-
-Worker priority (nice value) management. Each Worker has a priority file (`worker-{issue}.priority`) in the session IPC directory.
-
-```bash
-source "${SCRIPT_DIR}/../shared/worker-priority.sh"
-worker_priority_write "$ISSUE" high           # Write priority (name or number)
-worker_priority_write "$ISSUE" 3              # Numeric nice value (0-19)
-worker_priority_read "$ISSUE"                 # Read priority → JSON
-```
-
-Nice value range: 0-19 (lower = higher priority, like Unix `nice`). Named aliases: `critical=0`, `high=5`, `normal=10` (default), `low=15`.
-
-Priority file format: single numeric value (atomic write via temp+rename). `worker_priority_read` returns default `normal`/10 for missing priority files.
+Each helper in `scripts/shared/` has a header comment documenting its API (functions, arguments, return values). Read the script file directly for usage details.
 
 ### Known Pitfalls
 
@@ -106,21 +46,7 @@ FAILED=$((FAILED + 1))
 
 ### Environment Variables
 
-Use the `CEKERNEL_` prefix.
-
-Use `${VAR:-default}` pattern for default values:
-
-```bash
-MAX_WORKERS="${CEKERNEL_MAX_WORKERS:-3}"
-TIMEOUT="${CEKERNEL_WORKER_TIMEOUT:-3600}"
-CI_MAX_RETRIES="${CEKERNEL_CI_MAX_RETRIES:-3}"
-```
-
-| Variable | Default | Description |
-|---|---|---|
-| `CEKERNEL_MAX_WORKERS` | 3 | Maximum concurrent workers per session |
-| `CEKERNEL_WORKER_TIMEOUT` | 3600 | Worker timeout in seconds |
-| `CEKERNEL_CI_MAX_RETRIES` | 3 | Maximum CI retry attempts before Worker reports failure |
+Use the `CEKERNEL_` prefix. Use `${VAR:-default}` pattern for default values. See [`envs/README.md`](./envs/README.md) for the full variable catalog.
 
 Use `BASH_SOURCE[0]`-based path resolution for locating files relative to the script:
 
