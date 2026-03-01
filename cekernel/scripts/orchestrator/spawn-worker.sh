@@ -186,7 +186,19 @@ echo "branch:   $BRANCH" >&2
 # ── Compute cekernel script paths for Worker PATH ──
 CEKERNEL_WORKER_SCRIPTS="$(cd "${SCRIPT_DIR}/../worker" && pwd)"
 CEKERNEL_SHARED_SCRIPTS="$(cd "${SCRIPT_DIR}/../shared" && pwd)"
-BASH_PREFIX="export CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID} && export CEKERNEL_IPC_DIR=${CEKERNEL_IPC_DIR} && export CEKERNEL_ENV=${CEKERNEL_ENV} && export PATH=${CEKERNEL_WORKER_SCRIPTS}:${CEKERNEL_SHARED_SCRIPTS}:\$PATH"
+
+# ── Write .cekernel-env to worktree ──
+# Instead of embedding a 200+ char export string in the prompt (which LLMs
+# can truncate, losing :$PATH and breaking basic commands like wc/grep),
+# write env vars to a file and use a short "source .cekernel-env" prefix.
+cat > "${WORKTREE}/.cekernel-env" <<EOF
+export CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID}
+export CEKERNEL_IPC_DIR=${CEKERNEL_IPC_DIR}
+export CEKERNEL_ENV=${CEKERNEL_ENV}
+export PATH=${CEKERNEL_WORKER_SCRIPTS}:${CEKERNEL_SHARED_SCRIPTS}:\$PATH
+EOF
+
+BASH_PREFIX="source .cekernel-env"
 
 # ── Launch Worker via backend ──
 # Initial prompt for Worker:
