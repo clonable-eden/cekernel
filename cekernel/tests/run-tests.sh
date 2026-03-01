@@ -33,6 +33,11 @@ for category in shared orchestrator worker; do
   done
 done
 
+# Cleanup test IPC remnants
+# Individual tests use trap/cleanup but some leave directories behind.
+# Remove all test-* session directories to prevent orchctrl ls pollution.
+rm -rf /tmp/cekernel-ipc/test-*
+
 echo "==========================="
 if [[ ${#FAILED_FILES[@]} -eq 0 ]]; then
   echo "All tests passed."
