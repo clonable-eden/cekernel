@@ -77,11 +77,18 @@ ISSUE_NUMBER="${1:?Usage: spawn-worker.sh <issue-number> [base-branch]}"
 BASE_BRANCH="${2:-main}"
 ```
 
-## Agents
+## Agents & Skills
 
 ### Frontmatter
 
-Agent definition files require the following frontmatter:
+Agents and skills use different frontmatter key names for tool access:
+
+| Type | File | Key | Example |
+|------|------|-----|---------|
+| Agent | `agents/*.md` | `tools` | `tools: Read, Edit, Write, Bash` |
+| Skill | `skills/*/SKILL.md` | `allowed-tools` | `allowed-tools: Read, Bash, Task` |
+
+Agent frontmatter:
 
 ```yaml
 name: <agent-name>
@@ -89,28 +96,25 @@ description: <description>
 tools: Read, Edit, Write, Bash
 ```
 
-### Separation of Authority
+### Skill References
 
-cekernel defines only the lifecycle (spawn → PR → merge → notify).
-Implementation conventions follow the target repository's CLAUDE.md.
+Shared logic used by multiple skills is placed in `skills/references/` as markdown files. Skills read these via the `Read` tool and execute the instructions.
 
-The Worker launch prompt includes instructions to "read the target repository's CLAUDE.md and fully follow its conventions."
+```
+skills/references/
+├── namespace-detection.md   # Plugin vs local detection (ADR-0009)
+└── triage.md                # Issue triage protocol
+```
 
-Tool availability is defined by the agent frontmatter's `tools` key. Tool auto-approval (skipping permission prompts) is fully delegated to the target repository's `.claude/settings.json`. cekernel does not specify `--allowedTools` or `permissionMode`. Claude Code automatically reads `.claude/settings.json` within the worktree, enabling per-repository permission configuration. Skill files use `allowed-tools` (note the different key name between agents and skills).
+This avoids duplicating the same logic across multiple SKILL.md files. When the shared logic changes, only the reference file needs updating.
 
-### Worker Protocol
+## ADRs
 
-`worker.md` defines the following phases:
+Architecture Decision Records are stored in [`docs/adr/`](./docs/adr/). Use `/unix-architect adr <topic>` to create new ADRs.
 
-1. **Phase 0** — Read the target repository's CLAUDE.md → Post Execution Plan as a comment on the issue
-2. **Phase 1** — Implementation (TDD for code changes: RED → GREEN → REFACTOR)
-3. **Phase 2** — Create PR
-4. **Phase 3** — CI verification + merge
-5. **Phase 4** — Post Result as a comment on the issue → Completion notification via `notify-complete.sh`
+Numbering: check the latest file with `ls docs/adr/*.md | sort -V | tail -1` and increment.
 
-TDD is always performed for issues involving code changes. Workers may skip TDD at their discretion for documentation-only changes and similar cases.
-
-When TDD is applied, commit messages include a phase suffix: `(RED)`, `(GREEN)`, `(REFACTOR)`.
+Status lifecycle: `Proposed` → `Accepted` (or `Rejected`). Amendments are added as subsections within the original ADR.
 
 ## Testing
 
