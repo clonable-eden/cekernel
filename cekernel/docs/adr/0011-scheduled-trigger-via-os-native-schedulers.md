@@ -66,13 +66,15 @@ Schedule metadata is persisted in `~/.claude/cekernel/schedules.json`:
     "path": "/opt/homebrew/bin:/usr/bin:/bin:...",
     "os_backend": "crontab",
     "os_ref": "cekernel-cron-a1b2c3",
-    "created_at": "2026-03-01T10:00:00Z"
+    "created_at": "2026-03-01T10:00:00Z",
+    "last_run_at": "2026-03-02T09:00:12Z",
+    "last_run_status": "success"
   }
 ]
 ```
 
 - `register` writes to both the registry and the OS scheduler
-- `list` reads the registry file (no OS-side parsing needed)
+- `list` reads the registry file and verifies each entry against the OS scheduler. Entries whose `os_ref` is not found in the OS scheduler are flagged as `drifted` (e.g., removed externally via `crontab -e`). This prevents the registry from silently diverging from the actual scheduled state.
 - `cancel` uses `os_ref` to remove from the OS scheduler, then removes from the registry
 - `path` captures the user's `$PATH` at registration time
 
@@ -135,6 +137,25 @@ The `os_backend` field enables tracking the transition from crontab to launchd/s
 **Permission Model (Evolving)**: In non-interactive environments, `.claude/settings.json`'s `permissions.allow` is the only mechanism for granting tool permissions. If the target repository lacks this configuration, scheduled execution will fail. The `register` preflight check validates this.
 
 **Authentication**: `claude -p` normally retrieves credentials from the OS Keychain, but cron environments cannot access it. Explicit `ANTHROPIC_API_KEY` is required. This constraint is specific to the Claude Code platform.
+
+### Failure Handling
+
+When a scheduled run fails (non-zero exit from `claude -p` or `/dispatch`), the failure is:
+
+1. **Logged**: stdout/stderr is appended to `~/.claude/cekernel/logs/cron.log` via the `>> ... 2>&1` redirect in the scheduled command. Diagnosis starts here.
+2. **Recorded**: The wrapper script updates the registry entry's `last_run_status` (to `"error"`) and `last_run_at` fields after each execution. `/cron list` displays these fields, enabling at-a-glance health monitoring.
+3. **Not retried automatically**: Tier 1 (crontab) does not implement retry logic. A failed run simply waits for the next scheduled invocation. This follows the Rule of Repair ("When you must fail, fail noisily and as soon as possible") — failures are visible in the log and registry, not silently retried.
+
+Tier 2 backends (launchd, systemd) provide built-in retry and failure notification mechanisms, which can be leveraged without custom retry logic.
+
+### Concurrency
+
+Manual invocations (`/dispatch`, `/orchestrate`) and scheduled invocations can overlap. Two mechanisms prevent conflicts:
+
+1. **Worker concurrency guard**: `spawn-worker.sh` enforces `CEKERNEL_MAX_WORKERS` and exits with code 2 when the limit is reached. This is the existing mechanism and applies regardless of invocation source.
+2. **Dispatch-level lockfile** (Tier 1): The scheduled command acquires a per-repository lockfile (`~/.claude/cekernel/locks/<repo-hash>.lock`) before invoking `claude -p`. If the lock is held (by a manual or another scheduled dispatch), the run exits immediately and logs the skip. This prevents duplicate dispatches for the same repository without blocking dispatches for other repositories.
+
+The lockfile approach is simple and composable — it reuses existing OS primitives (`flock` or `mkdir`-based locking) without requiring cekernel to maintain a daemon or shared state.
 
 ## Alternatives Considered
 
