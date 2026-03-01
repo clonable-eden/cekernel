@@ -11,37 +11,6 @@ cekernel's design is rooted in UNIX philosophy and TDD.
 - [UNIX Philosophy](./docs/unix-philosophy.md) — Eric S. Raymond's 17 principles
 - [TDD](./docs/tdd.md) — Red-Green-Refactor cycle and testing principles
 
-## Architecture
-
-```
-cekernel/
-├── agents/          # Agent definitions (orchestrator, worker)
-├── scripts/
-│   ├── orchestrator/  # Orchestrator scripts
-│   ├── worker/        # Worker scripts
-│   └── shared/        # Shared helpers (session-id, claude-json-helper, etc.)
-├── skills/          # Skill definitions (/cekernel:orchestrate)
-└── tests/
-    ├── orchestrator/  # Orchestrator script tests
-    ├── worker/        # Worker script tests
-    └── shared/        # Shared helper tests
-```
-
-Key mappings:
-
-| Unix | kernel |
-|------|--------|
-| scheduler | Orchestrator agent |
-| process | Worker agent |
-| `fork` + `exec` | `spawn-worker.sh` |
-| address space | git worktree |
-| IPC pipe | named pipe (FIFO) |
-| IPC namespace | `CEKERNEL_SESSION_ID` |
-| process state | `worker-state.sh` (NEW/READY/RUNNING/WAITING/SUSPENDED/TERMINATED) |
-| `nice` / priority | `worker-priority.sh` (0-19 nice value) |
-| page cache | `.cekernel-task.md` |
-| hibernate / swap | `.cekernel-checkpoint.md` (context swap) |
-
 ## Scripts
 
 ### Basic Rules
