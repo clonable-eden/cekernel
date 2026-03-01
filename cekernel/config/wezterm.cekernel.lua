@@ -51,12 +51,18 @@ wezterm.on('user-var-changed', function(window, pane, name, value)
   }
   bottom_pane:send_text("watch -n3 -t -c 'git --no-pager log --oneline --graph --color=always'\n")
 
-  -- Right pane (40%): general-purpose terminal
-  main_pane:split {
+  -- Right pane (40%): worker status monitor
+  local right_pane = main_pane:split {
     direction = 'Right',
     size = 0.4,
     cwd = worktree,
   }
+  local ipc_dir = os.getenv('CEKERNEL_IPC_DIR') or ('/tmp/cekernel-ipc/' .. session_id)
+  right_pane:send_text(
+    "watch -n 5 'cat " .. ipc_dir .. "/worker-" .. issue_number .. ".state 2>/dev/null"
+    .. ' && echo "---"'
+    .. " && tail -5 " .. ipc_dir .. "/logs/worker-" .. issue_number .. ".log 2>/dev/null'\n"
+  )
 
   -- Send cd + export + claude command to main pane
   -- Wait for shell to be ready before send_text
