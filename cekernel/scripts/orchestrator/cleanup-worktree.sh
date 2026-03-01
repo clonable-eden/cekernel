@@ -67,6 +67,8 @@ rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.state"
 rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.signal"
 # Handle file cleanup (in case not already removed)
 rm -f "${CEKERNEL_IPC_DIR}/handle-${ISSUE_NUMBER}"
+# Payload file cleanup (wezterm backend: avoids send-text 1024-byte limit)
+rm -f "${CEKERNEL_IPC_DIR}/payload-${ISSUE_NUMBER}.b64"
 
 # Log file cleanup
 rm -f "${CEKERNEL_IPC_DIR}/logs/worker-${ISSUE_NUMBER}.log"
