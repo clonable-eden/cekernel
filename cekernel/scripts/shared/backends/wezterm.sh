@@ -40,9 +40,13 @@ backend_spawn_worker() {
   pane_id=$(_backend_spawn_window "$worktree" "$workspace")
 
   # Send OSC user-var to trigger Lua handler (IPC 2-3)
+  # Write base64 payload to file to avoid wezterm cli send-text 1024-byte limit.
+  # The OSC command uses $(cat ...) to read the payload at execution time.
   local payload_b64
   payload_b64=$(printf '%s' "$layout_payload" | base64 | tr -d '\n')
-  local osc_cmd="printf '\\033]1337;SetUserVar=%s=%s\\007' cekernel_worker_layout '${payload_b64}'"
+  local payload_file="${CEKERNEL_IPC_DIR}/payload-${issue}.b64"
+  printf '%s' "$payload_b64" > "$payload_file"
+  local osc_cmd="printf '\\033]1337;SetUserVar=%s=%s\\007' cekernel_worker_layout \"\$(cat '${payload_file}')\""
   wezterm cli send-text --pane-id "$pane_id" -- "$osc_cmd"
   sleep 0.1
   wezterm cli send-text --pane-id "$pane_id" --no-paste $'\r'
@@ -66,9 +70,13 @@ backend_worker_alive() {
 
 # backend_kill_worker <issue>
 # Kills all panes in the worker's window. No error if handle missing.
+# Also cleans up the payload file created by backend_spawn_worker.
 backend_kill_worker() {
   local issue="$1"
   local handle_file="${CEKERNEL_IPC_DIR}/handle-${issue}"
+
+  # Clean up payload file (created by backend_spawn_worker to avoid send-text 1024-byte limit)
+  rm -f "${CEKERNEL_IPC_DIR}/payload-${issue}.b64"
 
   [[ -f "$handle_file" ]] || return 0
 

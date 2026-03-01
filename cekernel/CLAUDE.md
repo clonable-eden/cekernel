@@ -11,37 +11,6 @@ cekernel's design is rooted in UNIX philosophy and TDD.
 - [UNIX Philosophy](./docs/unix-philosophy.md) — Eric S. Raymond's 17 principles
 - [TDD](./docs/tdd.md) — Red-Green-Refactor cycle and testing principles
 
-## Architecture
-
-```
-cekernel/
-├── agents/          # Agent definitions (orchestrator, worker)
-├── scripts/
-│   ├── orchestrator/  # Orchestrator scripts
-│   ├── worker/        # Worker scripts
-│   └── shared/        # Shared helpers (session-id, claude-json-helper, etc.)
-├── skills/          # Skill definitions (/cekernel:orchestrate)
-└── tests/
-    ├── orchestrator/  # Orchestrator script tests
-    ├── worker/        # Worker script tests
-    └── shared/        # Shared helper tests
-```
-
-Key mappings:
-
-| Unix | kernel |
-|------|--------|
-| scheduler | Orchestrator agent |
-| process | Worker agent |
-| `fork` + `exec` | `spawn-worker.sh` |
-| address space | git worktree |
-| IPC pipe | named pipe (FIFO) |
-| IPC namespace | `CEKERNEL_SESSION_ID` |
-| process state | `worker-state.sh` (NEW/READY/RUNNING/WAITING/SUSPENDED/TERMINATED) |
-| `nice` / priority | `worker-priority.sh` (0-19 nice value) |
-| page cache | `.cekernel-task.md` |
-| hibernate / swap | `.cekernel-checkpoint.md` (context swap) |
-
 ## Scripts
 
 ### Basic Rules
@@ -58,69 +27,9 @@ Source `shared/session-id.sh` to establish session scope:
 source "${SCRIPT_DIR}/../shared/session-id.sh"
 ```
 
-### shared/task-file.sh
+### Shared Helpers
 
-A helper for extracting issue data into a local `.cekernel-task.md` file in the worktree at spawn time. Workers read this file instead of calling `gh issue view`, reducing GitHub API calls and context window consumption (OS analogy: page cache).
-
-```bash
-source "${SCRIPT_DIR}/../shared/task-file.sh"
-create_task_file "$WORKTREE" "$ISSUE_NUMBER"  # Fetch issue and write .cekernel-task.md
-task_file_path "$WORKTREE"                    # Returns path to .cekernel-task.md
-task_file_exists "$WORKTREE"                  # Returns 0 if file exists
-```
-
-### shared/claude-json-helper.sh
-
-A helper for safely reading and writing trust entries in `~/.claude.json`. Shared by `spawn-worker.sh` and `cleanup-worktree.sh`.
-
-```bash
-source "${SCRIPT_DIR}/../shared/claude-json-helper.sh"
-register_trust "$WORKTREE"    # Register trust for the worktree path
-unregister_trust "$WORKTREE"  # Unregister trust for the worktree path
-```
-
-Uses mkdir-based file locking (`acquire_claude_json_lock` / `release_claude_json_lock`) to prevent concurrent writes. In tests, override paths via the `CLAUDE_JSON` / `LOCK_DIR` environment variables.
-
-### shared/worker-state.sh
-
-Worker process state management. Each Worker has a state file (`worker-{issue}.state`) in the session IPC directory.
-
-```bash
-source "${SCRIPT_DIR}/../shared/worker-state.sh"
-worker_state_write "$ISSUE" RUNNING "phase1:implement"  # Write state
-worker_state_read "$ISSUE"                               # Read state → JSON
-```
-
-State machine: `NEW → READY → RUNNING → WAITING → SUSPENDED → TERMINATED` (with `RUNNING ↔ WAITING` and `RUNNING → SUSPENDED` transitions).
-
-State file format: `STATE:TIMESTAMP:detail` (atomic write via temp+rename). `worker_state_read` returns `UNKNOWN` for missing state files.
-
-### shared/checkpoint-file.sh
-
-A helper for writing/reading `.cekernel-checkpoint.md` files in the worktree. Workers save their progress before suspending, enabling a new Worker to resume from the checkpoint (OS analogy: hibernate / swap to disk).
-
-```bash
-source "${SCRIPT_DIR}/../shared/checkpoint-file.sh"
-create_checkpoint_file "$WORKTREE" "Phase 1" "2/5 done" "implement remaining" "chose X"
-checkpoint_file_path "$WORKTREE"      # Returns path to .cekernel-checkpoint.md
-checkpoint_file_exists "$WORKTREE"    # Returns 0 if file exists
-read_checkpoint_file "$WORKTREE"      # Returns JSON with phase/completed/next/decisions
-```
-
-### shared/worker-priority.sh
-
-Worker priority (nice value) management. Each Worker has a priority file (`worker-{issue}.priority`) in the session IPC directory.
-
-```bash
-source "${SCRIPT_DIR}/../shared/worker-priority.sh"
-worker_priority_write "$ISSUE" high           # Write priority (name or number)
-worker_priority_write "$ISSUE" 3              # Numeric nice value (0-19)
-worker_priority_read "$ISSUE"                 # Read priority → JSON
-```
-
-Nice value range: 0-19 (lower = higher priority, like Unix `nice`). Named aliases: `critical=0`, `high=5`, `normal=10` (default), `low=15`.
-
-Priority file format: single numeric value (atomic write via temp+rename). `worker_priority_read` returns default `normal`/10 for missing priority files.
+Each helper in `scripts/shared/` has a header comment documenting its API (functions, arguments, return values). Read the script file directly for usage details.
 
 ### Known Pitfalls
 
@@ -137,21 +46,7 @@ FAILED=$((FAILED + 1))
 
 ### Environment Variables
 
-Use the `CEKERNEL_` prefix.
-
-Use `${VAR:-default}` pattern for default values:
-
-```bash
-MAX_WORKERS="${CEKERNEL_MAX_WORKERS:-3}"
-TIMEOUT="${CEKERNEL_WORKER_TIMEOUT:-3600}"
-CI_MAX_RETRIES="${CEKERNEL_CI_MAX_RETRIES:-3}"
-```
-
-| Variable | Default | Description |
-|---|---|---|
-| `CEKERNEL_MAX_WORKERS` | 3 | Maximum concurrent workers per session |
-| `CEKERNEL_WORKER_TIMEOUT` | 3600 | Worker timeout in seconds |
-| `CEKERNEL_CI_MAX_RETRIES` | 3 | Maximum CI retry attempts before Worker reports failure |
+Use the `CEKERNEL_` prefix. Use `${VAR:-default}` pattern for default values. See [`envs/README.md`](./envs/README.md) for the full variable catalog.
 
 Use `BASH_SOURCE[0]`-based path resolution for locating files relative to the script:
 
@@ -182,11 +77,18 @@ ISSUE_NUMBER="${1:?Usage: spawn-worker.sh <issue-number> [base-branch]}"
 BASE_BRANCH="${2:-main}"
 ```
 
-## Agents
+## Agents & Skills
 
 ### Frontmatter
 
-Agent definition files require the following frontmatter:
+Agents and skills use different frontmatter key names for tool access:
+
+| Type | File | Key | Example |
+|------|------|-----|---------|
+| Agent | [`agents/*.md`](./agents/) | `tools` | `tools: Read, Edit, Write, Bash` |
+| Skill | [`skills/*/SKILL.md`](./skills/) | `allowed-tools` | `allowed-tools: Read, Bash, Task` |
+
+Agent frontmatter:
 
 ```yaml
 name: <agent-name>
@@ -194,28 +96,25 @@ description: <description>
 tools: Read, Edit, Write, Bash
 ```
 
-### Separation of Authority
+### Skill References
 
-cekernel defines only the lifecycle (spawn → PR → merge → notify).
-Implementation conventions follow the target repository's CLAUDE.md.
+Shared logic used by multiple skills is placed in `skills/references/` as markdown files. Skills read these via the `Read` tool and execute the instructions.
 
-The Worker launch prompt includes instructions to "read the target repository's CLAUDE.md and fully follow its conventions."
+```
+skills/references/
+├── namespace-detection.md   # Plugin vs local detection (ADR-0009)
+└── triage.md                # Issue triage protocol
+```
 
-Tool availability is defined by the agent frontmatter's `tools` key. Tool auto-approval (skipping permission prompts) is fully delegated to the target repository's `.claude/settings.json`. cekernel does not specify `--allowedTools` or `permissionMode`. Claude Code automatically reads `.claude/settings.json` within the worktree, enabling per-repository permission configuration. Skill files use `allowed-tools` (note the different key name between agents and skills).
+This avoids duplicating the same logic across multiple SKILL.md files. When the shared logic changes, only the reference file needs updating.
 
-### Worker Protocol
+## ADRs
 
-`worker.md` defines the following phases:
+Architecture Decision Records are stored in [`docs/adr/`](./docs/adr/). Use `/unix-architect adr <topic>` to create new ADRs.
 
-1. **Phase 0** — Read the target repository's CLAUDE.md → Post Execution Plan as a comment on the issue
-2. **Phase 1** — Implementation (TDD for code changes: RED → GREEN → REFACTOR)
-3. **Phase 2** — Create PR
-4. **Phase 3** — CI verification + merge
-5. **Phase 4** — Post Result as a comment on the issue → Completion notification via `notify-complete.sh`
+Numbering: check the latest file with `ls docs/adr/*.md | sort -V | tail -1` and increment.
 
-TDD is always performed for issues involving code changes. Workers may skip TDD at their discretion for documentation-only changes and similar cases.
-
-When TDD is applied, commit messages include a phase suffix: `(RED)`, `(GREEN)`, `(REFACTOR)`.
+Status lifecycle: `Proposed` → `Accepted` (or `Rejected`). Amendments are added as subsections within the original ADR.
 
 ## Testing
 
@@ -315,5 +214,5 @@ Inherits from the root [CLAUDE.md](../CLAUDE.md):
 
 ## Self-hosting
 
-cekernel's own issues are also resolved using `/cekernel:orchestrate`.
+cekernel's own issues are also resolved using `/orchestrate`.
 This CLAUDE.md also serves as a guide for Workers developing cekernel itself.

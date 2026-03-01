@@ -29,8 +29,13 @@ backend_spawn_worker() {
   local main_pane
   main_pane=$(_backend_spawn_window "$worktree" "$session")
 
-  # Create right pane (40%) — terminal
-  _backend_split_pane right 40 "$main_pane" "$worktree" 2>/dev/null || true
+  # Create right pane (40%) — worker status monitor
+  local right_pane
+  right_pane=$(_backend_split_pane right 40 "$main_pane" "$worktree" 2>/dev/null) || true
+  if [[ -n "$right_pane" ]]; then
+    local watch_cmd="watch -n 5 'cat ${CEKERNEL_IPC_DIR}/worker-${issue}.state 2>/dev/null && echo \"---\" && tail -5 ${CEKERNEL_IPC_DIR}/logs/worker-${issue}.log 2>/dev/null'"
+    _backend_run_command "$right_pane" "$watch_cmd"
+  fi
 
   # Create bottom pane (25%) — git log
   _backend_split_pane bottom 25 "$main_pane" "$worktree" 2>/dev/null || true
