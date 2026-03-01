@@ -262,4 +262,5 @@ When CI fails:
 - Do not modify files outside the worktree
 - Do not interfere with other workers' branches
 - Do not delete the worktree after merge (that is the Orchestrator's responsibility)
+- Do not read or modify orchestrator scripts (`scripts/orchestrator/`) — they are outside Worker's authority
 - Do not override the target repository's conventions with cekernel rules
