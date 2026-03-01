@@ -169,6 +169,73 @@ else
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
+# ── Test 10: backend_spawn_worker — writes payload to file instead of inline ──
+# Verify that base64 payload is written to a file to avoid wezterm send-text 1024-byte limit.
+MOCK_LOG=$(mktemp)
+wezterm() {
+  echo "wezterm $*" >> "$MOCK_LOG"
+  if [[ "$1" == "cli" && "$2" == "spawn" ]]; then
+    echo "42"  # mock pane ID
+  fi
+  if [[ "$1" == "cli" && "$2" == "list" ]]; then
+    echo '[{"pane_id": 42, "workspace": "default"}]'
+  fi
+}
+export -f wezterm
+export WEZTERM_PANE=42
+ISSUE="301"
+WORKTREE="/tmp/test-worktree"
+backend_spawn_worker "$ISSUE" "$WORKTREE" "test prompt with long content"
+
+PAYLOAD_FILE="${CEKERNEL_IPC_DIR}/payload-${ISSUE}.b64"
+assert_file_exists "Payload file created after spawn" "$PAYLOAD_FILE"
+
+# Verify payload file contains valid base64 that decodes to valid JSON
+DECODED=$(base64 -d < "$PAYLOAD_FILE" 2>/dev/null || base64 -D < "$PAYLOAD_FILE" 2>/dev/null || echo "")
+if echo "$DECODED" | jq -e . >/dev/null 2>&1; then
+  echo "  PASS: Payload file contains valid base64-encoded JSON"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+else
+  echo "  FAIL: Payload file should contain valid base64-encoded JSON"
+  echo "    decoded: ${DECODED}"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+
+# Verify send-text commands are under 1024 bytes
+while IFS= read -r line; do
+  BYTE_LEN=${#line}
+  if [[ "$BYTE_LEN" -gt 1024 ]]; then
+    echo "  FAIL: send-text argument exceeds 1024 bytes (${BYTE_LEN} bytes)"
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+  fi
+done < <(grep "send-text" "$MOCK_LOG")
+echo "  PASS: All send-text commands are under 1024 bytes"
+TESTS_PASSED=$((TESTS_PASSED + 1))
+rm -f "$MOCK_LOG"
+
+# ── Test 11: backend_kill_worker — cleans up payload file ──
+# Payload file from test 10 should still exist
+assert_file_exists "Payload file exists before kill" "$PAYLOAD_FILE"
+
+# Create handle file for the kill
+echo "42" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE}"
+MOCK_LOG=$(mktemp)
+wezterm() {
+  echo "wezterm $*" >> "$MOCK_LOG"
+  if [[ "$1" == "cli" && "$2" == "list" ]]; then
+    cat <<'MOCK_JSON'
+[
+  {"pane_id": 42, "window_id": 1}
+]
+MOCK_JSON
+  fi
+}
+export -f wezterm
+backend_kill_worker "$ISSUE" 2>/dev/null
+
+assert_not_exists "Payload file cleaned up after kill" "$PAYLOAD_FILE"
+rm -f "$MOCK_LOG"
+
 # ── Cleanup ──
 unset -f wezterm 2>/dev/null || true
 unset WEZTERM_PANE 2>/dev/null || true
