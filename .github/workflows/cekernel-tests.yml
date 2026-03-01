@@ -3,16 +3,47 @@ name: cekernel tests
 on:
   push:
     branches: [main]
-    paths:
-      - 'cekernel/**'
   pull_request:
-    paths:
-      - 'cekernel/**'
+
+permissions:
+  contents: read
+  pull-requests: read
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      cekernel: ${{ steps.filter.outputs.cekernel }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            cekernel:
+              - 'cekernel/**'
+              - '.github/workflows/cekernel-tests.yml'
+
   test:
+    needs: changes
+    if: needs.changes.outputs.cekernel == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - name: Run cekernel tests
         run: bash cekernel/tests/run-tests.sh
+
+  # Ruleset required status check (reports success even when test is skipped)
+  status:
+    name: cekernel tests
+    needs: [changes, test]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check status
+        run: |
+          if [ "${{ needs.test.result }}" == "failure" ]; then
+            echo "Test job failed"
+            exit 1
+          fi
+          echo "cekernel tests passed (test skipped or succeeded)"
