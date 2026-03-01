@@ -90,6 +90,8 @@ rollback() {
       git branch -D "$BRANCH" 2>/dev/null || true
     fi
   fi
+  # Delete payload file (wezterm backend: avoids send-text 1024-byte limit)
+  rm -f "${CEKERNEL_IPC_DIR}/payload-${ISSUE_NUMBER}.b64"
   # Delete log file
   rm -f "${LOG_FILE:-}"
   rmdir "${LOG_DIR:-}" 2>/dev/null || true
