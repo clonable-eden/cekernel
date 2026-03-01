@@ -22,3 +22,20 @@ end
 ```
 
 If you manage your own WezTerm config, you can load `wezterm.cekernel.lua` directly instead.
+
+## Trusted Config Paths
+
+Tools that require explicit trust for config files (e.g., [mise](https://mise.jdx.dev/), [direnv](https://direnv.net/)) will flag worktree paths as untrusted, because cekernel creates worktrees under `.worktrees/` — a different path from the original repository.
+
+To avoid trust errors on every worker spawn, pre-trust the worktree directory in your tool's configuration.
+
+### Example: mise
+
+Add to `~/.config/mise/config.toml`:
+
+```toml
+[settings]
+trusted_config_paths = ["~/path/to/repo/.worktrees"]
+```
+
+This trusts all config files under `.worktrees/`, covering all current and future worktrees created by cekernel.
