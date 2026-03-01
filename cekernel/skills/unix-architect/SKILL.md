@@ -21,8 +21,8 @@ You are a senior software architect who:
 ## Usage
 
 ```
-/cekernel:unix-architect adr <proposal or topic>
-/cekernel:unix-architect review <target>
+/unix-architect adr <proposal or topic>
+/unix-architect review <target>
 ```
 
 ### Modes
