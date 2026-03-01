@@ -105,3 +105,39 @@ This reduces the `send-text` command from ~1173 bytes to ~124 bytes, well within
 | `cleanup-worktree.sh` | Deletes `payload-{issue}.b64` |
 
 Related: #173, PR #175.
+
+## Claude Code Environment Variable Cleanup
+
+When spawning a child `claude -p` process from within a running Claude Code session, certain environment variables must be **unset** to prevent nested-session detection failures. Claude Code sets these variables in its session environment, and if they leak into child processes, the child process will detect that it is running inside an existing session and fail to start.
+
+### Variables to Unset
+
+| Variable | Purpose | Why It Must Be Unset |
+|---|---|---|
+| `CLAUDECODE` | Session detection marker | Child process detects a parent session and refuses to start |
+| `CLAUDE_CODE_ENTRYPOINT` | Entrypoint type identifier | Causes entrypoint mismatch in child process |
+| `CLAUDE_CODE_SESSION_ACCESS_TOKEN` | Session access token | Child inherits parent's token, causing authentication conflicts |
+
+### Usage
+
+Before executing `claude -p` in a subprocess, unset all three variables:
+
+```bash
+unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ACCESS_TOKEN
+exec claude -p "$prompt"
+```
+
+Or in a subshell to avoid affecting the parent:
+
+```bash
+(
+  unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ACCESS_TOKEN
+  exec claude -p "$prompt"
+)
+```
+
+### Where This Is Applied
+
+The headless backend (`scripts/shared/backends/headless.sh`) applies this cleanup when spawning Workers. Terminal-based backends (WezTerm, tmux) naturally get a clean environment because they create new shell sessions.
+
+Related: #117, PR #178.
