@@ -47,20 +47,37 @@ For details on logging, IPC, and resource governance, see [internals.md](./docs/
 
 ```
 cekernel/
+  CLAUDE.md                  # Development guide
   .claude-plugin/
     plugin.json              # Plugin manifest
   agents/
     orchestrator.md          # Orchestrator protocol definition
     worker.md                # Worker protocol definition
+    probe.md                 # Namespace detection diagnostic agent
   config/
     Makefile                 # WezTerm plugin install/uninstall
     README.md                # WezTerm backend setup guide
     wezterm.cekernel.lua     # WezTerm plugin (Worker layout via user-var event)
   docs/
+    adr/                     # Architecture Decision Records
+    claude-code-constraints.md  # Claude Code platform constraints reference
     internals.md             # Logging, IPC, resource governance details
+    tdd.md                   # Test-driven development guide
+    unix-philosophy.md       # UNIX philosophy reference
   skills/
+    dispatch/
+      SKILL.md               # /dispatch skill — batch-process ready-labeled issues
+    orchctrl/
+      SKILL.md               # /orchctrl skill — Worker control interface
     orchestrate/
-      SKILL.md               # /cekernel:orchestrate skill
+      SKILL.md               # /orchestrate skill — issue delegation
+    probe/
+      SKILL.md               # /probe skill — namespace detection diagnostic
+    unix-architect/
+      SKILL.md               # /unix-architect skill — ADR authoring and review
+    references/
+      namespace-detection.md # Canonical namespace detection logic
+      triage.md              # Canonical issue triage protocol
   envs/
     README.md                # Environment variable catalog
     default.env              # Default profile (wezterm, 3 workers)
@@ -74,14 +91,24 @@ cekernel/
       cleanup-worktree.sh    # Remove worktree + branch + logs
       health-check.sh        # Detect zombie Workers
       worker-status.sh       # List active Workers
+      orchctrl.sh            # Worker control interface (systemctl for cekernel)
+      send-signal.sh         # Send signal (TERM/SUSPEND) to a running Worker
     worker/
       notify-complete.sh     # Worker → Orchestrator completion notification
+      check-signal.sh        # Check for pending signal (Worker-side)
     shared/
       session-id.sh          # Session ID generation + IPC directory derivation
       claude-json-helper.sh  # ~/.claude.json trust entry read/write helper
       backend-adapter.sh     # Backend abstraction layer (wezterm/tmux/headless)
       task-file.sh           # Local task file extraction (session memory: page cache)
       load-env.sh            # Environment profile loader (multi-layer search)
+      checkpoint-file.sh     # Checkpoint file helpers for suspend/resume
+      worker-priority.sh     # Worker priority (nice value) management
+      worker-state.sh        # Worker process state management
+      backends/
+        headless.sh          # Headless backend implementation
+        tmux.sh              # tmux backend implementation
+        wezterm.sh           # WezTerm backend implementation
   tests/
     run-tests.sh             # Test runner
     helpers.sh               # Assertion helpers
