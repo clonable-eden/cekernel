@@ -41,18 +41,23 @@ Orchestrator (agent1)              Worker (agent2, 3, 4, ...)
 | process scheduler | Orchestrator queuing logic |
 | semaphore | Concurrency guard via FIFO count |
 
+For details on logging, IPC, and resource governance, see [internals.md](./docs/internals.md).
+
 ## Structure
 
 ```
 cekernel/
   .claude-plugin/
     plugin.json              # Plugin manifest
-  Makefile                   # WezTerm plugin install/uninstall
   agents/
     orchestrator.md          # Orchestrator protocol definition
     worker.md                # Worker protocol definition
   config/
+    Makefile                 # WezTerm plugin install/uninstall
+    README.md                # WezTerm backend setup guide
     wezterm.cekernel.lua     # WezTerm plugin (Worker layout via user-var event)
+  docs/
+    internals.md             # Logging, IPC, resource governance details
   skills/
     orchestrate/
       SKILL.md               # /cekernel:orchestrate skill
@@ -98,7 +103,9 @@ cekernel/
 
 \* One backend is required: WezTerm (default), tmux, or headless. Set `CEKERNEL_BACKEND` env var to select. Headless requires no terminal.
 
-## Install
+## How to Use
+
+### Install
 
 Install from the Claude Code plugin marketplace:
 
@@ -109,32 +116,6 @@ Install from the Claude Code plugin marketplace:
 # 2. Install cekernel plugin
 /plugin install cekernel@clonable-eden-glimmer
 ```
-
-### WezTerm Plugin
-
-If using the WezTerm backend, install the WezTerm plugin into `plugins.d/` (recommended):
-
-```bash
-cd cekernel
-make install    # Symlinks config/wezterm.cekernel.lua → ~/.config/wezterm/plugins.d/cekernel.lua
-make uninstall  # Removes the symlink
-
-# or
-make -C cekernel install # uninstall
-```
-
-This requires a `plugins.d` loader in your `wezterm.lua` (before `return config`):
-
-```lua
--- ============================================================
--- Plugins: load all .lua files from plugins.d/
--- ============================================================
-for _, file in ipairs(wezterm.glob(wezterm.config_dir .. '/plugins.d/*.lua')) do
-  dofile(file)
-end
-```
-
-If you manage your own WezTerm config, you can load `config/wezterm.cekernel.lua` directly instead.
 
 ### Update
 
@@ -176,31 +157,20 @@ Profiles are loaded with multi-layer priority (lowest → highest):
 3. Project override (`.cekernel/envs/${CEKERNEL_ENV}.env`)
 4. Explicit environment variables
 
-Projects can override plugin defaults by placing `.env` files in `.cekernel/envs/`. These survive `/plugin update`. See ADR-0006 for design details.
+Projects can override plugin defaults by placing `.env` files in `.cekernel/envs/`. These survive `/plugin update`. See [ADR-0006](./docs/adr/0006-env-var-catalog-and-profiles.md) for design details.
+
+If using the WezTerm backend, see [`config/README.md`](./config/README.md) for plugin setup.
 
 ## Usage
 
-```bash
-# Run Orchestrator workflow via skill
-/cekernel:orchestrate
+| Skill | Purpose |
+|-------|---------|
+| `/orchestrate` | Issue delegation and parallel processing |
+| `/dispatch` | Batch-process ready-labeled issues |
+| `/orchctrl` | Worker inspection and control |
+| `/unix-architect` | ADR authoring and architectural review |
 
-# Or execute scripts directly (same steps as Orchestrator)
-
-# 1. Generate CEKERNEL_SESSION_ID
-source cekernel/scripts/shared/session-id.sh && echo $CEKERNEL_SESSION_ID
-# => glimmer-7861a821
-
-# 2. Execute scripts (all require CEKERNEL_SESSION_ID; export each time if shells are separate)
-export CEKERNEL_SESSION_ID=glimmer-7861a821 && cekernel/scripts/orchestrator/spawn-worker.sh 4
-export CEKERNEL_SESSION_ID=glimmer-7861a821 && cekernel/scripts/orchestrator/worker-status.sh
-export CEKERNEL_SESSION_ID=glimmer-7861a821 && cekernel/scripts/orchestrator/watch-worker.sh 4  # run_in_background: true
-export CEKERNEL_SESSION_ID=glimmer-7861a821 && cekernel/scripts/orchestrator/watch-logs.sh
-export CEKERNEL_SESSION_ID=glimmer-7861a821 && cekernel/scripts/orchestrator/watch-logs.sh 4
-export CEKERNEL_SESSION_ID=glimmer-7861a821 && cekernel/scripts/orchestrator/cleanup-worktree.sh 4
-
-# Change concurrency limit (default: 3)
-export CEKERNEL_MAX_WORKERS=5
-```
+In plugin mode, prefix with `cekernel:` (e.g., `/cekernel:orchestrate`). See each skill's `SKILL.md` for details.
 
 For versioning and release procedures, see the [cekernel/CLAUDE.md Versioning section](./CLAUDE.md#versioning).
 
@@ -252,21 +222,6 @@ Workers automatically read this configuration file within the worktree and opera
 List tools that Workers should use in `allow`, and explicitly deny dangerous commands in `deny`.
 Each repository can freely customize allowed tools and commands.
 
-## TDD Workflow
-
-Workers implement code-changing issues using TDD (Red-Green-Refactor).
-
-```
-RED ──→ GREEN ──→ REFACTOR ──→ (next cycle or Phase 2)
- │        │          │
- │        │          └─ Remove duplication, improve naming, restructure → commit
- │        └─ Minimal implementation to pass tests → commit
- └─ Write failing test → commit
-```
-
-Documentation-only changes and similar cases where tests are unnecessary may skip TDD.
-See the "Development Method: TDD" section in `agents/worker.md` for details.
-
 ## Constraint: Separation of Authority
 
 cekernel defines only the **lifecycle** (spawn → PR → CI → merge → notify → cleanup).
@@ -288,73 +243,3 @@ When to notify            commit message format
 ```
 
 If the target repository has no CLAUDE.md, Workers infer conventions from existing code, commits, and PRs.
-
-## Logging
-
-Worker lifecycle events are recorded in the session-scoped log directory.
-
-```
-/tmp/cekernel-ipc/{CEKERNEL_SESSION_ID}/
-├── worker-4          # FIFO (existing)
-├── worker-7          # FIFO (existing)
-└── logs/
-    ├── worker-4.log  # Worker #4 log
-    └── worker-7.log  # Worker #7 log
-```
-
-### Log Format
-
-```
-[2026-02-25T15:30:00Z] SPAWN issue=#4 branch=issue/4-add-feature
-[2026-02-25T15:45:00Z] COMPLETE issue=#4 status=merged detail=42
-[2026-02-25T15:46:00Z] FAILED issue=#7 status=failed detail=CI failed 3 times
-```
-
-### Log Monitoring
-
-```bash
-cekernel/scripts/orchestrator/watch-logs.sh             # All Workers
-cekernel/scripts/orchestrator/watch-logs.sh 4           # Specific Worker
-```
-
-### Log Lifecycle
-
-- **Creation**: `spawn-worker.sh` creates on Worker spawn
-- **Writing**: `spawn-worker.sh` (SPAWN), `notify-complete.sh` (COMPLETE/FAILED)
-- **Deletion**: `cleanup-worktree.sh` deletes during worktree cleanup
-
-## Resource Governance
-
-### Concurrency Limit
-
-The `CEKERNEL_MAX_WORKERS` environment variable limits concurrent Workers (default: 3).
-`spawn-worker.sh` counts active FIFOs in the session and returns exit 2 when the limit is reached.
-The Orchestrator uses this exit code to perform queuing.
-
-### Worker Status
-
-Use `worker-status.sh` to check active Workers in the session in JSON Lines format:
-
-```bash
-cekernel/scripts/orchestrator/worker-status.sh
-# {"issue":4,"worktree":"/path/.worktrees/issue/4-...","fifo":"/tmp/cekernel-ipc/.../worker-4","uptime":"12m"}
-```
-
-
-## IPC: Named Pipe
-
-Inter-Worker communication uses FIFOs (named pipes). No daemon required, kernel-level IPC, `select`/`poll` compatible.
-
-### Session Scope
-
-FIFO paths are namespaced per session:
-
-```
-/tmp/cekernel-ipc/{CEKERNEL_SESSION_ID}/worker-{issue}
-```
-
-`CEKERNEL_SESSION_ID` is auto-generated by `session-id.sh` (format: `{repo-name}-{hex8}`).
-If the `CEKERNEL_SESSION_ID` environment variable is already set, it is used as-is.
-spawn-worker.sh propagates `CEKERNEL_SESSION_ID` to Workers via the backend (WezTerm Lua event, tmux send-keys, or environment variable for headless).
-
-This ensures that multiple orchestrate sessions running concurrently on the same machine do not have FIFO collisions.

@@ -4,7 +4,7 @@ WEZTERM_PLUGINS_DIR := $(HOME)/.config/wezterm/plugins.d
 
 install:
 	mkdir -p $(WEZTERM_PLUGINS_DIR)
-	ln -sfnv $(CURDIR)/config/wezterm.cekernel.lua $(WEZTERM_PLUGINS_DIR)/cekernel.lua
+	ln -sfnv $(CURDIR)/wezterm.cekernel.lua $(WEZTERM_PLUGINS_DIR)/cekernel.lua
 	@echo "Done!"
 
 uninstall:
