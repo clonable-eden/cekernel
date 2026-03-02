@@ -36,12 +36,12 @@ Source `session-id.sh` at the start to generate CEKERNEL_SESSION_ID, then explic
 ```bash
 # 1. Generate CEKERNEL_SESSION_ID (using the centralized generation logic in session-id.sh)
 source session-id.sh && echo $CEKERNEL_SESSION_ID
-# => glimmer-7861a821
+# => cekernel-7861a821
 
 # 2. Pass CEKERNEL_SESSION_ID as environment variable in all subsequent commands
-export CEKERNEL_SESSION_ID=glimmer-7861a821 && spawn-worker.sh 4
-export CEKERNEL_SESSION_ID=glimmer-7861a821 && watch-worker.sh 4   # run_in_background: true
-export CEKERNEL_SESSION_ID=glimmer-7861a821 && cleanup-worktree.sh 4
+export CEKERNEL_SESSION_ID=cekernel-7861a821 && spawn-worker.sh 4
+export CEKERNEL_SESSION_ID=cekernel-7861a821 && watch-worker.sh 4   # run_in_background: true
+export CEKERNEL_SESSION_ID=cekernel-7861a821 && cleanup-worktree.sh 4
 ```
 
 ### CEKERNEL_AGENT_WORKER Propagation
@@ -50,7 +50,7 @@ When the `/orchestrate` skill detects plugin mode (skill namespace prefix `ceker
 
 ```bash
 # Example: propagate agent name to spawn-worker.sh
-export CEKERNEL_SESSION_ID=glimmer-7861a821 && export CEKERNEL_AGENT_WORKER=cekernel:worker && spawn-worker.sh 4
+export CEKERNEL_SESSION_ID=cekernel-7861a821 && export CEKERNEL_AGENT_WORKER=cekernel:worker && spawn-worker.sh 4
 ```
 
 `spawn-worker.sh` defaults `CEKERNEL_AGENT_WORKER` to `worker` if unset, ensuring safe fallback for direct execution.
@@ -63,10 +63,10 @@ If no `--env` is specified, `CEKERNEL_ENV` defaults to `default` (handled by `lo
 
 ```bash
 # Example: propagate headless profile to all script calls
-export CEKERNEL_SESSION_ID=glimmer-7861a821 && export CEKERNEL_ENV=headless && spawn-worker.sh 4
-export CEKERNEL_SESSION_ID=glimmer-7861a821 && export CEKERNEL_ENV=headless && watch-worker.sh 4  # run_in_background: true
-export CEKERNEL_SESSION_ID=glimmer-7861a821 && export CEKERNEL_ENV=headless && worker-status.sh
-export CEKERNEL_SESSION_ID=glimmer-7861a821 && export CEKERNEL_ENV=headless && cleanup-worktree.sh 4
+export CEKERNEL_SESSION_ID=cekernel-7861a821 && export CEKERNEL_ENV=headless && spawn-worker.sh 4
+export CEKERNEL_SESSION_ID=cekernel-7861a821 && export CEKERNEL_ENV=headless && watch-worker.sh 4  # run_in_background: true
+export CEKERNEL_SESSION_ID=cekernel-7861a821 && export CEKERNEL_ENV=headless && worker-status.sh
+export CEKERNEL_SESSION_ID=cekernel-7861a821 && export CEKERNEL_ENV=headless && cleanup-worktree.sh 4
 ```
 
 The propagation chain:

@@ -104,7 +104,7 @@ This reduces the `send-text` command from ~1173 bytes to ~124 bytes, well within
 | `spawn-worker.sh` rollback | Deletes `payload-{issue}.b64` |
 | `cleanup-worktree.sh` | Deletes `payload-{issue}.b64` |
 
-Related: [#173](https://github.com/clonable-eden/glimmer/issues/173), [PR #175](https://github.com/clonable-eden/glimmer/pull/175).
+Related: [#173](https://github.com/clonable-eden/cekernel/issues/173), [PR #175](https://github.com/clonable-eden/cekernel/pull/175).
 
 ## Claude Code Environment Variable Cleanup
 
@@ -140,4 +140,4 @@ Or in a subshell to avoid affecting the parent:
 
 The headless backend (`scripts/shared/backends/headless.sh`) applies this cleanup when spawning Workers. Terminal-based backends (WezTerm, tmux) naturally get a clean environment because they create new shell sessions.
 
-Related: [#117](https://github.com/clonable-eden/glimmer/issues/117), [PR #178](https://github.com/clonable-eden/glimmer/pull/178).
+Related: [#117](https://github.com/clonable-eden/cekernel/issues/117), [PR #178](https://github.com/clonable-eden/cekernel/pull/178).

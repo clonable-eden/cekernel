@@ -148,10 +148,10 @@ Install from the Claude Code plugin marketplace:
 
 ```bash
 # 1. Add marketplace
-/plugin marketplace add clonable-eden/glimmer
+/plugin marketplace add clonable-eden/cekernel
 
 # 2. Install cekernel plugin
-/plugin install cekernel@clonable-eden-glimmer
+/plugin install cekernel@clonable-eden-cekernel
 ```
 
 ### Update
