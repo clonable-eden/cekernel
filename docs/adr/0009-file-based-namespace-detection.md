@@ -10,7 +10,7 @@ cekernel operates in two modes depending on how it is installed:
 
 | Mode | Installation | Agent invocation |
 |------|-------------|-----------------|
-| Plugin | `/plugin install cekernel@clonable-eden-glimmer` | `cekernel:orchestrator`, `cekernel:worker` |
+| Plugin | `/plugin install cekernel@clonable-eden-cekernel` | `cekernel:orchestrator`, `cekernel:worker` |
 | Local | Project-local `.claude/agents/`, `.claude/skills/` | `orchestrator`, `worker` |
 
 The Orchestrator must know which mode it is running in to spawn Workers with the correct agent name. If a plugin-mode Orchestrator spawns `claude --agent worker`, the agent is not found. If a local-mode Orchestrator spawns `claude --agent cekernel:worker`, it silently uses the outdated plugin-installed version instead of the local development version.
@@ -99,9 +99,9 @@ The probe skill (`skills/probe/SKILL.md`) and probe agent (`agents/probe.md`) we
 
 | # | Repository | Invocation | LLM detection | D2 (file) | Agent spawn | Correct answer |
 |---|-----------|------------|:---:|:---:|:---:|:---:|
-| 1 | glimmer (no symlinks) | `cekernel:probe` | `cekernel` | `local` | `probe` — **failed** | `local` |
-| 2 | glimmer (symlinks) | `probe` | `local` | `local` | `probe` — success | `local` |
-| 3 | glimmer (symlinks) | `cekernel:probe` | `cekernel` | `local` | `probe` — success | `local`* |
+| 1 | cekernel (no symlinks) | `cekernel:probe` | `cekernel` | `local` | `probe` — **failed** | `local` |
+| 2 | cekernel (symlinks) | `probe` | `local` | `local` | `probe` — success | `local` |
+| 3 | cekernel (symlinks) | `cekernel:probe` | `cekernel` | `local` | `probe` — success | `local`* |
 | 4 | dotfiles (external repo) | `cekernel:probe` | `cekernel` | `cekernel` | `cekernel:probe` — success | `cekernel` |
 
 **Key findings:**
@@ -111,7 +111,7 @@ The probe skill (`skills/probe/SKILL.md`) and probe agent (`agents/probe.md`) we
 - **Scenario 3**: D2 detects `local` while LLM detects `cekernel` — D2 is correct because the local source exists and should be used. The namespaced invocation in a self-hosting context is the user error, not a D2 failure
 - **Scenario 4**: Both methods agree — external repository correctly resolves to plugin mode
 
-\* Scenario 3: In a self-hosting repository, D2 always returns `local` regardless of invocation namespace. This is the intended behavior — self-hosting means "use the local version". Using `cekernel:probe` in the glimmer repository is an operational error (convention violation, not a detection bug).
+\* Scenario 3: In a self-hosting repository, D2 always returns `local` regardless of invocation namespace. This is the intended behavior — self-hosting means "use the local version". Using `cekernel:probe` in the cekernel repository is an operational error (convention violation, not a detection bug).
 
 D2 achieved **4/4 correct results** under the convention that self-hosting repositories use non-namespaced invocation.
 
@@ -208,7 +208,7 @@ The symlink targets are also updated: `../../cekernel/agents/*.md` → `../../ag
 
 ## References
 
-- Issue: [#137](https://github.com/clonable-eden/glimmer/issues/137) — Namespace resolution bug
-- Probe verification: [#137 comment](https://github.com/clonable-eden/glimmer/issues/137) — D2 verification results
+- Issue: [#137](https://github.com/clonable-eden/cekernel/issues/137) — Namespace resolution bug
+- Probe verification: [#137 comment](https://github.com/clonable-eden/cekernel/issues/137) — D2 verification results
 - Claude Code limitations: [anthropics/claude-code#9354](https://github.com/anthropics/claude-code/issues/9354), [#11011](https://github.com/anthropics/claude-code/issues/11011), [#10113](https://github.com/anthropics/claude-code/issues/10113), [#12541](https://github.com/anthropics/claude-code/issues/12541)
 - ADR-0006 Amendment: `BASH_SOURCE[0]` migration for `CLAUDE_PLUGIN_ROOT` removal

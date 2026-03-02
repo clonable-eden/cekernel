@@ -11,7 +11,7 @@ During execution of issue #72, a Worker completed its work successfully — the 
 Observed IPC directory state:
 
 ```
-/tmp/cekernel-ipc/glimmer-11535bdc/
+/tmp/cekernel-ipc/cekernel-11535bdc/
   ├── pane-72              # handle file (old naming — see note)
   ├── worker-72.state      # TERMINATED:2026-02-27T09:00:28Z:merged
   ├── worker-72.priority   # exists

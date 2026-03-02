@@ -204,7 +204,7 @@ The rest of ADR-0006 remains valid: the profile mechanism, loading order, `.env`
 
 ## References
 
-- Issue: [#82](https://github.com/clonable-eden/glimmer/issues/82) — Make CI retry count configurable
+- Issue: [#82](https://github.com/clonable-eden/cekernel/issues/82) — Make CI retry count configurable
 - ADR-0006: [Centralized Environment Variable Catalog and Profiles](./0006-env-var-catalog-and-profiles.md)
 - `load-env.sh`: `scripts/shared/load-env.sh`
 - `worker.md` On Error: `agents/worker.md` (line 234-243)

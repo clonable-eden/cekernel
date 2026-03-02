@@ -30,8 +30,8 @@ All commands except `ls` require a `<target>` to identify the Worker.
 | Format | Example | Usage |
 |--------|---------|-------|
 | `<issue>` | `4` | Unique across all sessions |
-| `<repo>:<issue>` | `glimmer:4` | Filter by repo name |
-| `<issue> --session <id>` | `4 --session glimmer-7861a821` | Explicit session ID |
+| `<repo>:<issue>` | `cekernel:4` | Filter by repo name |
+| `<issue> --session <id>` | `4 --session cekernel-7861a821` | Explicit session ID |
 
 Rules:
 - Try `<issue>` alone first; if unique, execute
