@@ -1,7 +1,7 @@
 -- cekernel WezTerm plugin — Worker layout via user-var event
 --
 -- Install: symlink into ~/.config/wezterm/plugins.d/
---   ln -sfn /path/to/cekernel/config/wezterm.cekernel.lua ~/.config/wezterm/plugins.d/
+--   ln -sfn /path/to/config/wezterm.cekernel.lua ~/.config/wezterm/plugins.d/
 --
 -- spawn-worker.sh triggers this via OSC user-var, constructing a 3-pane layout
 -- inside the WezTerm GUI process (IPC 7+ → 3 calls, prevents UI freeze).

@@ -23,12 +23,13 @@ echo "[Probe Agent] git_toplevel = $(git rev-parse --show-toplevel 2>/dev/null |
 
 ```bash
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo '')"
-if [[ -n "$REPO_ROOT" && -d "${REPO_ROOT}/cekernel/agents" ]]; then
-  echo "[Probe Agent] cekernel/agents dir = EXISTS"
+if [[ -n "$REPO_ROOT" && -f "${REPO_ROOT}/.claude-plugin/plugin.json" ]] && \
+   [[ "$(jq -r '.name' "${REPO_ROOT}/.claude-plugin/plugin.json" 2>/dev/null)" == "cekernel" ]]; then
+  echo "[Probe Agent] .claude-plugin/plugin.json name = cekernel"
   echo "[Probe Agent] namespace = local"
   echo "[Probe Agent] agent_name_would_be = probe"
 else
-  echo "[Probe Agent] cekernel/agents dir = NOT FOUND"
+  echo "[Probe Agent] .claude-plugin/plugin.json = NOT FOUND or name != cekernel"
   echo "[Probe Agent] namespace = cekernel (plugin)"
   echo "[Probe Agent] agent_name_would_be = cekernel:probe"
 fi
@@ -42,7 +43,7 @@ Test whether cekernel scripts are discoverable:
 echo "[Probe Agent] which spawn-worker.sh = $(which spawn-worker.sh 2>/dev/null || echo 'NOT IN PATH')"
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo '')"
 if [[ -n "$REPO_ROOT" ]]; then
-  echo "[Probe Agent] local spawn-worker.sh = $([[ -f "${REPO_ROOT}/cekernel/scripts/orchestrator/spawn-worker.sh" ]] && echo EXISTS || echo 'NOT FOUND')"
+  echo "[Probe Agent] local spawn-worker.sh = $([[ -f "${REPO_ROOT}/scripts/orchestrator/spawn-worker.sh" ]] && echo EXISTS || echo 'NOT FOUND')"
 fi
 ```
 

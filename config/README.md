@@ -5,7 +5,7 @@
 If using the WezTerm backend, install the WezTerm plugin into `plugins.d/` (recommended):
 
 ```bash
-cd cekernel/config
+cd config
 make install    # Symlinks wezterm.cekernel.lua → ~/.config/wezterm/plugins.d/cekernel.lua
 make uninstall  # Removes the symlink
 ```

@@ -27,7 +27,7 @@ Each SKILL.md that needs triage should include a step like:
 
 ### Path Resolution
 
-This file is located at `cekernel/skills/references/triage.md` relative to the repository root. To find it:
+This file is located at `skills/references/triage.md` relative to the repository root. To find it:
 
 1. Run `git rev-parse --show-toplevel` to get the repo root
-2. Read `${REPO_ROOT}/cekernel/skills/references/triage.md`
+2. Read `${REPO_ROOT}/skills/references/triage.md`

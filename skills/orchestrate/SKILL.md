@@ -32,7 +32,7 @@ Note: In plugin mode, `/cekernel:orchestrate` also works.
 
 Detect whether cekernel is running as a plugin or locally using file-based detection (ADR-0009).
 
-1. Read `cekernel/skills/references/namespace-detection.md` from the repository root (`$(git rev-parse --show-toplevel)/cekernel/skills/references/namespace-detection.md`). If the Read fails (file not found), you are in plugin mode.
+1. Read `skills/references/namespace-detection.md` from the repository root (`$(git rev-parse --show-toplevel)/skills/references/namespace-detection.md`). If the Read fails (file not found), you are in plugin mode.
 2. Execute the detection Bash snippet from the reference file.
 3. Set agent names based on the result:
    - If `CEKERNEL_NS=local`: `CEKERNEL_AGENT_ORCHESTRATOR=orchestrator`, `CEKERNEL_AGENT_WORKER=worker`
@@ -42,7 +42,7 @@ Store these values for use in subsequent steps.
 
 ### Step 1: Issue Triage and Priority Assessment
 
-Read `cekernel/skills/references/triage.md` from the repository root (`$(git rev-parse --show-toplevel)/cekernel/skills/references/triage.md`) and follow the triage protocol for each issue.
+Read `skills/references/triage.md` from the repository root (`$(git rev-parse --show-toplevel)/skills/references/triage.md`) and follow the triage protocol for each issue.
 
 After triage, delegate to the Orchestrator.
 

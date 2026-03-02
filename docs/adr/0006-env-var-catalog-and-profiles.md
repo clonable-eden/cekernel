@@ -40,9 +40,8 @@ All user-configurable variables are consumed by **Orchestrator-side scripts** (`
 Create a single reference document listing all `CEKERNEL_*` variables:
 
 ```
-cekernel/
-  envs/
-    README.md           # Catalog: every variable, default, purpose, used-by
+envs/
+  README.md           # Catalog: every variable, default, purpose, used-by
 ```
 
 Each entry includes: variable name, default value, valid values (if enumerated), purpose, and which script consumes it. This file is the single source of truth for "what can I configure?"
@@ -54,12 +53,11 @@ When a new variable is introduced in any script, it must be added to the catalog
 Named `.env` files containing coherent sets of variable assignments:
 
 ```
-cekernel/
-  envs/
-    README.md
-    default.env         # CEKERNEL_BACKEND=wezterm  CEKERNEL_MAX_WORKERS=3
-    headless.env        # CEKERNEL_BACKEND=headless  CEKERNEL_MAX_WORKERS=5
-    ci.env              # CEKERNEL_BACKEND=headless  CEKERNEL_WORKER_TIMEOUT=1800
+envs/
+  README.md
+  default.env         # CEKERNEL_BACKEND=wezterm  CEKERNEL_MAX_WORKERS=3
+  headless.env        # CEKERNEL_BACKEND=headless  CEKERNEL_MAX_WORKERS=5
+  ci.env              # CEKERNEL_BACKEND=headless  CEKERNEL_WORKER_TIMEOUT=1800
 ```
 
 Format: standard shell-sourceable `KEY=VALUE` lines (no `export`, no quotes unless needed). One variable per line. Comments with `#`.
@@ -79,13 +77,13 @@ The `/orchestrate` skill's Step 2 and the Orchestrator agent source profiles at 
 
 | Layer | Path | Provider | Survives update |
 |-------|------|----------|:-:|
-| Plugin defaults | `cekernel/envs/${CEKERNEL_ENV}.env` | cekernel plugin | No (`/plugin update` overwrites) |
+| Plugin defaults | `envs/${CEKERNEL_ENV}.env` | cekernel plugin | No (`/plugin update` overwrites) |
 | Project override | `.cekernel/envs/${CEKERNEL_ENV}.env` | Project developer | Yes (git-managed) |
 
 The full priority order (lowest to highest):
 
 1. **Script defaults** — `${VAR:-default}` in each script (lowest priority)
-2. **Plugin profile** — `cekernel/envs/${CEKERNEL_ENV}.env`
+2. **Plugin profile** — `envs/${CEKERNEL_ENV}.env`
 3. **Project profile** — `.cekernel/envs/${CEKERNEL_ENV}.env`
 4. **Environment variables** — explicitly `export`-ed before invocation (highest priority)
 
@@ -247,7 +245,7 @@ The `/cekernel:orchestrate` skill accepts `--env <profile>` as an optional argum
 
 ### Trade-offs
 
-**Discoverability vs. simplicity**: The catalog and profiles add files that didn't exist before. However, the configuration already exists — it's just hidden in script source. The cost is a small maintenance burden; the benefit is that a user can `cat envs/README.md` instead of `grep CEKERNEL_ cekernel/scripts/**/*.sh`.
+**Discoverability vs. simplicity**: The catalog and profiles add files that didn't exist before. However, the configuration already exists — it's just hidden in script source. The cost is a small maintenance burden; the benefit is that a user can `cat envs/README.md` instead of `grep CEKERNEL_ scripts/**/*.sh`.
 
 **Named profiles vs. ad-hoc exports**: Profiles impose a small amount of structure (predefined `.env` files). Users who prefer `export CEKERNEL_BACKEND=headless` can continue to do so — profiles only fill unset variables, never overwrite explicit environment settings. This ensures user intent always wins.
 

@@ -31,9 +31,9 @@ Introduce a **backend-switching mechanism** in `terminal-adapter.sh` driven by t
 Each backend implements the same 8-function interface. The dispatch is a single `case` statement at the top of `terminal-adapter.sh` that sources the appropriate backend file:
 
 ```
-cekernel/scripts/shared/
+scripts/shared/
   terminal-adapter.sh           # dispatcher (reads CEKERNEL_TERMINAL)
-  terminal-backends/
+  backends/
     wezterm.sh                  # current implementation, extracted
     tmux.sh                     # new
     headless.sh                 # new

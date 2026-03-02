@@ -8,7 +8,7 @@
 #
 # Loading order (lowest to highest priority):
 #   1. Script defaults (${VAR:-default} in each script)
-#   2. Plugin profile (cekernel/envs/${CEKERNEL_ENV}.env)
+#   2. Plugin profile (envs/${CEKERNEL_ENV}.env)
 #   3. Project profile (.cekernel/envs/${CEKERNEL_ENV}.env)
 #   4. Environment variables (explicit export)
 #

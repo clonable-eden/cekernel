@@ -23,7 +23,7 @@ If a version is provided, skip the analysis and use it directly. Otherwise, anal
 
 ```bash
 PREV_TAG=$(git tag -l 'cekernel-v*' --sort=-v:refname | head -1)
-CURRENT_VERSION=$(jq -r '.version' cekernel/.claude-plugin/plugin.json)
+CURRENT_VERSION=$(jq -r '.version' .claude-plugin/plugin.json)
 echo "Current version: ${CURRENT_VERSION}"
 echo "Last tag: ${PREV_TAG}"
 ```

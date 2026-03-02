@@ -39,7 +39,7 @@ This approach does not scale. Each new Worker-side configuration requires modify
 
 ### Workers can already reach `load-env.sh`
 
-Workers are LLM agents that resolve file paths as part of their normal operation — just as they already locate and execute `notify-complete.sh` without a hardcoded path. `load-env.sh` is in `cekernel/scripts/shared/`, a sibling of the `worker/` directory containing `notify-complete.sh`. The Worker can find it through the same mechanisms it uses for other cekernel scripts.
+Workers are LLM agents that resolve file paths as part of their normal operation — just as they already locate and execute `notify-complete.sh` without a hardcoded path. `load-env.sh` is in `scripts/shared/`, a sibling of the `worker/` directory containing `notify-complete.sh`. The Worker can find it through the same mechanisms it uses for other cekernel scripts.
 
 The `load-env.sh` multi-layer search (Project → Plugin → Environment variables) is also meaningful for Workers — a project might want to override CI retry counts for its specific CI infrastructure.
 
@@ -57,7 +57,7 @@ Only the **profile name** is propagated — not individual configuration values.
 
 ### 2. Workers source `load-env.sh` to self-load configuration
 
-When a Worker needs a configurable value, it sources `load-env.sh` via a Bash command. The file is located at `cekernel/scripts/shared/load-env.sh` relative to the plugin or repository root — the same file that `spawn-worker.sh` already sources on the Orchestrator side.
+When a Worker needs a configurable value, it sources `load-env.sh` via a Bash command. The file is located at `scripts/shared/load-env.sh` relative to the plugin or repository root — the same file that `spawn-worker.sh` already sources on the Orchestrator side.
 
 The Worker is an LLM agent that resolves file paths as part of its normal operation (just as it already locates and runs `notify-complete.sh` without a prescribed path). `worker.md` instructs the Worker to source `load-env.sh` and states its location within the `scripts/shared/` directory. The Worker determines the concrete path using whatever method it finds appropriate (codebase search, relative path from known scripts, etc.).
 
@@ -206,5 +206,5 @@ The rest of ADR-0006 remains valid: the profile mechanism, loading order, `.env`
 
 - Issue: [#82](https://github.com/clonable-eden/glimmer/issues/82) — Make CI retry count configurable
 - ADR-0006: [Centralized Environment Variable Catalog and Profiles](./0006-env-var-catalog-and-profiles.md)
-- `load-env.sh`: `cekernel/scripts/shared/load-env.sh`
-- `worker.md` On Error: `cekernel/agents/worker.md` (line 234-243)
+- `load-env.sh`: `scripts/shared/load-env.sh`
+- `worker.md` On Error: `agents/worker.md` (line 234-243)

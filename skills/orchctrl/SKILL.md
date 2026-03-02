@@ -43,10 +43,10 @@ Rules:
 
 ### Step 1: Detect Namespace and Determine Script Location
 
-1. Read `cekernel/skills/references/namespace-detection.md` from the repository root (`$(git rev-parse --show-toplevel)/cekernel/skills/references/namespace-detection.md`). If the Read fails (file not found), you are in plugin mode.
+1. Read `skills/references/namespace-detection.md` from the repository root (`$(git rev-parse --show-toplevel)/skills/references/namespace-detection.md`). If the Read fails (file not found), you are in plugin mode.
 2. Execute the detection Bash snippet from the reference file.
 3. Set the script path based on the result:
-   - If `CEKERNEL_NS=local`: `ORCHCTRL="cekernel/scripts/orchestrator/orchctrl.sh"`
+   - If `CEKERNEL_NS=local`: `ORCHCTRL="scripts/orchestrator/orchctrl.sh"`
    - If `CEKERNEL_NS=plugin`: `ORCHCTRL="$(dirname "$(dirname "$(which spawn-worker.sh 2>/dev/null || echo "")")")/scripts/orchestrator/orchctrl.sh"`
 
 ### Step 2: Parse User Command and Execute

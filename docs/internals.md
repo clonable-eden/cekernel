@@ -26,8 +26,8 @@ Worker lifecycle events are recorded in the session-scoped log directory.
 ### Log Monitoring
 
 ```bash
-cekernel/scripts/orchestrator/watch-logs.sh             # All Workers
-cekernel/scripts/orchestrator/watch-logs.sh 4           # Specific Worker
+scripts/orchestrator/watch-logs.sh             # All Workers
+scripts/orchestrator/watch-logs.sh 4           # Specific Worker
 ```
 
 ### Log Lifecycle
@@ -49,7 +49,7 @@ The Orchestrator uses this exit code to perform queuing.
 Use `worker-status.sh` to check active Workers in the session in JSON Lines format:
 
 ```bash
-cekernel/scripts/orchestrator/worker-status.sh
+scripts/orchestrator/worker-status.sh
 # {"issue":4,"worktree":"/path/.worktrees/issue/4-...","fifo":"/tmp/cekernel-ipc/.../worker-4","uptime":"12m"}
 ```
 

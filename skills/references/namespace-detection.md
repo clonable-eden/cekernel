@@ -9,12 +9,13 @@ Run the following Bash command to detect whether cekernel is in local or plugin 
 
 ```bash
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo '')"
-if [[ -n "$REPO_ROOT" && -d "${REPO_ROOT}/cekernel/agents" ]]; then
+if [[ -n "$REPO_ROOT" && -f "${REPO_ROOT}/.claude-plugin/plugin.json" ]] && \
+   [[ "$(jq -r '.name' "${REPO_ROOT}/.claude-plugin/plugin.json" 2>/dev/null)" == "cekernel" ]]; then
   CEKERNEL_NS="local"
-  echo "[NS Detection] mode=local (cekernel source found at ${REPO_ROOT}/cekernel/agents)"
+  echo "[NS Detection] mode=local (cekernel plugin.json found at ${REPO_ROOT}/.claude-plugin/plugin.json)"
 else
   CEKERNEL_NS="plugin"
-  echo "[NS Detection] mode=plugin (no cekernel/agents in repo root)"
+  echo "[NS Detection] mode=plugin (no cekernel plugin.json in repo root)"
 fi
 ```
 
@@ -36,9 +37,9 @@ Each SKILL.md that needs namespace detection should include a step like:
 
 ### Path Resolution
 
-This file is located at `cekernel/skills/references/namespace-detection.md` relative to the repository root. To find it:
+This file is located at `skills/references/namespace-detection.md` relative to the repository root. To find it:
 
 1. Run `git rev-parse --show-toplevel` to get the repo root
-2. Read `${REPO_ROOT}/cekernel/skills/references/namespace-detection.md`
+2. Read `${REPO_ROOT}/skills/references/namespace-detection.md`
 
 If the file is not found (Read fails), you are in **plugin mode** — use namespaced agent names (`cekernel:orchestrator`, `cekernel:worker`, etc.).

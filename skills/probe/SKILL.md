@@ -28,7 +28,7 @@ Report:
 
 ### Step 2: File-based Detection (D2 — ADR-0009)
 
-1. Read `cekernel/skills/references/namespace-detection.md` from the repository root (`$(git rev-parse --show-toplevel)/cekernel/skills/references/namespace-detection.md`). If the Read fails (file not found), you are in plugin mode.
+1. Read `skills/references/namespace-detection.md` from the repository root (`$(git rev-parse --show-toplevel)/skills/references/namespace-detection.md`). If the Read fails (file not found), you are in plugin mode.
 2. Execute the detection Bash snippet from the reference file.
 3. Map the result for probe reporting:
    - If `CEKERNEL_NS=local`: `FILE_DETECTED_NS="local"`, `CEKERNEL_AGENT_PROBE="probe"`
