@@ -8,16 +8,16 @@ it distributes, monitors, and reaps issues via independent Workers.
 ## Concept
 
 ```
-Orchestrator (agent1)              Worker (agent2, 3, 4, ...)
-  main working tree                  git worktree per issue
-  ┌─────────────┐                  ┌─────────────┐
-  │ receive issue│                  │ implement    │
-  │ create wktree│──spawn──────→   │ test         │
-  │ monitor FIFO │                  │ create PR    │
-  │   ...waiting │                  │ CI + merge   │
-  │   ←─signal───│◄─notify─────── │ notify done  │
-  │ cleanup      │                  └─────────────┘
-  └─────────────┘
+Orchestrator (agent1)             Worker (agent2, 3, 4, ...)
+  main working tree                 git worktree per issue
+  +---------------+               +---------------+
+  | receive issue |               | implement     |
+  | create wktree |--spawn------->| test          |
+  | monitor FIFO  |               | create PR     |
+  |   ...waiting  |               | CI + merge    |
+  |   <--signal---|<--notify------| notify done   |
+  | cleanup       |               +---------------+
+  +---------------+
 ```
 
 ### OS Analogy
