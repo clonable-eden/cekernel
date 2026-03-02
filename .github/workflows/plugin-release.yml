@@ -12,10 +12,11 @@ on:
         default: 'cekernel'
 
 jobs:
-  release:
+  create-release-pr:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v6
 
@@ -33,49 +34,38 @@ jobs:
             exit 1
           fi
 
-      - name: Update plugin.json
-        run: |
-          jq --arg v "${{ inputs.version }}" '.version = $v' \
-            "${{ inputs.plugin }}/.claude-plugin/plugin.json" > tmp.json
-          mv tmp.json "${{ inputs.plugin }}/.claude-plugin/plugin.json"
-
-      - name: Commit via API
+      - name: Create release branch and PR
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          FILE_PATH="${{ inputs.plugin }}/.claude-plugin/plugin.json"
-          FILE_SHA=$(gh api "repos/${{ github.repository }}/contents/${FILE_PATH}" --jq '.sha')
-          CONTENT=$(base64 -w0 < "${FILE_PATH}")
-          COMMIT_SHA=$(gh api "repos/${{ github.repository }}/contents/${FILE_PATH}" \
-            -X PUT \
-            -f message="release: ${{ inputs.plugin }} v${{ inputs.version }}" \
-            -f content="${CONTENT}" \
-            -f sha="${FILE_SHA}" \
-            --jq '.commit.sha')
-          echo "commit_sha=${COMMIT_SHA}" >> "$GITHUB_OUTPUT"
-        id: commit
+          PLUGIN="${{ inputs.plugin }}"
+          VERSION="${{ inputs.version }}"
+          BRANCH="release/${PLUGIN}-v${VERSION}"
+          TAG="${PLUGIN}-v${VERSION}"
 
-      - name: Create tag
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh api "repos/${{ github.repository }}/git/refs" \
-            -f ref="refs/tags/${{ inputs.plugin }}-v${{ inputs.version }}" \
-            -f sha="${{ steps.commit.outputs.commit_sha }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Create release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="${{ inputs.plugin }}-v${{ inputs.version }}"
-          PREV_TAG=$(git tag -l '${{ inputs.plugin }}-v*' --sort=-v:refname | head -1)
-          if [ -n "${PREV_TAG}" ]; then
-            gh release create "${TAG}" \
-              --title "${TAG}" \
-              --generate-notes \
-              --notes-start-tag "${PREV_TAG}"
-          else
-            gh release create "${TAG}" \
-              --title "${TAG}" \
-              --generate-notes
-          fi
+          git checkout -b "${BRANCH}"
+
+          jq --arg v "${VERSION}" '.version = $v' \
+            "${PLUGIN}/.claude-plugin/plugin.json" > tmp.json
+          mv tmp.json "${PLUGIN}/.claude-plugin/plugin.json"
+
+          git add "${PLUGIN}/.claude-plugin/plugin.json"
+          git commit -m "release: ${PLUGIN} v${VERSION}"
+          git push -u origin "${BRANCH}"
+
+          BODY="$(cat <<EOF
+          ## Release ${PLUGIN} v${VERSION}
+
+          Version bump for ${PLUGIN} plugin.
+
+          - Updates \`${PLUGIN}/.claude-plugin/plugin.json\` version to \`${VERSION}\`
+          - On merge, \`plugin-release-tag.yml\` will automatically create tag \`${TAG}\` and GitHub Release
+          EOF
+          )"
+
+          gh pr create \
+            --title "release: ${PLUGIN} v${VERSION}" \
+            --body "${BODY}"
