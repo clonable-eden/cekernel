@@ -1,1 +1,1 @@
-../../cekernel/agents/worker.md
+../../agents/worker.md

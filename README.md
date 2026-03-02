@@ -1,7 +1,282 @@
-# glimmer
+# cekernel
 
-![glimmer](glimmer.png)
+![cekernel](cekernel.png)
 
-アイデアの火種を温める場所。
+Parallel agent infrastructure for Claude Code. Modeled after the OS process model,
+it distributes, monitors, and reaps issues via independent Workers.
 
-まだ形になっていない着想や検討事項をIssueとして蓄積し、時が来たら実行に移す。
+## Concept
+
+```
+Orchestrator (agent1)              Worker (agent2, 3, 4, ...)
+  main working tree                  git worktree per issue
+  ┌─────────────┐                  ┌─────────────┐
+  │ receive issue│                  │ implement    │
+  │ create wktree│──spawn──────→   │ test         │
+  │ monitor FIFO │                  │ create PR    │
+  │   ...waiting │                  │ CI + merge   │
+  │   ←─signal───│◄─notify─────── │ notify done  │
+  │ cleanup      │                  └─────────────┘
+  └─────────────┘
+```
+
+### OS Analogy
+
+| OS | kernel |
+|----|--------|
+| `init` / scheduler | Orchestrator |
+| process | Worker |
+| `fork` + `exec` | `spawn-worker.sh` |
+| address space | git worktree |
+| process states | `worker-state.sh` (NEW/RUNNING/WAITING/SUSPENDED/TERMINATED) |
+| `nice` / priority | `--priority` flag + `worker-priority.sh` |
+| IPC pipe | named pipe (FIFO) |
+| IPC namespace | session (`CEKERNEL_SESSION_ID`) |
+| SIGTERM | `send-signal.sh TERM` |
+| SIGSTOP / SIGCONT | `send-signal.sh SUSPEND` / `spawn-worker.sh --resume` |
+| SIGKILL | `cleanup-worktree.sh --force` |
+| SIGALRM / watchdog | `CEKERNEL_WORKER_TIMEOUT` + escalation (TERM → grace → force-kill) |
+| `waitpid` | `watch-worker.sh` (triple-path: FIFO + state file + crash detection) |
+| zombie reaping | `health-check.sh` + `cleanup-worktree.sh` |
+| core dump / checkpoint | `.cekernel-checkpoint.md` (suspend/resume) |
+| `systemctl` | `orchctrl.sh` / `/orchctrl` skill |
+| device drivers | `backend-adapter.sh` (wezterm/tmux/headless) |
+| `/etc/default/` | `load-env.sh` + env profiles |
+| PID | issue number |
+| `/var/log/` | `${CEKERNEL_IPC_DIR}/logs/` |
+| `syslog` | Lifecycle event log writes |
+| `tail -f` / `journalctl` | `watch-logs.sh` |
+| log rotation | Logs deleted by `cleanup-worktree.sh` |
+| page cache | `.cekernel-task.md` (issue data pre-extracted at spawn) |
+| `ulimit -u` (max processes) | `CEKERNEL_MAX_WORKERS` |
+| `ps aux` | `worker-status.sh` |
+| process scheduler | Orchestrator queuing logic (priority queue + preemption) |
+| semaphore | Concurrency guard via FIFO count |
+
+For details on logging, IPC, and resource governance, see [internals.md](./docs/internals.md).
+
+## Structure
+
+```
+.claude-plugin/
+  plugin.json              # Plugin manifest
+agents/
+  orchestrator.md          # Orchestrator protocol definition
+  worker.md                # Worker protocol definition
+  probe.md                 # Namespace detection diagnostic agent
+config/
+  Makefile                 # WezTerm plugin install/uninstall
+  README.md                # WezTerm backend setup guide
+  wezterm.cekernel.lua     # WezTerm plugin (Worker layout via user-var event)
+docs/
+  adr/                     # Architecture Decision Records
+  claude-code-constraints.md  # Claude Code platform constraints reference
+  internals.md             # Logging, IPC, resource governance details
+  tdd.md                   # Test-driven development guide
+  unix-philosophy.md       # UNIX philosophy reference
+skills/
+  dispatch/
+    SKILL.md               # /dispatch skill — batch-process ready-labeled issues
+  orchctrl/
+    SKILL.md               # /orchctrl skill — Worker control interface
+  orchestrate/
+    SKILL.md               # /orchestrate skill — issue delegation
+  probe/
+    SKILL.md               # /probe skill — namespace detection diagnostic
+  unix-architect/
+    SKILL.md               # /unix-architect skill — ADR authoring and review
+  references/
+    namespace-detection.md # Canonical namespace detection logic
+    triage.md              # Canonical issue triage protocol
+envs/
+  README.md                # Environment variable catalog
+  default.env              # Default profile (wezterm, 3 workers)
+  headless.env             # Headless profile (headless, 5 workers)
+  ci.env                   # CI profile (headless, 1800s timeout)
+scripts/
+  orchestrator/
+    spawn-worker.sh        # Create worktree + launch Worker via backend (with concurrency guard)
+    watch-worker.sh        # Monitor Worker completion (FIFO + state file + crash detection)
+    watch-logs.sh          # Real-time Worker log monitoring
+    cleanup-worktree.sh    # Remove worktree + branch + logs
+    health-check.sh        # Detect zombie Workers
+    worker-status.sh       # List active Workers
+    orchctrl.sh            # Worker control interface (systemctl for cekernel)
+    send-signal.sh         # Send signal (TERM/SUSPEND) to a running Worker
+  worker/
+    notify-complete.sh     # Worker → Orchestrator completion notification
+    check-signal.sh        # Check for pending signal (Worker-side)
+  shared/
+    session-id.sh          # Session ID generation + IPC directory derivation
+    claude-json-helper.sh  # ~/.claude.json trust entry read/write helper
+    backend-adapter.sh     # Backend abstraction layer (wezterm/tmux/headless)
+    task-file.sh           # Local task file extraction (session memory: page cache)
+    load-env.sh            # Environment profile loader (multi-layer search)
+    checkpoint-file.sh     # Checkpoint file helpers for suspend/resume
+    worker-priority.sh     # Worker priority (nice value) management
+    worker-state.sh        # Worker process state management
+    backends/
+      headless.sh          # Headless backend implementation
+      tmux.sh              # tmux backend implementation
+      wezterm.sh           # WezTerm backend implementation
+tests/
+  run-tests.sh             # Test runner
+  helpers.sh               # Assertion helpers
+  orchestrator/test-*.sh   # Orchestrator script tests
+  worker/test-*.sh         # Worker script tests
+  shared/test-*.sh         # Shared helper tests
+```
+
+## Dependencies
+
+| Tool | Purpose | Required |
+|------|---------|----------|
+| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | Runtime for Worker agents | Yes |
+| [jq](https://jqlang.github.io/jq/) | `~/.claude.json` trust entry manipulation, JSON parsing | Yes |
+| [gh](https://cli.github.com/) | Issue retrieval, PR creation/merge | Yes |
+| [WezTerm](https://wezfurlong.org/wezterm/) | Worker window launch/management (wezterm backend) | No* |
+| [tmux](https://github.com/tmux/tmux) | Worker pane management (tmux backend) | No* |
+| git | Worktree creation/management | Yes |
+
+\* One backend is required: WezTerm (default), tmux, or headless. Set `CEKERNEL_BACKEND` env var to select. Headless requires no terminal.
+
+## How to Use
+
+### Install
+
+Install from the Claude Code plugin marketplace:
+
+```bash
+# 1. Add marketplace
+/plugin marketplace add clonable-eden/glimmer
+
+# 2. Install cekernel plugin
+/plugin install cekernel@clonable-eden-glimmer
+```
+
+### Update
+
+```bash
+# 1. Update marketplace repository
+/plugin marketplace update
+
+# 2. Update plugin
+/plugin update
+
+# 3. Restart Claude Code to apply
+```
+
+> **Note**: `/plugin update` alone may not update the marketplace local clone.
+> Always run `/plugin marketplace update` first.
+
+## Configuration
+
+cekernel is configured via `CEKERNEL_*` environment variables. See [`envs/README.md`](./envs/README.md) for the full catalog.
+
+Named profiles (`.env` files) provide coherent sets of defaults for common scenarios:
+
+| Profile | Use case |
+|---------|----------|
+| `default.env` | Local development with WezTerm |
+| `headless.env` | Terminal-free execution (CI, cron) |
+| `ci.env` | CI-specific settings |
+
+Select a profile via `CEKERNEL_ENV`:
+
+```bash
+export CEKERNEL_ENV=headless   # default: "default"
+```
+
+Profiles are loaded with multi-layer priority (lowest → highest):
+
+1. Script defaults (`${VAR:-default}`)
+2. Plugin profile (`envs/${CEKERNEL_ENV}.env`)
+3. Project override (`.cekernel/envs/${CEKERNEL_ENV}.env`)
+4. Explicit environment variables
+
+Projects can override plugin defaults by placing `.env` files in `.cekernel/envs/`. These survive `/plugin update`. See [ADR-0006](./docs/adr/0006-env-var-catalog-and-profiles.md) for design details.
+
+If using the WezTerm backend, see [`config/README.md`](./config/README.md) for plugin setup.
+
+## Usage
+
+| Skill | Purpose |
+|-------|---------|
+| `/orchestrate` | Issue delegation and parallel processing |
+| `/dispatch` | Batch-process ready-labeled issues |
+| `/orchctrl` | Worker inspection and control |
+| `/unix-architect` | ADR authoring and architectural review |
+
+In plugin mode, prefix with `cekernel:` (e.g., `/cekernel:orchestrate`). See each skill's `SKILL.md` for details.
+
+For versioning and release procedures, see the [CLAUDE.md Versioning section](./CLAUDE.md#versioning).
+
+## Worker Permissions
+
+Worker / Orchestrator agent definitions have `tools` configured, granting access to:
+
+| Tool | Purpose |
+|------|---------|
+| `Read` | File reading |
+| `Edit` | File editing |
+| `Write` | File writing |
+| `Bash` | All Bash commands including git, gh, shell scripts |
+
+`spawn-worker.sh` launches Workers with `claude --agent ${CEKERNEL_AGENT_WORKER}`.
+The agent name is resolved dynamically: `cekernel:worker` in plugin mode, `worker` in local mode.
+The `--agent` flag applies the agent definition's `tools`.
+
+Tool auto-approval (without permission prompts) is delegated to the target repository's `.claude/settings.json`.
+cekernel does not hardcode tool permissions.
+
+Note that agents and skills use different frontmatter key names:
+- **Agents** (`agents/*.md`): `tools`
+- **Skills** (`skills/*/SKILL.md`): `allowed-tools`
+
+## Project Configuration
+
+Repositories using cekernel need to configure tool permissions in `.claude/settings.json`.
+Workers automatically read this configuration file within the worktree and operate without permission prompts.
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash",
+      "Edit",
+      "Write",
+      "Read"
+    ],
+    "deny": [
+      "Bash(sudo *)",
+      "Bash(rm -rf /)",
+      "Bash(rm -rf /*)"
+    ]
+  }
+}
+```
+
+List tools that Workers should use in `allow`, and explicitly deny dangerous commands in `deny`.
+Each repository can freely customize allowed tools and commands.
+
+## Constraint: Separation of Authority
+
+cekernel defines only the **lifecycle** (spawn → PR → CI → merge → notify → cleanup).
+
+When Workers actually write code, they **fully follow the target repository's CLAUDE.md and project conventions**.
+If cekernel rules conflict with the target repository's conventions, the target repository always takes precedence.
+
+```
+cekernel authority        Target repository authority
+─────────────────         ──────────────────────────
+When to create PR         How to implement
+When to verify CI         Coding conventions
+When to merge             Test policies / lint rules
+When to notify            commit message format
+                          PR template
+                          Merge strategy
+                          Branch naming conventions
+                          Issue link syntax
+```
+
+If the target repository has no CLAUDE.md, Workers infer conventions from existing code, commits, and PRs.

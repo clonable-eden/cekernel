@@ -29,8 +29,8 @@ jobs:
 
       - name: Validate plugin exists
         run: |
-          if [[ ! -f "${{ inputs.plugin }}/.claude-plugin/plugin.json" ]]; then
-            echo "::error::Plugin not found: ${{ inputs.plugin }}"
+          if [[ ! -f ".claude-plugin/plugin.json" ]]; then
+            echo "::error::Plugin not found: .claude-plugin/plugin.json"
             exit 1
           fi
 
@@ -49,10 +49,10 @@ jobs:
           git checkout -b "${BRANCH}"
 
           jq --arg v "${VERSION}" '.version = $v' \
-            "${PLUGIN}/.claude-plugin/plugin.json" > tmp.json
-          mv tmp.json "${PLUGIN}/.claude-plugin/plugin.json"
+            ".claude-plugin/plugin.json" > tmp.json
+          mv tmp.json ".claude-plugin/plugin.json"
 
-          git add "${PLUGIN}/.claude-plugin/plugin.json"
+          git add ".claude-plugin/plugin.json"
           git commit -m "release: ${PLUGIN} v${VERSION}"
           git push -u origin "${BRANCH}"
 
@@ -61,7 +61,7 @@ jobs:
 
           Version bump for ${PLUGIN} plugin.
 
-          - Updates \`${PLUGIN}/.claude-plugin/plugin.json\` version to \`${VERSION}\`
+          - Updates \`.claude-plugin/plugin.json\` version to \`${VERSION}\`
           - On merge, \`plugin-release-tag.yml\` will automatically create tag \`${TAG}\` and GitHub Release
           EOF
           )"

@@ -1,1 +1,1 @@
-../../cekernel/agents/probe.md
+../../agents/probe.md

@@ -21,7 +21,13 @@ jobs:
         with:
           filters: |
             cekernel:
-              - 'cekernel/**'
+              - 'scripts/**'
+              - 'agents/**'
+              - 'skills/**'
+              - 'tests/**'
+              - 'envs/**'
+              - 'docs/**'
+              - 'config/**'
               - '.github/workflows/cekernel-tests.yml'
 
   test:
@@ -31,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Run cekernel tests
-        run: bash cekernel/tests/run-tests.sh
+        run: bash tests/run-tests.sh
 
   # Ruleset required status check (reports success even when test is skipped)
   status:

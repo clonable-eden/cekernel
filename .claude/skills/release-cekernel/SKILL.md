@@ -11,7 +11,7 @@ Release skill for the cekernel plugin. Analyzes git log to recommend a semver bu
 
 ### Step 1: Get Current Version
 
-Read the current version from `cekernel/.claude-plugin/plugin.json`.
+Read the current version from `.claude-plugin/plugin.json`.
 
 ### Step 2: Identify Latest Release Tag
 
@@ -25,10 +25,10 @@ If no tag exists, consider the full history.
 
 ```bash
 # If a tag exists
-git log <last-tag>..HEAD --oneline -- cekernel/
+git log <last-tag>..HEAD --oneline
 
 # If no tag exists
-git log --oneline -- cekernel/
+git log --oneline
 ```
 
 ### Step 4: Determine Bump Level
