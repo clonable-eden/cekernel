@@ -194,7 +194,12 @@ Version management is automated via the `/release-cekernel` skill and GitHub Act
 /release-cekernel
 ```
 
-The skill analyzes git log and recommends a bump level. After confirmation, it triggers CI via `gh workflow run`, and CI performs the version bump + commit + tag + push.
+The skill analyzes git log and recommends a bump level. After confirmation:
+
+1. CI creates a `release/cekernel-vX.Y.Z` branch with the version bump and opens a PR
+2. Human reviews and merges the PR (follows normal branch protection)
+3. `plugin-release-tag.yml` automatically creates the tag and GitHub Release on merge
+4. Human edits the release notes to add categorized summary
 
 ### Versioned Artifacts
 

@@ -1,0 +1,52 @@
+name: plugin release tag
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+jobs:
+  tag-and-release:
+    if: >-
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'release/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Extract plugin and version
+        id: extract
+        run: |
+          BRANCH="${{ github.event.pull_request.head.ref }}"
+          # release/cekernel-v1.2.0 → cekernel-v1.2.0
+          TAG="${BRANCH#release/}"
+          # cekernel-v1.2.0 → cekernel
+          PLUGIN="${TAG%-v*}"
+          # cekernel-v1.2.0 → 1.2.0
+          VERSION="${TAG##*-v}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "plugin=${PLUGIN}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Create tag and release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.extract.outputs.tag }}"
+          PLUGIN="${{ steps.extract.outputs.plugin }}"
+          PREV_TAG=$(git tag -l "${PLUGIN}-v*" --sort=-v:refname | head -1)
+
+          if [ -n "${PREV_TAG}" ]; then
+            gh release create "${TAG}" \
+              --title "${TAG}" \
+              --generate-notes \
+              --notes-start-tag "${PREV_TAG}"
+          else
+            gh release create "${TAG}" \
+              --title "${TAG}" \
+              --generate-notes
+          fi
