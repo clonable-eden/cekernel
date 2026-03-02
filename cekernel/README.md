@@ -26,10 +26,20 @@ Orchestrator (agent1)              Worker (agent2, 3, 4, ...)
 | process | Worker |
 | `fork` + `exec` | `spawn-worker.sh` |
 | address space | git worktree |
+| process states | `worker-state.sh` (NEW/RUNNING/WAITING/SUSPENDED/TERMINATED) |
+| `nice` / priority | `--priority` flag + `worker-priority.sh` |
 | IPC pipe | named pipe (FIFO) |
 | IPC namespace | session (`CEKERNEL_SESSION_ID`) |
-| `waitpid` | `watch-worker.sh` |
-| zombie reaping | `cleanup-worktree.sh` |
+| SIGTERM | `send-signal.sh TERM` |
+| SIGSTOP / SIGCONT | `send-signal.sh SUSPEND` / `spawn-worker.sh --resume` |
+| SIGKILL | `cleanup-worktree.sh --force` |
+| SIGALRM / watchdog | `CEKERNEL_WORKER_TIMEOUT` + escalation (TERM → grace → force-kill) |
+| `waitpid` | `watch-worker.sh` (triple-path: FIFO + state file + crash detection) |
+| zombie reaping | `health-check.sh` + `cleanup-worktree.sh` |
+| core dump / checkpoint | `.cekernel-checkpoint.md` (suspend/resume) |
+| `systemctl` | `orchctrl.sh` / `/orchctrl` skill |
+| device drivers | `backend-adapter.sh` (wezterm/tmux/headless) |
+| `/etc/default/` | `load-env.sh` + env profiles |
 | PID | issue number |
 | `/var/log/` | `${CEKERNEL_IPC_DIR}/logs/` |
 | `syslog` | Lifecycle event log writes |
@@ -38,7 +48,7 @@ Orchestrator (agent1)              Worker (agent2, 3, 4, ...)
 | page cache | `.cekernel-task.md` (issue data pre-extracted at spawn) |
 | `ulimit -u` (max processes) | `CEKERNEL_MAX_WORKERS` |
 | `ps aux` | `worker-status.sh` |
-| process scheduler | Orchestrator queuing logic |
+| process scheduler | Orchestrator queuing logic (priority queue + preemption) |
 | semaphore | Concurrency guard via FIFO count |
 
 For details on logging, IPC, and resource governance, see [internals.md](./docs/internals.md).
@@ -86,7 +96,7 @@ cekernel/
   scripts/
     orchestrator/
       spawn-worker.sh        # Create worktree + launch Worker via backend (with concurrency guard)
-      watch-worker.sh        # Monitor Worker completion via FIFO
+      watch-worker.sh        # Monitor Worker completion (FIFO + state file + crash detection)
       watch-logs.sh          # Real-time Worker log monitoring
       cleanup-worktree.sh    # Remove worktree + branch + logs
       health-check.sh        # Detect zombie Workers
