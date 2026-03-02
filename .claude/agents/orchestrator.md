@@ -1,1 +1,1 @@
-../../cekernel/agents/orchestrator.md
+../../agents/orchestrator.md
