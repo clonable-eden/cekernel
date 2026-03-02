@@ -1,6 +1,6 @@
 # cekernel
 
-![cekernel](cekernel.png)
+![cekernel](social-preview.png)
 
 Parallel agent infrastructure for Claude Code. Modeled after the OS process model,
 it distributes, monitors, and reaps issues via independent Workers.
