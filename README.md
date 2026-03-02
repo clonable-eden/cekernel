@@ -148,10 +148,10 @@ Install from the Claude Code plugin marketplace:
 
 ```bash
 # 1. Add marketplace
-/plugin marketplace add clonable-eden/cekernel
+/plugin marketplace add clonable-eden/plugins
 
 # 2. Install cekernel plugin
-/plugin install cekernel@clonable-eden-cekernel
+/plugin install cekernel@clonable-eden-plugins
 ```
 
 ### Update
