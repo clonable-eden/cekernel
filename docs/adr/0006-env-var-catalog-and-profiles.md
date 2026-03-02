@@ -25,7 +25,7 @@ Additionally, common configurations recur: "local dev with WezTerm", "headless C
 
 ### Plugin context
 
-cekernel is distributed as a Claude Code plugin. When installed via `/plugin install cekernel@clonable-eden-cekernel`, the plugin files reside in the Claude Code plugin directory (`.claude/plugins/` hierarchy). Files within it are **overwritten on `/plugin update`** — users should not edit plugin-internal files for project-specific configuration.
+cekernel is distributed as a Claude Code plugin. When installed via `/plugin install cekernel@clonable-eden-plugins`, the plugin files reside in the Claude Code plugin directory (`.claude/plugins/` hierarchy). Files within it are **overwritten on `/plugin update`** — users should not edit plugin-internal files for project-specific configuration.
 
 This creates a tension: the plugin ships sensible defaults, but each project may need different settings (e.g., one project uses WezTerm, another uses headless for CI). Configuration must live in a place that survives plugin updates and is scoped to the project.
 

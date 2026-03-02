@@ -10,7 +10,7 @@ cekernel operates in two modes depending on how it is installed:
 
 | Mode | Installation | Agent invocation |
 |------|-------------|-----------------|
-| Plugin | `/plugin install cekernel@clonable-eden-cekernel` | `cekernel:orchestrator`, `cekernel:worker` |
+| Plugin | `/plugin install cekernel@clonable-eden-plugins` | `cekernel:orchestrator`, `cekernel:worker` |
 | Local | Project-local `.claude/agents/`, `.claude/skills/` | `orchestrator`, `worker` |
 
 The Orchestrator must know which mode it is running in to spawn Workers with the correct agent name. If a plugin-mode Orchestrator spawns `claude --agent worker`, the agent is not found. If a local-mode Orchestrator spawns `claude --agent cekernel:worker`, it silently uses the outdated plugin-installed version instead of the local development version.
