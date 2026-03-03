@@ -142,6 +142,35 @@ tests/
 
 ## How to Use
 
+### Prerequisites & Notes
+
+cekernel is primarily designed for **monorepo** structures. While it may work with other setups, monorepo is the tested and expected configuration.
+
+**Recommended for target repositories:**
+
+- CI should be set up (unit tests, integration tests, e2e tests). Workers rely on CI to verify their changes before merging.
+- CD (continuous deployment) is optional — cekernel only handles the implement → PR → CI → merge lifecycle.
+
+**Backend support:**
+
+| Backend | Status |
+|---------|--------|
+| WezTerm | Stable |
+| Headless | Stable |
+| tmux | Experimental — created but not actively tested. No guarantee of correct operation. |
+
+**Cross-repository issues:** If you manage issues in a separate meta-repository, pass the full path or URL to `/orchestrate`:
+
+```bash
+/cekernel:orchestrate /org/repo/issues/123
+# or
+/cekernel:orchestrate https://github.com/org/repo/issues/123
+```
+
+> **Note**: Cross-repository issue resolution has not been extensively tested. Please [open an issue](https://github.com/clonable-eden/cekernel/issues/new) if you encounter any problems.
+
+Issues and feedback are always welcome.
+
 ### Install
 
 Install from the Claude Code plugin marketplace:
@@ -168,6 +197,20 @@ Install from the Claude Code plugin marketplace:
 
 > **Note**: `/plugin update` alone may not update the marketplace local clone.
 > Always run `/plugin marketplace update` first.
+
+### First Steps
+
+1. **Create a `.gitignore` issue** — Add `.worktrees` and `.cekernel*` to your repository's `.gitignore`. Create a GitHub issue for this task.
+
+2. **Let cekernel close it** — Start Claude Code and run:
+
+   ```bash
+   /cekernel:orchestrate <issue-number>
+   ```
+
+   Use `--env` to select your preferred backend (e.g., `--env headless`). This will spawn a Worker that implements the change, creates a PR, verifies CI, and merges it automatically.
+
+This gives you a quick end-to-end verification that cekernel is working correctly in your repository.
 
 ## Configuration
 
