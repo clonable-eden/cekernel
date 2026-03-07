@@ -12,14 +12,14 @@ echo "test: scheduler/wrapper.sh"
 
 # ── Setup ──
 setup() {
-  export CEKERNEL_SCHEDULE_DIR="$(mktemp -d)"
-  mkdir -p "${CEKERNEL_SCHEDULE_DIR}/runners"
-  echo '[]' > "${CEKERNEL_SCHEDULE_DIR}/schedules.json"
+  export CEKERNEL_VAR_DIR="$(mktemp -d)"
+  mkdir -p "${CEKERNEL_VAR_DIR}/runners"
+  echo '[]' > "${CEKERNEL_VAR_DIR}/schedules.json"
   source "$WRAPPER_SCRIPT"
 }
 
 teardown() {
-  rm -rf "$CEKERNEL_SCHEDULE_DIR"
+  rm -rf "$CEKERNEL_VAR_DIR"
 }
 
 TEST_ID="cekernel-cron-test01"
@@ -30,14 +30,14 @@ TEST_LABEL="ready"
 # ── Test 1: generated file exists ──
 setup
 schedule_generate_wrapper "$TEST_ID" "$TEST_REPO" "$TEST_PATH" "$TEST_LABEL"
-RUNNER="${CEKERNEL_SCHEDULE_DIR}/runners/${TEST_ID}.sh"
+RUNNER="${CEKERNEL_VAR_DIR}/runners/${TEST_ID}.sh"
 assert_file_exists "wrapper file exists" "$RUNNER"
 teardown
 
 # ── Test 2: permissions are 700 ──
 setup
 schedule_generate_wrapper "$TEST_ID" "$TEST_REPO" "$TEST_PATH" "$TEST_LABEL"
-RUNNER="${CEKERNEL_SCHEDULE_DIR}/runners/${TEST_ID}.sh"
+RUNNER="${CEKERNEL_VAR_DIR}/runners/${TEST_ID}.sh"
 PERMS=$(stat -f '%Lp' "$RUNNER" 2>/dev/null || stat -c '%a' "$RUNNER" 2>/dev/null)
 assert_eq "wrapper has 700 permissions" "700" "$PERMS"
 teardown
@@ -45,7 +45,7 @@ teardown
 # ── Test 3: set -euo pipefail is present ──
 setup
 schedule_generate_wrapper "$TEST_ID" "$TEST_REPO" "$TEST_PATH" "$TEST_LABEL"
-RUNNER="${CEKERNEL_SCHEDULE_DIR}/runners/${TEST_ID}.sh"
+RUNNER="${CEKERNEL_VAR_DIR}/runners/${TEST_ID}.sh"
 CONTENT=$(cat "$RUNNER")
 assert_match "contains set -euo pipefail" "set -euo pipefail" "$CONTENT"
 teardown
@@ -53,7 +53,7 @@ teardown
 # ── Test 4: PATH is embedded ──
 setup
 schedule_generate_wrapper "$TEST_ID" "$TEST_REPO" "$TEST_PATH" "$TEST_LABEL"
-RUNNER="${CEKERNEL_SCHEDULE_DIR}/runners/${TEST_ID}.sh"
+RUNNER="${CEKERNEL_VAR_DIR}/runners/${TEST_ID}.sh"
 CONTENT=$(cat "$RUNNER")
 assert_match "PATH is embedded" "/opt/homebrew/bin:/usr/bin:/bin" "$CONTENT"
 teardown
@@ -61,7 +61,7 @@ teardown
 # ── Test 5: CEKERNEL_DIR is embedded ──
 setup
 schedule_generate_wrapper "$TEST_ID" "$TEST_REPO" "$TEST_PATH" "$TEST_LABEL"
-RUNNER="${CEKERNEL_SCHEDULE_DIR}/runners/${TEST_ID}.sh"
+RUNNER="${CEKERNEL_VAR_DIR}/runners/${TEST_ID}.sh"
 CONTENT=$(cat "$RUNNER")
 assert_match "CEKERNEL_DIR is embedded" "CEKERNEL_DIR=" "$CONTENT"
 teardown
@@ -69,7 +69,7 @@ teardown
 # ── Test 6: registry.sh source path exists ──
 setup
 schedule_generate_wrapper "$TEST_ID" "$TEST_REPO" "$TEST_PATH" "$TEST_LABEL"
-RUNNER="${CEKERNEL_SCHEDULE_DIR}/runners/${TEST_ID}.sh"
+RUNNER="${CEKERNEL_VAR_DIR}/runners/${TEST_ID}.sh"
 # Extract the source line and check the referenced file exists
 SOURCE_PATH=$(grep 'source.*registry.sh' "$RUNNER" | sed 's/.*source "\(.*\)"/\1/' | sed "s|\${CEKERNEL_DIR}|${CEKERNEL_DIR}|")
 assert_file_exists "registry.sh source path exists" "$SOURCE_PATH"
@@ -78,7 +78,7 @@ teardown
 # ── Test 7: if/else pattern for claude -p (set -e safe) ──
 setup
 schedule_generate_wrapper "$TEST_ID" "$TEST_REPO" "$TEST_PATH" "$TEST_LABEL"
-RUNNER="${CEKERNEL_SCHEDULE_DIR}/runners/${TEST_ID}.sh"
+RUNNER="${CEKERNEL_VAR_DIR}/runners/${TEST_ID}.sh"
 CONTENT=$(cat "$RUNNER")
 assert_match "uses if/else pattern" "if cd .* && claude -p" "$CONTENT"
 assert_match "has else clause" "else" "$CONTENT"
@@ -87,7 +87,7 @@ teardown
 # ── Test 8: OS-native notification code (Darwin osascript) ──
 setup
 schedule_generate_wrapper "$TEST_ID" "$TEST_REPO" "$TEST_PATH" "$TEST_LABEL"
-RUNNER="${CEKERNEL_SCHEDULE_DIR}/runners/${TEST_ID}.sh"
+RUNNER="${CEKERNEL_VAR_DIR}/runners/${TEST_ID}.sh"
 CONTENT=$(cat "$RUNNER")
 assert_match "contains osascript notification" "osascript" "$CONTENT"
 teardown
@@ -95,7 +95,7 @@ teardown
 # ── Test 9: OS-native notification code (Linux notify-send) ──
 setup
 schedule_generate_wrapper "$TEST_ID" "$TEST_REPO" "$TEST_PATH" "$TEST_LABEL"
-RUNNER="${CEKERNEL_SCHEDULE_DIR}/runners/${TEST_ID}.sh"
+RUNNER="${CEKERNEL_VAR_DIR}/runners/${TEST_ID}.sh"
 CONTENT=$(cat "$RUNNER")
 assert_match "contains notify-send" "notify-send" "$CONTENT"
 teardown
@@ -103,7 +103,7 @@ teardown
 # ── Test 10: log output to schedule.log ──
 setup
 schedule_generate_wrapper "$TEST_ID" "$TEST_REPO" "$TEST_PATH" "$TEST_LABEL"
-RUNNER="${CEKERNEL_SCHEDULE_DIR}/runners/${TEST_ID}.sh"
+RUNNER="${CEKERNEL_VAR_DIR}/runners/${TEST_ID}.sh"
 CONTENT=$(cat "$RUNNER")
 assert_match "logs to schedule.log" "schedule.log" "$CONTENT"
 teardown
@@ -111,7 +111,7 @@ teardown
 # ── Test 11: no --max-budget-usd ──
 setup
 schedule_generate_wrapper "$TEST_ID" "$TEST_REPO" "$TEST_PATH" "$TEST_LABEL"
-RUNNER="${CEKERNEL_SCHEDULE_DIR}/runners/${TEST_ID}.sh"
+RUNNER="${CEKERNEL_VAR_DIR}/runners/${TEST_ID}.sh"
 CONTENT=$(cat "$RUNNER")
 if echo "$CONTENT" | grep -q "max-budget-usd"; then
   assert_eq "--max-budget-usd is absent" "absent" "present"
@@ -123,7 +123,7 @@ teardown
 # ── Test 12: no --no-session-persistence ──
 setup
 schedule_generate_wrapper "$TEST_ID" "$TEST_REPO" "$TEST_PATH" "$TEST_LABEL"
-RUNNER="${CEKERNEL_SCHEDULE_DIR}/runners/${TEST_ID}.sh"
+RUNNER="${CEKERNEL_VAR_DIR}/runners/${TEST_ID}.sh"
 CONTENT=$(cat "$RUNNER")
 if echo "$CONTENT" | grep -q "no-session-persistence"; then
   assert_eq "--no-session-persistence is absent" "absent" "present"
@@ -135,7 +135,7 @@ teardown
 # ── Test 13: resolve-api-key is referenced ──
 setup
 schedule_generate_wrapper "$TEST_ID" "$TEST_REPO" "$TEST_PATH" "$TEST_LABEL"
-RUNNER="${CEKERNEL_SCHEDULE_DIR}/runners/${TEST_ID}.sh"
+RUNNER="${CEKERNEL_VAR_DIR}/runners/${TEST_ID}.sh"
 CONTENT=$(cat "$RUNNER")
 assert_match "references resolve-api-key" "resolve-api-key" "$CONTENT"
 teardown
@@ -143,7 +143,7 @@ teardown
 # ── Test 14: registry update_status is called ──
 setup
 schedule_generate_wrapper "$TEST_ID" "$TEST_REPO" "$TEST_PATH" "$TEST_LABEL"
-RUNNER="${CEKERNEL_SCHEDULE_DIR}/runners/${TEST_ID}.sh"
+RUNNER="${CEKERNEL_VAR_DIR}/runners/${TEST_ID}.sh"
 CONTENT=$(cat "$RUNNER")
 assert_match "calls schedule_registry_update_status" "schedule_registry_update_status" "$CONTENT"
 teardown

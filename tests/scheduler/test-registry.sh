@@ -12,13 +12,13 @@ echo "test: scheduler/registry.sh"
 
 # ── Setup: isolated temp directory ──
 setup() {
-  export CEKERNEL_SCHEDULE_DIR="$(mktemp -d)"
-  echo '[]' > "${CEKERNEL_SCHEDULE_DIR}/schedules.json"
+  export CEKERNEL_VAR_DIR="$(mktemp -d)"
+  echo '[]' > "${CEKERNEL_VAR_DIR}/schedules.json"
   source "$REGISTRY_SCRIPT"
 }
 
 teardown() {
-  rm -rf "$CEKERNEL_SCHEDULE_DIR"
+  rm -rf "$CEKERNEL_VAR_DIR"
 }
 
 SAMPLE_ENTRY='{"id":"cekernel-cron-abc123","type":"cron","schedule":"0 9 * * 1-5","label":"ready","repo":"/tmp/test-repo","path":"/usr/bin:/bin","os_backend":"launchd","os_ref":"cekernel-cron-abc123","created_at":"2026-03-01T10:00:00Z","last_run_at":null,"last_run_status":null}'
@@ -122,13 +122,13 @@ teardown
 
 # ── Test 12: lock timeout on contended lock ──
 setup
-mkdir "${CEKERNEL_SCHEDULE_DIR}/schedules.json.lock"
+mkdir "${CEKERNEL_VAR_DIR}/schedules.json.lock"
 if schedule_registry_add "$SAMPLE_ENTRY" 2>/dev/null; then
   assert_eq "add fails when lock is held" "fail" "success"
 else
   assert_eq "add fails when lock is held" "1" "1"
 fi
-rmdir "${CEKERNEL_SCHEDULE_DIR}/schedules.json.lock"
+rmdir "${CEKERNEL_VAR_DIR}/schedules.json.lock"
 teardown
 
 report_results

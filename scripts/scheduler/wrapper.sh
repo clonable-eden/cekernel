@@ -7,9 +7,9 @@
 #   schedule_generate_wrapper <id> <repo> <path> <label> — Generate runner script
 #
 # Environment variables (overridable for testing):
-#   CEKERNEL_SCHEDULE_DIR — Base directory (default: /usr/local/var/cekernel)
+#   CEKERNEL_VAR_DIR — Base directory (default: /usr/local/var/cekernel)
 
-CEKERNEL_SCHEDULE_DIR="${CEKERNEL_SCHEDULE_DIR:-/usr/local/var/cekernel}"
+CEKERNEL_VAR_DIR="${CEKERNEL_VAR_DIR:-/usr/local/var/cekernel}"
 
 # Resolve CEKERNEL_DIR from this script's location
 _WRAPPER_CEKERNEL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -20,9 +20,9 @@ schedule_generate_wrapper() {
   local captured_path="${3:?Usage: schedule_generate_wrapper <id> <repo> <path> <label>}"
   local label="${4:?Usage: schedule_generate_wrapper <id> <repo> <path> <label>}"
 
-  local runner_dir="${CEKERNEL_SCHEDULE_DIR}/runners"
+  local runner_dir="${CEKERNEL_VAR_DIR}/runners"
   local runner_file="${runner_dir}/${id}.sh"
-  local log_file="${CEKERNEL_SCHEDULE_DIR}/logs/schedule.log"
+  local log_file="${CEKERNEL_VAR_DIR}/logs/schedule.log"
 
   cat > "$runner_file" <<RUNNER_EOF
 #!/usr/bin/env bash
@@ -32,7 +32,7 @@ set -euo pipefail
 
 ID="${id}"
 CEKERNEL_DIR="${_WRAPPER_CEKERNEL_DIR}"
-CEKERNEL_SCHEDULE_DIR="${CEKERNEL_SCHEDULE_DIR}"
+CEKERNEL_VAR_DIR="${CEKERNEL_VAR_DIR}"
 LOG_FILE="${log_file}"
 
 export PATH="${captured_path}"
