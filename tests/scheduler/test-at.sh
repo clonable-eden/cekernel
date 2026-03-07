@@ -45,6 +45,14 @@ echo "job 42 at Mon Mar 15 09:00:00 2026" >&2
 MOCK_AT
   chmod +x "${_MOCK_BIN}/at"
 
+  # Mock systemctl for atd preflight check (Linux CI)
+  cat > "${_MOCK_BIN}/systemctl" <<'MOCK_SYSTEMCTL'
+#!/bin/bash
+# Simulate atd is active
+exit 0
+MOCK_SYSTEMCTL
+  chmod +x "${_MOCK_BIN}/systemctl"
+
   export PATH="${_MOCK_BIN}:${PATH}"
 
   # Satisfy preflight API key check
