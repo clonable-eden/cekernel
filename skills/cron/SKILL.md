@@ -30,7 +30,26 @@ Note: In plugin mode, `/cekernel:cron` also works.
 
 ### Step 2: Execute Command
 
-Pass the user's subcommand and arguments directly to `cron.sh`:
+#### `register` — Interactive Option Builder
+
+If the user provides all required options (`--label` and `--schedule`), pass them directly.
+
+If any required option is missing, **interactively ask the user** for the missing values before executing:
+
+1. **`--label`** (required): Ask what label to use for dispatch (e.g., `ready`). This becomes the prompt passed to `claude -p "/dispatch --env headless --label <label>"`.
+2. **`--schedule`** (required): Ask for a cron expression. Show common examples to help the user:
+   - `0 9 * * 1-5` — Weekdays at 9:00 AM
+   - `0 9 * * *` — Every day at 9:00 AM
+   - `30 */6 * * *` — Every 6 hours at :30
+   - `0 0 * * 0` — Every Sunday at midnight
+   - Format: `minute hour day-of-month month day-of-week`
+3. **`--repo`** (optional): Ask if the target repository is the current directory. If not, ask for the path.
+
+Once all values are gathered, confirm the full command with the user, then execute.
+
+#### `list` / `cancel`
+
+Pass directly to `cron.sh`:
 
 ```bash
 bash "$CRON_SH" register --label "ready" --schedule "0 9 * * 1-5"
