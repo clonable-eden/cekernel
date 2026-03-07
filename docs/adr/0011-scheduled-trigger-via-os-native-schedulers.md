@@ -64,7 +64,7 @@ Schedule metadata is persisted in `/usr/local/var/cekernel/schedules.json`:
     "label": "ready",
     "repo": "/Users/ryosuke/git/project-alpha",
     "path": "/opt/homebrew/bin:/usr/bin:/bin:...",
-    "os_backend": "launchd",  // "launchd" (macOS) | "crontab" (Linux/WSL)
+    "os_backend": "launchd",  // "launchd" (macOS) | "crontab" (Linux/WSL) | "atd" (Linux/WSL, /at only)
     "os_ref": "cekernel-cron-a1b2c3",
     "created_at": "2026-03-01T10:00:00Z",
     "last_run_at": "2026-03-02T09:00:12Z",
@@ -91,7 +91,7 @@ Concurrency control is **not** handled at the wrapper level. Instead, it is dele
 set -euo pipefail
 
 ID="cekernel-cron-a1b2c3"
-LOG_FILE="/usr/local/var/cekernel/logs/cron.log"
+LOG_FILE="/usr/local/var/cekernel/logs/schedule.log"
 
 export PATH=<captured-user-path>
 # Resolve API key dynamically (env var > OS keychain fallback)
@@ -154,6 +154,7 @@ The `register` command validates the following at registration time, aborting on
 2. `which claude`, `which gh`, `which git` all succeed
 3. The repository has `.claude/settings.json` with required tools in `allow`
 4. OS scheduler is accessible (`launchctl` on macOS, `crontab -l` on Linux/WSL)
+5. For `/at` on Linux/WSL: `atd` is running (`systemctl is-active atd` or equivalent)
 
 ### UNIX Philosophy Alignment
 
@@ -195,7 +196,7 @@ The `os_backend` field enables tracking the transition from crontab to launchd/s
 
 When a scheduled run fails (non-zero exit from `claude -p` or `/dispatch`), the failure is:
 
-1. **Logged**: stdout/stderr is appended to `/usr/local/var/cekernel/logs/cron.log` via the `>> ... 2>&1` redirect in the scheduled command. Diagnosis starts here. Session persistence is enabled (no `--no-session-persistence`), so `--resume` can be used to inspect the execution context after the fact.
+1. **Logged**: stdout/stderr is appended to `/usr/local/var/cekernel/logs/schedule.log` via the `>> ... 2>&1` redirect in the scheduled command. Diagnosis starts here. Session persistence is enabled (no `--no-session-persistence`), so `--resume` can be used to inspect the execution context after the fact.
 2. **Recorded**: The wrapper script updates the registry entry's `last_run_status` (to `"error"`) and `last_run_at` fields after each execution. `/cron list` displays these fields, enabling at-a-glance health monitoring.
 3. **Notified (best-effort)**: The wrapper sends an OS-native desktop notification on failure — `osascript` on macOS, `notify-send` on Linux (WSL with WSLg). Notification is best-effort; the primary diagnostic sources are the log file and registry status. This follows the Rule of Silence — successful runs produce no notification.
 4. **Not retried automatically**: Tier 1 does not implement retry logic. A failed run simply waits for the next scheduled invocation. This follows the Rule of Repair ("When you must fail, fail noisily and as soon as possible") — failures are visible in the log, registry, and notification, not silently retried.
