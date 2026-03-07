@@ -182,7 +182,7 @@ Skill names (`cron`, `at`) and subcommands (`register`, `list`, `cancel`) follow
 
 > **Rule of Extensibility**: "Design for the future, because it will be here sooner than you think."
 
-The `os_backend` field enables tracking the transition from crontab to launchd/systemd/schtasks at the registry level. The skill interface (`register`/`list`/`cancel`) remains unchanged.
+The `os_backend` field identifies which backend manages each entry and tracks Tier 1 → Tier 2 migrations (e.g., crontab to systemd on Linux). The skill interface (`register`/`list`/`cancel`) remains unchanged regardless of backend.
 
 ### Platform Constraints
 
@@ -197,7 +197,7 @@ The `os_backend` field enables tracking the transition from crontab to launchd/s
 When a scheduled run fails (non-zero exit from `claude -p` or `/dispatch`), the failure is:
 
 1. **Logged**: stdout/stderr is appended to `/usr/local/var/cekernel/logs/schedule.log` via the `>> ... 2>&1` redirect in the scheduled command. Diagnosis starts here. Session persistence is enabled (no `--no-session-persistence`), so `--resume` can be used to inspect the execution context after the fact.
-2. **Recorded**: The wrapper script updates the registry entry's `last_run_status` (to `"error"`) and `last_run_at` fields after each execution. `/cron list` displays these fields, enabling at-a-glance health monitoring.
+2. **Recorded**: The wrapper script updates the registry entry's `last_run_status` (to `"error"`) and `last_run_at` fields after each execution. `/cron list` (or `/at list`) displays these fields, enabling at-a-glance health monitoring.
 3. **Notified (best-effort)**: The wrapper sends an OS-native desktop notification on failure — `osascript` on macOS, `notify-send` on Linux (WSL with WSLg). Notification is best-effort; the primary diagnostic sources are the log file and registry status. This follows the Rule of Silence — successful runs produce no notification.
 4. **Not retried automatically**: Tier 1 does not implement retry logic. A failed run simply waits for the next scheduled invocation. This follows the Rule of Repair ("When you must fail, fail noisily and as soon as possible") — failures are visible in the log, registry, and notification, not silently retried.
 
