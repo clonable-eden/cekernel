@@ -87,6 +87,8 @@ skills/
     SKILL.md               # /orchestrate skill — issue delegation
   probe/
     SKILL.md               # /probe skill — namespace detection diagnostic
+  cron/
+    SKILL.md               # /cron skill — recurring schedule management
   unix-architect/
     SKILL.md               # /unix-architect skill — ADR authoring and review
   references/
@@ -128,6 +130,11 @@ scripts/
     wrapper.sh             # Runner script generator
     resolve-api-key.sh     # API key dynamic resolution
     preflight.sh           # Registration preflight checks
+    cron.sh                # /cron command handler (register/list/cancel)
+    cron-backend.sh        # Cron backend adapter (launchd/crontab)
+    cron-backends/
+      launchd.sh           # macOS launchd backend (plist + cron expr parser)
+      crontab.sh           # Linux/WSL crontab backend
 tests/
   run-tests.sh             # Test runner
   helpers.sh               # Assertion helpers
@@ -272,6 +279,7 @@ If using the WezTerm backend, see [`config/README.md`](./config/README.md) for p
 | `/orchestrate` | Issue delegation and parallel processing |
 | `/dispatch` | Batch-process ready-labeled issues |
 | `/orchctrl` | Worker inspection and control |
+| `/cron` | Recurring schedule management (launchd/crontab) |
 | `/unix-architect` | ADR authoring and architectural review |
 
 In plugin mode, prefix with `cekernel:` (e.g., `/cekernel:orchestrate`). See each skill's `SKILL.md` for details.
