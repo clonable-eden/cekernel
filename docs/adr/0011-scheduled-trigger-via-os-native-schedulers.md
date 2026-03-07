@@ -124,13 +124,27 @@ exit $STATUS
 
 ### Tiered Backend
 
+**Recurring schedules (`/cron`)**:
+
 | Platform | Tier 1 (MVP) | Tier 2 |
 |----------|-------------|--------|
-| macOS | launchd | — |
+| macOS | launchd (`StartCalendarInterval`) | — |
 | Linux | crontab | systemd --user |
 | Windows (WSL) | crontab | schtasks (native) |
 
-macOS uses launchd from Tier 1 because cron jobs are silently skipped during sleep — a frequent occurrence on MacBooks that makes crontab impractical as a reliable scheduler. launchd provides missed-run catch-up via `StartCalendarInterval` and native log integration via `os_log`.
+macOS uses launchd from Tier 1 because cron jobs are silently skipped during sleep — a frequent occurrence on MacBooks that makes crontab impractical as a reliable scheduler. launchd provides missed-run catch-up and native log integration via `os_log`.
+
+**One-shot schedules (`/at`)**:
+
+| Platform | Tier 1 (MVP) | Tier 2 |
+|----------|-------------|--------|
+| macOS | launchd (`RunAtLoad` + dynamic plist) | — |
+| Linux | `at` / `atd` | systemd-run --on-calendar |
+| Windows (WSL) | `at` / `atd` | schtasks (native) |
+
+The `/at` skill name borrows the mental model of the UNIX `at` command, but the macOS backend does **not** use the `at` command. macOS's `atrun` daemon is disabled by default and restricted by SIP on modern versions, making it effectively unusable. Instead, launchd is used: a one-shot plist is registered via `launchctl bootstrap`, and the wrapper script calls `launchctl bootout` after execution to clean up.
+
+On Linux, `atd` is used when available. The preflight check verifies `atd` is running; if not, the registration fails with a diagnostic message.
 
 ### Preflight Checks
 
