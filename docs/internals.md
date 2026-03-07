@@ -209,4 +209,17 @@ make install
 
 The launchd backend includes a cron expression parser that converts 5-field cron expressions to `StartCalendarInterval` dict arrays. Supported syntax: `*`, `N`, `N-M`, `*/N`, `N-M/N`, and comma-separated combinations. Day-of-week `7` is normalized to `0` (Sunday).
 
+### At Backend
+
+`scripts/scheduler/at-backend.sh` dispatches to the platform-appropriate backend:
+
+| Platform | Backend | Implementation |
+|----------|---------|---------------|
+| macOS | launchd | `at-backends/launchd.sh` — one-shot plist (`StartCalendarInterval` single dict) + runner cleanup injection |
+| Linux/WSL | atd | `at-backends/atd.sh` — `at -t` scheduling, `os_ref` = job number |
+
+The launchd at-backend injects `launchctl bootout` into the runner script during registration, so the launchd job is automatically unloaded after execution. ISO 8601 datetime (`YYYY-MM-DDThh:mm`) is parsed into `StartCalendarInterval` fields (Month, Day, Hour, Minute).
+
+On Linux, the `at` command's job number is stored as `os_ref` (unlike cron where `os_ref` = cekernel ID). The `cancel` command reads `os_ref` from the registry to call `atrm`.
+
 Related: [ADR-0011](./adr/0011-scheduled-trigger-via-os-native-schedulers.md).
