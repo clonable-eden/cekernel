@@ -28,10 +28,12 @@ setup() {
   export _CRON_CRONTAB_FILE="$(mktemp)"
   echo "" > "$_CRON_CRONTAB_FILE"
 
-  # Mock binaries to avoid side effects and satisfy preflight
+  # Mock binaries only when not available (CI compatibility)
   export _MOCK_BIN="$(mktemp -d)"
   for cmd in launchctl claude gh git; do
-    echo '#!/bin/bash' > "${_MOCK_BIN}/${cmd}" && chmod +x "${_MOCK_BIN}/${cmd}"
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+      echo '#!/bin/bash' > "${_MOCK_BIN}/${cmd}" && chmod +x "${_MOCK_BIN}/${cmd}"
+    fi
   done
   export PATH="${_MOCK_BIN}:${PATH}"
 
