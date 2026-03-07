@@ -130,6 +130,7 @@ scripts/
     wrapper.sh             # Runner script generator
     resolve-api-key.sh     # API key dynamic resolution
     preflight.sh           # Registration preflight checks
+    cron.sh                # /cron command handler (register/list/cancel)
     cron-backend.sh        # Cron backend adapter (launchd/crontab)
     cron-backends/
       launchd.sh           # macOS launchd backend (plist + cron expr parser)
