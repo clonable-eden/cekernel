@@ -64,6 +64,7 @@ agents/
   orchestrator.md          # Orchestrator protocol definition
   worker.md                # Worker protocol definition
   probe.md                 # Namespace detection diagnostic agent
+Makefile                   # Runtime directory setup (make install)
 config/
   Makefile                 # WezTerm plugin install/uninstall
   README.md                # WezTerm backend setup guide
@@ -119,12 +120,18 @@ scripts/
       headless.sh          # Headless backend implementation
       tmux.sh              # tmux backend implementation
       wezterm.sh           # WezTerm backend implementation
+  scheduler/
+    registry.sh            # Schedule registry CRUD
+    wrapper.sh             # Runner script generator
+    resolve-api-key.sh     # API key dynamic resolution
+    preflight.sh           # Registration preflight checks
 tests/
   run-tests.sh             # Test runner
   helpers.sh               # Assertion helpers
   orchestrator/test-*.sh   # Orchestrator script tests
   worker/test-*.sh         # Worker script tests
   shared/test-*.sh         # Shared helper tests
+  scheduler/test-*.sh      # Scheduler script tests
 ```
 
 ## Dependencies
@@ -182,6 +189,20 @@ Install from the Claude Code plugin marketplace:
 # 2. Install cekernel plugin
 /plugin install cekernel@clonable-eden-plugins
 ```
+
+### Runtime Setup
+
+Set up the runtime state directory for scheduled execution:
+
+```bash
+# Create /usr/local/var/cekernel/ (one-time)
+sudo mkdir -p /usr/local/var/cekernel && sudo chown $(whoami):admin /usr/local/var/cekernel
+
+# Initialize directory structure
+make install
+```
+
+This creates `locks/`, `logs/`, `runners/`, and `schedules.json` under `/usr/local/var/cekernel/`. Required for `/cron` and `/at` skills.
 
 ### Update
 
