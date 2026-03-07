@@ -125,9 +125,11 @@ exit $STATUS
 
 | Platform | Tier 1 (MVP) | Tier 2 |
 |----------|-------------|--------|
-| macOS | crontab | launchd |
+| macOS | launchd | — |
 | Linux | crontab | systemd --user |
 | Windows (WSL) | crontab | schtasks (native) |
+
+macOS uses launchd from Tier 1 because cron jobs are silently skipped during sleep — a frequent occurrence on MacBooks that makes crontab impractical as a reliable scheduler. launchd provides missed-run catch-up via `StartCalendarInterval` and native log integration via `os_log`.
 
 ### Preflight Checks
 
@@ -136,7 +138,7 @@ The `register` command validates the following at registration time, aborting on
 1. `ANTHROPIC_API_KEY` is set in the environment
 2. `which claude`, `which gh`, `which git` all succeed
 3. The repository has `.claude/settings.json` with required tools in `allow`
-4. `crontab -l` is accessible (OS scheduler is available)
+4. OS scheduler is accessible (`launchctl` on macOS, `crontab -l` on Linux/WSL)
 
 ### UNIX Philosophy Alignment
 
