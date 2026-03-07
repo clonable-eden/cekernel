@@ -19,7 +19,7 @@ fi
 
 # 2. macOS Keychain fallback
 if [[ "$(uname)" == "Darwin" ]]; then
-  key=$(security find-generic-password -s "claude-api-key" -w 2>/dev/null || true)
+  key=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null || true)
   if [[ -n "$key" ]]; then
     echo "$key"
     exit 0
