@@ -52,6 +52,9 @@ Orchestrator (agent1)             Worker (agent2, 3, 4, ...)
 | `ps aux` | `worker-status.sh` |
 | process scheduler | Orchestrator queuing logic (priority queue + preemption) |
 | semaphore | Concurrency guard via FIFO count |
+| `cron` / `systemd timer` | `/cron` skill + OS-native schedulers (launchd/crontab) |
+| `at` (one-shot job) | `/at` skill + OS-native schedulers (launchd/atd) |
+| `/var/` | `/usr/local/var/cekernel/` (runtime state) |
 
 For details on logging, IPC, and resource governance, see [internals.md](./docs/internals.md).
 

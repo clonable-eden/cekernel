@@ -141,3 +141,61 @@ Or in a subshell to avoid affecting the parent:
 The headless backend (`scripts/shared/backends/headless.sh`) applies this cleanup when spawning Workers. Terminal-based backends (WezTerm, tmux) naturally get a clean environment because they create new shell sessions.
 
 Related: [#117](https://github.com/clonable-eden/cekernel/issues/117), [PR #178](https://github.com/clonable-eden/cekernel/pull/178).
+
+## Scheduler Runtime
+
+Scheduled execution infrastructure for `/cron` and `/at` skills. Runtime state is stored in `/usr/local/var/cekernel/` (configurable via `CEKERNEL_VAR_DIR`).
+
+```
+/usr/local/var/cekernel/
+├── schedules.json          # Schedule registry (CRUD via registry.sh)
+├── locks/                  # Issue-level locks (repo-hash/issue-number.lock)
+├── logs/
+│   └── schedule.log        # Scheduled execution output
+└── runners/
+    └── <id>.sh             # Generated wrapper scripts (chmod 700)
+```
+
+### Setup
+
+```bash
+sudo mkdir -p /usr/local/var/cekernel && sudo chown $(whoami):admin /usr/local/var/cekernel
+make install
+```
+
+### Registry
+
+`schedules.json` stores schedule metadata. CRUD operations via `scripts/scheduler/registry.sh`:
+
+- `schedule_registry_add` / `remove` / `update_status` — acquire `mkdir`-based lock (`schedules.json.lock`)
+- `schedule_registry_list` / `get` — read-only, no lock required
+
+### Wrapper Scripts
+
+`scripts/scheduler/wrapper.sh` generates runner scripts at `runners/<id>.sh`. Each wrapper:
+
+1. Sets `PATH` (registration-time snapshot)
+2. Resolves API key dynamically (env var → macOS Keychain)
+3. Executes `claude -p` with `if/else` pattern (`set -e` safe)
+4. Updates registry status (`success` / `error`)
+5. Sends OS-native notification on failure (best-effort)
+
+### API Key Resolution
+
+`scripts/scheduler/resolve-api-key.sh` resolves `ANTHROPIC_API_KEY`:
+
+1. Environment variable (if non-empty)
+2. macOS Keychain (`"Claude Code-credentials"`, Darwin only)
+3. Exit 1 with diagnostic message
+
+### Preflight
+
+`scripts/scheduler/preflight.sh` validates the environment before registration:
+
+1. API key is resolvable
+2. `claude`, `gh`, `git` are in PATH
+3. `.claude/settings.json` exists in the target repo
+4. OS scheduler is accessible (launchctl / crontab)
+5. `atd` is running (Linux, `/at` only)
+
+Related: [ADR-0011](./adr/0011-scheduled-trigger-via-os-native-schedulers.md).
