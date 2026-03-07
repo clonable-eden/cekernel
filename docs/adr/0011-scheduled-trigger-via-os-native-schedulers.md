@@ -18,7 +18,7 @@ In OS terms:
 The stabilization of the headless backend (#117, #192) has enabled unattended, terminal-free execution. A three-step verification confirmed feasibility:
 
 1. `claude -p "/dispatch ..."` successfully invokes skills and launches Agents
-2. crontab is universally available on macOS, Linux, and WSL
+2. OS-native schedulers are available on all target platforms (launchd on macOS, crontab on Linux/WSL)
 3. Non-interactive environments require explicit `ANTHROPIC_API_KEY` and `.claude/settings.json` permission configuration
 
 ### Prerequisites (verified)
@@ -31,7 +31,7 @@ The stabilization of the headless backend (#117, #192) has enabled unattended, t
 
 ## Decision
 
-Introduce two skills that leverage OS-native schedulers. Tier 1 (MVP) uses crontab universally; Tier 2 adds platform-native schedulers.
+Introduce two skills that leverage OS-native schedulers. Tier 1 (MVP) uses each platform's most practical scheduler (launchd on macOS, crontab on Linux/WSL); Tier 2 adds remaining platform-native schedulers.
 
 ### Skills
 
@@ -64,7 +64,7 @@ Schedule metadata is persisted in `~/.claude/cekernel/schedules.json`:
     "label": "ready",
     "repo": "/Users/ryosuke/git/project-alpha",
     "path": "/opt/homebrew/bin:/usr/bin:/bin:...",
-    "os_backend": "crontab",
+    "os_backend": "launchd",  // "launchd" (macOS) | "crontab" (Linux/WSL)
     "os_ref": "cekernel-cron-a1b2c3",
     "created_at": "2026-03-01T10:00:00Z",
     "last_run_at": "2026-03-02T09:00:12Z",
@@ -76,7 +76,7 @@ Schedule metadata is persisted in `~/.claude/cekernel/schedules.json`:
 - `register` writes to both the registry and the OS scheduler
 - `list` reads the registry file and verifies each entry against the OS scheduler. Entries whose `os_ref` is not found in the OS scheduler are flagged as `drifted` (e.g., removed externally via `crontab -e`). This prevents the registry from silently diverging from the actual scheduled state.
 - `cancel` uses `os_ref` to remove from the OS scheduler, then removes from the registry
-- `path` captures the user's `$PATH` at registration time
+- `path` captures the user's `$PATH` at registration time (snapshot — see Platform Constraints)
 - For `at` (one-shot) entries: after execution, the entry remains in the registry with `last_run_status` updated. This preserves execution history for diagnostics. Users can clean up completed entries via `/at cancel [id]`
 
 ### Scheduled Command
