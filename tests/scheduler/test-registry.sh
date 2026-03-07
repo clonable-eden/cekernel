@@ -40,7 +40,19 @@ ID=$(schedule_registry_list | jq -r '.[0].id')
 assert_eq "added entry has correct id" "cekernel-cron-abc123" "$ID"
 teardown
 
-# ── Test 3: add multiple entries ──
+# ── Test 3: add duplicate ID fails ──
+setup
+schedule_registry_add "$SAMPLE_ENTRY"
+if schedule_registry_add "$SAMPLE_ENTRY" 2>/dev/null; then
+  assert_eq "duplicate ID is rejected" "1" "0"
+else
+  assert_eq "duplicate ID is rejected" "1" "1"
+fi
+RESULT=$(schedule_registry_list | jq length)
+assert_eq "duplicate ID does not add second entry" "1" "$RESULT"
+teardown
+
+# ── Test 4: add multiple entries ──
 setup
 schedule_registry_add "$SAMPLE_ENTRY"
 schedule_registry_add "$SAMPLE_AT_ENTRY"

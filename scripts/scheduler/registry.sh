@@ -45,6 +45,13 @@ schedule_registry_add() {
   acquire_schedule_registry_lock || return 1
   trap 'release_schedule_registry_lock' RETURN
 
+  local id
+  id=$(echo "$entry" | jq -r '.id')
+  if jq -e --arg id "$id" '.[] | select(.id == $id)' "$CEKERNEL_REGISTRY" >/dev/null 2>&1; then
+    echo "Error: schedule entry already exists: ${id}" >&2
+    return 1
+  fi
+
   local tmp="${CEKERNEL_REGISTRY}.tmp.$$"
   jq --argjson entry "$entry" '. + [$entry]' "$CEKERNEL_REGISTRY" > "$tmp" \
     && mv "$tmp" "$CEKERNEL_REGISTRY"
