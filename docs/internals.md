@@ -198,4 +198,15 @@ make install
 4. OS scheduler is accessible (launchctl / crontab)
 5. `atd` is running (Linux, `/at` only)
 
+### Cron Backend
+
+`scripts/scheduler/cron-backend.sh` dispatches to the platform-appropriate backend:
+
+| Platform | Backend | Implementation |
+|----------|---------|---------------|
+| macOS | launchd | `cron-backends/launchd.sh` — plist generation + `launchctl bootstrap/bootout` |
+| Linux/WSL | crontab | `cron-backends/crontab.sh` — `crontab` entry manipulation |
+
+The launchd backend includes a cron expression parser that converts 5-field cron expressions to `StartCalendarInterval` dict arrays. Supported syntax: `*`, `N`, `N-M`, `*/N`, `N-M/N`, and comma-separated combinations. Day-of-week `7` is normalized to `0` (Sunday).
+
 Related: [ADR-0011](./adr/0011-scheduled-trigger-via-os-native-schedulers.md).
