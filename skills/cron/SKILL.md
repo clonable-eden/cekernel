@@ -11,7 +11,7 @@ Manage recurring scheduled execution of cekernel dispatch. Uses OS-native schedu
 ## Usage
 
 ```
-/cron register --label <label> --schedule "<cron-expr>" [--repo <path>]
+/cron register --schedule "<cron-expr>" [--label <label>] [--prompt <prompt>] [--repo <path>]
 /cron list
 /cron cancel <id>
 ```
@@ -36,7 +36,10 @@ If the user provides all required options (`--label` and `--schedule`), pass the
 
 If any required option is missing, **interactively ask the user** for the missing values before executing:
 
-1. **`--label`** (required): Ask what label to use for dispatch (e.g., `ready`). This becomes the prompt passed to `claude -p "/dispatch --env headless --label <label>"`.
+1. **`--label` or `--prompt`** (one required): Ask whether to use a dispatch label or a custom prompt.
+   - `--label <label>` — Shorthand: generates `claude -p "/dispatch --env headless --label <label>"`
+   - `--prompt <prompt>` — Arbitrary prompt string passed directly to `claude -p`
+   - If both given, `--prompt` takes precedence.
 2. **`--schedule`** (required): Ask for a cron expression. Show common examples to help the user:
    - `0 9 * * 1-5` — Weekdays at 9:00 AM
    - `0 9 * * *` — Every day at 9:00 AM

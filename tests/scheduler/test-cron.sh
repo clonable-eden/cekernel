@@ -58,12 +58,12 @@ assert_match "output contains Schedule" "30 \*/6 \* \* \*" "$OUTPUT"
 assert_match "output contains Label" "deploy" "$OUTPUT"
 teardown
 
-# ── Test 3: register without --label fails ──
+# ── Test 3: register without --label or --prompt fails ──
 setup
 if bash "$CRON_SH" register --schedule "0 9 * * *" --repo "$MOCK_REPO" 2>/dev/null; then
-  assert_eq "register without --label fails" "1" "0"
+  assert_eq "register without --label or --prompt fails" "1" "0"
 else
-  assert_eq "register without --label fails" "1" "1"
+  assert_eq "register without --label or --prompt fails" "1" "1"
 fi
 teardown
 
@@ -126,7 +126,31 @@ assert_match "entry id starts with cekernel-cron-" "^cekernel-cron-" "$(echo "$E
 assert_match "entry created_at is ISO timestamp" "^[0-9]{4}-[0-9]{2}-[0-9]{2}T" "$(echo "$ENTRY" | jq -r '.created_at')"
 teardown
 
-# ── Test 10: no subcommand shows usage ──
+# ── Test 10: register with --prompt succeeds ──
+setup
+OUTPUT=$(bash "$CRON_SH" register --prompt "run my custom task" --schedule "0 9 * * 1-5" --repo "$MOCK_REPO" 2>&1)
+ENTRY_COUNT=$(jq 'length' "${CEKERNEL_VAR_DIR}/schedules.json")
+assert_eq "register with --prompt adds entry" "1" "$ENTRY_COUNT"
+assert_match "output contains Prompt" "run my custom task" "$OUTPUT"
+teardown
+
+# ── Test 11: --prompt takes precedence over --label ──
+setup
+bash "$CRON_SH" register --label ready --prompt "custom prompt" --schedule "0 9 * * 1-5" --repo "$MOCK_REPO" >/dev/null 2>&1
+ENTRY=$(jq '.[0]' "${CEKERNEL_VAR_DIR}/schedules.json")
+PROMPT_VAL=$(echo "$ENTRY" | jq -r '.prompt')
+assert_eq "prompt field has --prompt value" "custom prompt" "$PROMPT_VAL"
+teardown
+
+# ── Test 12: --label generates dispatch prompt in registry ──
+setup
+bash "$CRON_SH" register --label deploy --schedule "0 9 * * 1-5" --repo "$MOCK_REPO" >/dev/null 2>&1
+ENTRY=$(jq '.[0]' "${CEKERNEL_VAR_DIR}/schedules.json")
+PROMPT_VAL=$(echo "$ENTRY" | jq -r '.prompt')
+assert_eq "label generates dispatch prompt" "/dispatch --env headless --label deploy" "$PROMPT_VAL"
+teardown
+
+# ── Test 13: no subcommand shows usage ──
 setup
 if bash "$CRON_SH" 2>/dev/null; then
   assert_eq "no subcommand shows usage and exits 1" "1" "0"

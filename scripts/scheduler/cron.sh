@@ -4,9 +4,14 @@
 # Usage: cron.sh <command> [args...]
 #
 # Commands:
-#   register --label <label> --schedule "<cron-expr>" [--repo <path>]
+#   register --schedule "<cron-expr>" [--label <label>] [--prompt <prompt>] [--repo <path>]
 #   list
 #   cancel <id>
+#
+# --label and --prompt:
+#   --label <label>   Shorthand: generates prompt "/dispatch --env headless --label <label>"
+#   --prompt <prompt> Arbitrary prompt string passed to claude -p
+#   If both given, --prompt takes precedence. At least one is required.
 #
 # Exit codes:
 #   0 — Success
@@ -27,28 +32,34 @@ usage() {
 Usage: cron.sh <command> [args...]
 
 Commands:
-  register --label <label> --schedule "<cron-expr>" [--repo <path>]
+  register --schedule "<cron-expr>" [--label <label>] [--prompt <prompt>] [--repo <path>]
   list
   cancel <id>
+
+Options for register:
+  --label <label>   Shorthand: prompt = "/dispatch --env headless --label <label>"
+  --prompt <prompt> Arbitrary prompt string passed to claude -p
+  At least one of --label or --prompt is required. --prompt takes precedence.
 USAGE
   return 1
 }
 
 # ── register: Register a recurring schedule ──
 cmd_register() {
-  local label="" schedule="" repo=""
+  local label="" schedule="" repo="" prompt=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --label) label="${2:?--label requires a value}"; shift 2 ;;
       --schedule) schedule="${2:?--schedule requires a value}"; shift 2 ;;
       --repo) repo="${2:?--repo requires a value}"; shift 2 ;;
+      --prompt) prompt="${2:?--prompt requires a value}"; shift 2 ;;
       *) echo "Error: unknown option: $1" >&2; return 1 ;;
     esac
   done
 
-  [[ -n "$label" ]] || { echo "Error: --label is required" >&2; return 1; }
   [[ -n "$schedule" ]] || { echo "Error: --schedule is required" >&2; return 1; }
+  [[ -n "$label" || -n "$prompt" ]] || { echo "Error: --label or --prompt is required" >&2; return 1; }
 
   repo="${repo:-$(pwd)}"
 
@@ -61,7 +72,10 @@ cmd_register() {
   id="cekernel-cron-$(od -An -tx1 -N3 /dev/urandom | tr -d ' \n')"
 
   # 3. Generate wrapper script
-  local prompt="/dispatch --env headless --label ${label}"
+  # --prompt takes precedence over --label shorthand
+  if [[ -z "$prompt" ]]; then
+    prompt="/dispatch --env headless --label ${label}"
+  fi
   schedule_generate_wrapper "$id" "$repo" "$PATH" "$prompt"
   local runner="${CEKERNEL_VAR_DIR}/runners/${id}.sh"
 
@@ -80,13 +94,14 @@ cmd_register() {
     --arg id "$id" \
     --arg type "cron" \
     --arg schedule "$schedule" \
-    --arg label "$label" \
+    --arg label "${label:-}" \
+    --arg prompt "$prompt" \
     --arg repo "$repo" \
     --arg path "$PATH" \
     --arg os_backend "$backend" \
     --arg os_ref "$id" \
     --arg created_at "$created_at" \
-    '{id: $id, type: $type, schedule: $schedule, label: $label, repo: $repo, path: $path, os_backend: $os_backend, os_ref: $os_ref, created_at: $created_at, last_run_at: null, last_run_status: null}')
+    '{id: $id, type: $type, schedule: $schedule, label: $label, prompt: $prompt, repo: $repo, path: $path, os_backend: $os_backend, os_ref: $os_ref, created_at: $created_at, last_run_at: null, last_run_status: null}')
 
   if ! schedule_registry_add "$entry"; then
     echo "Error: failed to add to registry, rolling back" >&2
@@ -98,7 +113,8 @@ cmd_register() {
   echo ""
   echo "Registered: ${id}"
   echo "  Schedule:  ${schedule}"
-  echo "  Label:     ${label}"
+  echo "  Prompt:    ${prompt}"
+  [[ -n "$label" ]] && echo "  Label:     ${label}"
   echo "  Repo:      ${repo}"
   echo "  Backend:   ${backend}"
   echo "  Runner:    ${runner}"
