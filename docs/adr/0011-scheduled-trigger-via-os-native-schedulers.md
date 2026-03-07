@@ -53,7 +53,7 @@ Introduce two skills that leverage OS-native schedulers. Tier 1 (MVP) uses each 
 
 ### Registry
 
-Schedule metadata is persisted in `~/.claude/cekernel/schedules.json`:
+Schedule metadata is persisted in `/usr/local/var/cekernel/schedules.json`:
 
 ```jsonc
 [
@@ -105,7 +105,7 @@ else
 fi
 
 # Update registry with run status
-# (implementation: jq update on ~/.claude/cekernel/schedules.json)
+# (implementation: jq update on /usr/local/var/cekernel/schedules.json)
 
 # Notify on failure (best-effort, OS-native)
 if [ "$STATUS" -ne 0 ]; then
@@ -240,4 +240,4 @@ Rejected: cron jobs are silently skipped during macOS sleep — a frequent occur
 
 **Platform-specific Tier 1 vs. Single code path**: Using launchd on macOS and crontab on Linux/WSL adds implementation complexity compared to a universal crontab approach. However, a scheduler that silently skips invocations on the primary platform is not a viable MVP. The `os_backend` field absorbs this difference at the registry level.
 
-**User-scope vs. Repo-scope**: Placing the registry in `~/.claude/cekernel/` enables user-level scheduling across multiple repositories. Per-repository configuration (e.g., `.cekernel/schedules.json`) is intentionally omitted to maintain simplicity.
+**User-scope vs. Repo-scope**: Placing the registry in `/usr/local/var/cekernel/` enables user-level scheduling across multiple repositories. Per-repository configuration (e.g., `.cekernel/schedules.json`) is intentionally omitted to maintain simplicity.
