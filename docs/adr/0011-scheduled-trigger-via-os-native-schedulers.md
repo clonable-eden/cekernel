@@ -210,11 +210,11 @@ Use `.github/workflows/cekernel-cron.yml` for scheduled execution.
 
 Rejected: Repository-scoped, unable to schedule across multiple repositories at the user level. Requires a self-hosted runner, adding setup cost. From the Rule of Diversity perspective, locking into a single execution method is undesirable.
 
-### Alternative: OS-native schedulers from Tier 1
+### Alternative: crontab universally for Tier 1
 
-Use launchd/systemd from the start instead of crontab.
+Use crontab on all platforms (including macOS) for Tier 1, deferring launchd to Tier 2.
 
-Rejected: Following the Rule of Optimization ("Prototype before polishing. Get it working before you optimize it."), validate the MVP with crontab first, then add native support in Tier 2. crontab is universally available on macOS/Linux/WSL, enabling a single code path.
+Rejected: cron jobs are silently skipped during macOS sleep — a frequent occurrence on MacBooks. This makes crontab impractical as a reliable scheduler on the primary target platform. The Rule of Optimization ("Get it working before you optimize it") requires that the MVP actually works; a scheduler that routinely misses invocations does not meet this bar. macOS uses launchd from Tier 1; Linux/WSL continue with crontab.
 
 ## Consequences
 
@@ -223,16 +223,18 @@ Rejected: Following the Rule of Optimization ("Prototype before polishing. Get i
 - Enables unattended execution: daily triage, periodic maintenance
 - Minimal new code by composing existing `/dispatch` skill with OS schedulers
 - Reliability and maintainability through delegation to OS schedulers
-- Tier 2 adds missed-run catch-up and native log integration
+- macOS launchd provides missed-run catch-up and native log integration from Tier 1
+- OS-native failure notification follows Rule of Silence (notify only on failure)
 
 ### Negative
 
-- Tier 1 (crontab) lacks missed-run catch-up (skips on sleep/reboot)
-- crontab text manipulation is fragile (mitigated in Tier 2)
-- `ANTHROPIC_API_KEY` must be stored in plaintext in crontab (security consideration)
+- Tier 1 requires platform-specific backend code (launchd plist on macOS, crontab on Linux/WSL)
+- Linux/WSL crontab still lacks missed-run catch-up (mitigated in Tier 2 with systemd)
+- `ANTHROPIC_API_KEY` must be available in the non-interactive environment (security consideration)
+- `path` is a registration-time snapshot; PATH changes require re-registration
 
 ### Trade-offs
 
-**Simplicity vs. Robustness**: Tier 1 prioritizes crontab's simplicity over missed-run catch-up. Following the Rule of Optimization, the MVP prioritizes validation. Tier 2 adds launchd/systemd robustness, with the `os_backend` field preserving upgrade paths.
+**Platform-specific Tier 1 vs. Single code path**: Using launchd on macOS and crontab on Linux/WSL adds implementation complexity compared to a universal crontab approach. However, a scheduler that silently skips invocations on the primary platform is not a viable MVP. The `os_backend` field absorbs this difference at the registry level.
 
 **User-scope vs. Repo-scope**: Placing the registry in `~/.claude/cekernel/` enables user-level scheduling across multiple repositories. Per-repository configuration (e.g., `.cekernel/schedules.json`) is intentionally omitted to maintain simplicity.
