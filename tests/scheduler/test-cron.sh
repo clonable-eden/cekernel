@@ -28,10 +28,15 @@ setup() {
   export _CRON_CRONTAB_FILE="$(mktemp)"
   echo "" > "$_CRON_CRONTAB_FILE"
 
-  # Mock launchctl to avoid side effects on macOS
+  # Mock binaries to avoid side effects and satisfy preflight
   export _MOCK_BIN="$(mktemp -d)"
-  echo '#!/bin/bash' > "${_MOCK_BIN}/launchctl" && chmod +x "${_MOCK_BIN}/launchctl"
+  for cmd in launchctl claude gh git; do
+    echo '#!/bin/bash' > "${_MOCK_BIN}/${cmd}" && chmod +x "${_MOCK_BIN}/${cmd}"
+  done
   export PATH="${_MOCK_BIN}:${PATH}"
+
+  # Satisfy preflight API key check
+  export ANTHROPIC_API_KEY="test-key"
 }
 
 teardown() {
