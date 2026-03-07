@@ -89,6 +89,8 @@ skills/
     SKILL.md               # /probe skill — namespace detection diagnostic
   cron/
     SKILL.md               # /cron skill — recurring schedule management
+  at/
+    SKILL.md               # /at skill — one-shot schedule management
   unix-architect/
     SKILL.md               # /unix-architect skill — ADR authoring and review
   references/
@@ -135,6 +137,11 @@ scripts/
     cron-backends/
       launchd.sh           # macOS launchd backend (plist + cron expr parser)
       crontab.sh           # Linux/WSL crontab backend
+    at.sh                  # /at command handler (register/list/cancel)
+    at-backend.sh          # At backend adapter (launchd/atd)
+    at-backends/
+      launchd.sh           # macOS launchd backend (plist + one-shot cleanup)
+      atd.sh               # Linux/WSL atd backend
 tests/
   run-tests.sh             # Test runner
   helpers.sh               # Assertion helpers
@@ -280,6 +287,7 @@ If using the WezTerm backend, see [`config/README.md`](./config/README.md) for p
 | `/dispatch` | Batch-process ready-labeled issues |
 | `/orchctrl` | Worker inspection and control |
 | `/cron` | Recurring schedule management (launchd/crontab) |
+| `/at` | One-shot schedule management (launchd/atd) |
 | `/unix-architect` | ADR authoring and architectural review |
 
 In plugin mode, prefix with `cekernel:` (e.g., `/cekernel:orchestrate`). See each skill's `SKILL.md` for details.
