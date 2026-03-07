@@ -172,7 +172,9 @@ The `os_backend` field enables tracking the transition from crontab to launchd/s
 
 **Permission Model (Evolving)**: In non-interactive environments, `.claude/settings.json`'s `permissions.allow` is the only mechanism for granting tool permissions. If the target repository lacks this configuration, scheduled execution will fail. The `register` preflight check validates this.
 
-**Authentication**: `claude -p` normally retrieves credentials from the OS Keychain, but cron environments cannot access it. Explicit `ANTHROPIC_API_KEY` is required. This constraint is specific to the Claude Code platform.
+**Authentication**: `claude -p` normally retrieves credentials from the OS Keychain, but non-interactive environments (cron, launchd) cannot access it. Explicit `ANTHROPIC_API_KEY` is required. This constraint is specific to the Claude Code platform.
+
+**PATH snapshot**: The registry's `path` field captures the user's `$PATH` at registration time. Subsequent changes to the user's PATH (e.g., installing new tools, modifying shell profiles) are not reflected in existing schedules. Users must re-register (`cancel` + `register`) to update the PATH.
 
 ### Failure Handling
 
