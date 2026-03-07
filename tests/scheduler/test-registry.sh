@@ -60,7 +60,7 @@ RESULT=$(schedule_registry_list | jq length)
 assert_eq "add two entries, list has 2" "2" "$RESULT"
 teardown
 
-# ── Test 4: list --type cron filters correctly ──
+# ── Test 5: list --type cron filters correctly ──
 setup
 schedule_registry_add "$SAMPLE_ENTRY"
 schedule_registry_add "$SAMPLE_AT_ENTRY"
@@ -70,7 +70,7 @@ TYPE=$(schedule_registry_list --type cron | jq -r '.[0].type')
 assert_eq "list --type cron returns cron entry" "cron" "$TYPE"
 teardown
 
-# ── Test 5: list --type at filters correctly ──
+# ── Test 6: list --type at filters correctly ──
 setup
 schedule_registry_add "$SAMPLE_ENTRY"
 schedule_registry_add "$SAMPLE_AT_ENTRY"
@@ -80,14 +80,14 @@ TYPE=$(schedule_registry_list --type at | jq -r '.[0].type')
 assert_eq "list --type at returns at entry" "at" "$TYPE"
 teardown
 
-# ── Test 6: get existing entry ──
+# ── Test 7: get existing entry ──
 setup
 schedule_registry_add "$SAMPLE_ENTRY"
 RESULT=$(schedule_registry_get "cekernel-cron-abc123" | jq -r '.id')
 assert_eq "get returns correct entry" "cekernel-cron-abc123" "$RESULT"
 teardown
 
-# ── Test 7: get non-existing entry returns exit 1 ──
+# ── Test 8: get non-existing entry returns exit 1 ──
 setup
 if schedule_registry_get "nonexistent" >/dev/null 2>&1; then
   assert_eq "get nonexistent returns non-zero" "1" "0"
@@ -96,7 +96,7 @@ else
 fi
 teardown
 
-# ── Test 8: remove existing entry ──
+# ── Test 9: remove existing entry ──
 setup
 schedule_registry_add "$SAMPLE_ENTRY"
 schedule_registry_add "$SAMPLE_AT_ENTRY"
@@ -107,14 +107,14 @@ REMAINING=$(schedule_registry_list | jq -r '.[0].id')
 assert_eq "remaining entry is the at entry" "cekernel-at-def456" "$REMAINING"
 teardown
 
-# ── Test 9: remove non-existing entry is idempotent ──
+# ── Test 10: remove non-existing entry is idempotent ──
 setup
 schedule_registry_remove "nonexistent"
 RESULT=$(schedule_registry_list | jq length)
 assert_eq "remove nonexistent is idempotent" "0" "$RESULT"
 teardown
 
-# ── Test 10: update_status changes last_run_status ──
+# ── Test 11: update_status changes last_run_status ──
 setup
 schedule_registry_add "$SAMPLE_ENTRY"
 schedule_registry_update_status "cekernel-cron-abc123" "success"
@@ -122,7 +122,7 @@ STATUS=$(schedule_registry_get "cekernel-cron-abc123" | jq -r '.last_run_status'
 assert_eq "update_status sets success" "success" "$STATUS"
 teardown
 
-# ── Test 11: update_status changes last_run_at ──
+# ── Test 12: update_status changes last_run_at ──
 setup
 schedule_registry_add "$SAMPLE_ENTRY"
 schedule_registry_update_status "cekernel-cron-abc123" "error"
@@ -132,7 +132,7 @@ STATUS=$(schedule_registry_get "cekernel-cron-abc123" | jq -r '.last_run_status'
 assert_eq "update_status sets error" "error" "$STATUS"
 teardown
 
-# ── Test 12: lock timeout on contended lock ──
+# ── Test 13: lock timeout on contended lock ──
 setup
 mkdir "${CEKERNEL_VAR_DIR}/schedules.json.lock"
 if schedule_registry_add "$SAMPLE_ENTRY" 2>/dev/null; then
