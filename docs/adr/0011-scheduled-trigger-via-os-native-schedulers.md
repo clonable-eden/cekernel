@@ -180,20 +180,21 @@ The `os_backend` field enables tracking the transition from crontab to launchd/s
 
 When a scheduled run fails (non-zero exit from `claude -p` or `/dispatch`), the failure is:
 
-1. **Logged**: stdout/stderr is appended to `~/.claude/cekernel/logs/cron.log` via the `>> ... 2>&1` redirect in the scheduled command. Diagnosis starts here.
+1. **Logged**: stdout/stderr is appended to `~/.claude/cekernel/logs/cron.log` via the `>> ... 2>&1` redirect in the scheduled command. Diagnosis starts here. Session persistence is enabled (no `--no-session-persistence`), so `--resume` can be used to inspect the execution context after the fact.
 2. **Recorded**: The wrapper script updates the registry entry's `last_run_status` (to `"error"`) and `last_run_at` fields after each execution. `/cron list` displays these fields, enabling at-a-glance health monitoring.
-3. **Not retried automatically**: Tier 1 (crontab) does not implement retry logic. A failed run simply waits for the next scheduled invocation. This follows the Rule of Repair ("When you must fail, fail noisily and as soon as possible") — failures are visible in the log and registry, not silently retried.
-
-Tier 2 backends (launchd, systemd) provide built-in retry and failure notification mechanisms, which can be leveraged without custom retry logic.
+3. **Notified (best-effort)**: The wrapper sends an OS-native desktop notification on failure — `osascript` on macOS, `notify-send` on Linux (WSL with WSLg). Notification is best-effort; the primary diagnostic sources are the log file and registry status. This follows the Rule of Silence — successful runs produce no notification.
+4. **Not retried automatically**: Tier 1 does not implement retry logic. A failed run simply waits for the next scheduled invocation. This follows the Rule of Repair ("When you must fail, fail noisily and as soon as possible") — failures are visible in the log, registry, and notification, not silently retried.
 
 ### Concurrency
 
 Manual invocations (`/dispatch`, `/orchestrate`) and scheduled invocations can overlap. Two mechanisms prevent conflicts:
 
 1. **Worker concurrency guard**: `spawn-worker.sh` enforces `CEKERNEL_MAX_WORKERS` and exits with code 2 when the limit is reached. This is the existing mechanism and applies regardless of invocation source.
-2. **Dispatch-level lockfile** (Tier 1): The scheduled command acquires a per-repository lockfile (`~/.claude/cekernel/locks/<repo-hash>.lock`) before invoking `claude -p`. If the lock is held (by a manual or another scheduled dispatch), the run exits immediately and logs the skip. This prevents duplicate dispatches for the same repository without blocking dispatches for other repositories.
+2. **Issue-level lockfile**: Locking is performed at the **repo × issue** granularity in the Orchestrator/Worker layer (`~/.claude/cekernel/locks/<repo-hash>/<issue-number>.lock`). This prevents duplicate Workers for the same issue while allowing parallel processing of different issues — consistent with cekernel's fundamental parallel execution model.
 
-The lockfile uses `mkdir`-based locking — the same pattern as `claude-json-helper.sh`. `mkdir` is atomic and universally available (unlike `flock`, which requires `util-linux` on macOS). No daemon or shared state is needed.
+The dispatch layer (wrapper script) does **not** acquire locks. Dispatch is a lightweight operation (scan for issues, delegate to Orchestrator) and does not require mutual exclusion. If two dispatches overlap, the issue-level locks in the Worker layer prevent duplicate processing.
+
+The lockfile uses `mkdir`-based locking — the same pattern as `claude-json-helper.sh`. `mkdir` is atomic and universally available (unlike `flock`, which requires `util-linux` on macOS). Stale lock detection is implemented by writing the PID into the lock directory; on lock acquisition failure, `kill -0 <pid>` verifies the holder is still alive. If the holder is dead, the stale lock is removed and acquisition is retried.
 
 ## Alternatives Considered
 
