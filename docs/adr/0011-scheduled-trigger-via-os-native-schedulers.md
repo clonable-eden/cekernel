@@ -81,7 +81,7 @@ Schedule metadata is persisted in `~/.claude/cekernel/schedules.json`:
 
 ### Scheduled Command
 
-The `register` command generates a wrapper script per schedule entry at `~/.claude/cekernel/runners/<id>.sh`. The OS scheduler invokes this wrapper, not `claude -p` directly. The wrapper handles environment setup, command execution, failure notification, and registry status updates.
+The `register` command generates a wrapper script per schedule entry at `/usr/local/var/cekernel/runners/<id>.sh`. The OS scheduler invokes this wrapper, not `claude -p` directly. The wrapper handles environment setup, command execution, failure notification, and registry status updates.
 
 Concurrency control is **not** handled at the wrapper level. Instead, it is delegated to the Orchestrator/Worker layer via repo × issue locking (see Concurrency).
 
@@ -91,7 +91,7 @@ Concurrency control is **not** handled at the wrapper level. Instead, it is dele
 set -euo pipefail
 
 ID="cekernel-cron-a1b2c3"
-LOG_FILE="$HOME/.claude/cekernel/logs/cron.log"
+LOG_FILE="/usr/local/var/cekernel/logs/cron.log"
 
 export PATH=<captured-user-path>
 # Resolve API key dynamically (env var > OS keychain fallback)
@@ -181,7 +181,7 @@ The `os_backend` field enables tracking the transition from crontab to launchd/s
 
 When a scheduled run fails (non-zero exit from `claude -p` or `/dispatch`), the failure is:
 
-1. **Logged**: stdout/stderr is appended to `~/.claude/cekernel/logs/cron.log` via the `>> ... 2>&1` redirect in the scheduled command. Diagnosis starts here. Session persistence is enabled (no `--no-session-persistence`), so `--resume` can be used to inspect the execution context after the fact.
+1. **Logged**: stdout/stderr is appended to `/usr/local/var/cekernel/logs/cron.log` via the `>> ... 2>&1` redirect in the scheduled command. Diagnosis starts here. Session persistence is enabled (no `--no-session-persistence`), so `--resume` can be used to inspect the execution context after the fact.
 2. **Recorded**: The wrapper script updates the registry entry's `last_run_status` (to `"error"`) and `last_run_at` fields after each execution. `/cron list` displays these fields, enabling at-a-glance health monitoring.
 3. **Notified (best-effort)**: The wrapper sends an OS-native desktop notification on failure — `osascript` on macOS, `notify-send` on Linux (WSL with WSLg). Notification is best-effort; the primary diagnostic sources are the log file and registry status. This follows the Rule of Silence — successful runs produce no notification.
 4. **Not retried automatically**: Tier 1 does not implement retry logic. A failed run simply waits for the next scheduled invocation. This follows the Rule of Repair ("When you must fail, fail noisily and as soon as possible") — failures are visible in the log, registry, and notification, not silently retried.
@@ -191,11 +191,13 @@ When a scheduled run fails (non-zero exit from `claude -p` or `/dispatch`), the 
 Manual invocations (`/dispatch`, `/orchestrate`) and scheduled invocations can overlap. Two mechanisms prevent conflicts:
 
 1. **Worker concurrency guard**: `spawn-worker.sh` enforces `CEKERNEL_MAX_WORKERS` and exits with code 2 when the limit is reached. This is the existing mechanism and applies regardless of invocation source.
-2. **Issue-level lockfile**: Locking is performed at the **repo × issue** granularity in the Orchestrator/Worker layer (`~/.claude/cekernel/locks/<repo-hash>/<issue-number>.lock`). This prevents duplicate Workers for the same issue while allowing parallel processing of different issues — consistent with cekernel's fundamental parallel execution model.
+2. **Issue-level lockfile**: Locking is performed at the **repo × issue** granularity in the Orchestrator/Worker layer (`/usr/local/var/cekernel/locks/<repo-hash>/<issue-number>.lock`). This prevents duplicate Workers for the same issue while allowing parallel processing of different issues — consistent with cekernel's fundamental parallel execution model.
 
 The dispatch layer (wrapper script) does **not** acquire locks. Dispatch is a lightweight operation (scan for issues, delegate to Orchestrator) and does not require mutual exclusion. If two dispatches overlap, the issue-level locks in the Worker layer prevent duplicate processing.
 
 The lockfile uses `mkdir`-based locking — the same pattern as `claude-json-helper.sh`. `mkdir` is atomic and universally available (unlike `flock`, which requires `util-linux` on macOS). Stale lock detection is implemented by writing the PID into the lock directory; on lock acquisition failure, `kill -0 <pid>` verifies the holder is still alive. If the holder is dead, the stale lock is removed and acquisition is retried.
+
+**Runtime state directory**: `/usr/local/var/cekernel/` is the canonical location for cekernel's runtime state (locks, logs, runners). Single-user is assumed. The existing session-scoped IPC directory (`/tmp/cekernel-ipc/`) will be migrated to this namespace in a future issue to unify runtime state management.
 
 ## Alternatives Considered
 
