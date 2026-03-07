@@ -14,14 +14,18 @@ schedule_preflight_check() {
   local type="${1:?Usage: schedule_preflight_check <cron|at> <repo>}"
   local repo="${2:?Usage: schedule_preflight_check <cron|at> <repo>}"
 
+  # Resolve CEKERNEL_DIR for resolve-api-key.sh
+  local cekernel_dir
+  cekernel_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
   local failed=0
 
-  # 1. ANTHROPIC_API_KEY
-  if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
-    echo "  OK: ANTHROPIC_API_KEY is set"
+  # 1. API key is resolvable (env var or Keychain)
+  if bash "${cekernel_dir}/scripts/scheduler/resolve-api-key.sh" >/dev/null 2>&1; then
+    echo "  OK: API key is resolvable"
   else
-    echo "  FAIL: ANTHROPIC_API_KEY is not set" >&2
-    echo "    Set it via: export ANTHROPIC_API_KEY=<your-key>" >&2
+    echo "  FAIL: API key cannot be resolved" >&2
+    echo "    Set ANTHROPIC_API_KEY or add key to macOS Keychain" >&2
     failed=1
   fi
 

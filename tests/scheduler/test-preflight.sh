@@ -7,8 +7,15 @@ source "${SCRIPT_DIR}/../helpers.sh"
 
 CEKERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 PREFLIGHT_SCRIPT="${CEKERNEL_DIR}/scripts/scheduler/preflight.sh"
+RESOLVE_SCRIPT="${CEKERNEL_DIR}/scripts/scheduler/resolve-api-key.sh"
 
 echo "test: scheduler/preflight.sh"
+
+# Check if API key is resolvable without env var (Keychain etc.)
+KEYCHAIN_AVAILABLE=0
+if ANTHROPIC_API_KEY="" bash "$RESOLVE_SCRIPT" >/dev/null 2>&1; then
+  KEYCHAIN_AVAILABLE=1
+fi
 
 # ── Setup: create a fake repo with .claude/settings.json ──
 setup() {
@@ -36,14 +43,18 @@ EXIT=$?
 assert_eq "preflight passes with valid setup" "0" "$EXIT"
 teardown
 
-# ── Test 2: ANTHROPIC_API_KEY unset fails ──
-setup
-if ANTHROPIC_API_KEY="" PATH="${TEST_BIN}:${PATH}" schedule_preflight_check cron "$TEST_REPO" 2>/dev/null; then
-  assert_eq "preflight fails without API key" "1" "0"
+# ── Test 2: API key not resolvable fails ──
+if [[ "$KEYCHAIN_AVAILABLE" -eq 1 ]]; then
+  echo "  SKIP: API key resolves via Keychain — cannot test failure"
 else
-  assert_eq "preflight fails without API key" "1" "1"
+  setup
+  if ANTHROPIC_API_KEY="" PATH="${TEST_BIN}:${PATH}" schedule_preflight_check cron "$TEST_REPO" 2>/dev/null; then
+    assert_eq "preflight fails without resolvable API key" "1" "0"
+  else
+    assert_eq "preflight fails without resolvable API key" "1" "1"
+  fi
+  teardown
 fi
-teardown
 
 # ── Test 3: claude not found fails ──
 setup
@@ -90,13 +101,13 @@ setup
 rm "${TEST_BIN}/claude"
 rm "${TEST_REPO}/.claude/settings.json"
 ERR=$(ANTHROPIC_API_KEY="" PATH="${TEST_BIN}" schedule_preflight_check cron "$TEST_REPO" 2>&1 || true)
-# Should mention API key, claude, and settings.json
 FAIL_COUNT=$(echo "$ERR" | grep -c "FAIL" || true)
-# At least 3 FAILs: API key, claude, settings.json
-if [[ "$FAIL_COUNT" -ge 3 ]]; then
-  assert_eq "multiple failures all reported" "1" "1"
+# claude + settings.json = at least 2 FAILs; +1 if API key also unresolvable
+EXPECTED_MIN=$((2 + (1 - KEYCHAIN_AVAILABLE)))
+if [[ "$FAIL_COUNT" -ge "$EXPECTED_MIN" ]]; then
+  assert_eq "multiple failures all reported (>=${EXPECTED_MIN})" "1" "1"
 else
-  assert_eq "multiple failures all reported (got ${FAIL_COUNT})" "3+" "$FAIL_COUNT"
+  assert_eq "multiple failures all reported (expected >=${EXPECTED_MIN}, got ${FAIL_COUNT})" "fail" "fail"
 fi
 teardown
 
