@@ -27,7 +27,7 @@ The stabilization of the headless backend (#117, #192) has enabled unattended, t
 |-------------|--------|
 | `ANTHROPIC_API_KEY` | macOS Keychain is inaccessible in non-interactive environments |
 | `.claude/settings.json` (Project Configuration) | Bypasses tool permission prompts |
-| PATH resolution | cron environments do not load shell profiles |
+| PATH resolution | Non-interactive environments (cron, launchd) do not load shell profiles |
 
 ## Decision
 
@@ -94,7 +94,8 @@ ID="cekernel-cron-a1b2c3"
 LOG_FILE="$HOME/.claude/cekernel/logs/cron.log"
 
 export PATH=<captured-user-path>
-export ANTHROPIC_API_KEY=<key>
+# Resolve API key dynamically (env var > OS keychain fallback)
+export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-$(resolve-api-key 2>/dev/null)}"
 
 if cd /path/to/repo && claude -p \
   "/dispatch --env headless --label ready" >> "$LOG_FILE" 2>&1; then
@@ -154,7 +155,7 @@ The new execution pipeline composes existing components:
 OS scheduler → claude -p → /dispatch → Orchestrator → Workers
 ```
 
-Each stage operates independently and is individually testable. `claude -p "/dispatch ..."` is the same command whether invoked manually or from cron.
+Each stage operates independently and is individually testable. `claude -p "/dispatch ..."` is the same command whether invoked manually or from the OS scheduler.
 
 > **Rule of Representation**: "Fold knowledge into data so program logic can be stupid and robust."
 
