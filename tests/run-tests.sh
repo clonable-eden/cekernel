@@ -10,7 +10,7 @@ FAILED_FILES=()
 echo "=== cekernel test runner ==="
 echo ""
 
-for category in shared orchestrator worker; do
+for category in shared orchestrator worker scheduler; do
   category_dir="${SCRIPT_DIR}/${category}"
   [[ -d "$category_dir" ]] || continue
 

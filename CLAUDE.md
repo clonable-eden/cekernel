@@ -142,9 +142,11 @@ tests/
 │   └── test-{feature}.sh   # Orchestrator script tests
 ├── worker/
 │   └── test-{feature}.sh   # Worker script tests
-└── shared/
-    ├── test-session-id.sh   # session-id.sh tests
-    └── test-{feature}.sh   # Shared helper tests
+├── shared/
+│   ├── test-session-id.sh   # session-id.sh tests
+│   └── test-{feature}.sh   # Shared helper tests
+└── scheduler/
+    └── test-{feature}.sh   # Scheduler script tests
 ```
 
 ### Assertion Functions
