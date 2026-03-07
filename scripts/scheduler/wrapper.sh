@@ -4,7 +4,7 @@
 # Usage: source wrapper.sh
 #
 # Functions:
-#   schedule_generate_wrapper <id> <repo> <path> <label> — Generate runner script
+#   schedule_generate_wrapper <id> <repo> <path> <prompt> — Generate runner script
 #
 # Environment variables (overridable for testing):
 #   CEKERNEL_VAR_DIR — Base directory (default: /usr/local/var/cekernel)
@@ -15,10 +15,10 @@ CEKERNEL_VAR_DIR="${CEKERNEL_VAR_DIR:-/usr/local/var/cekernel}"
 _WRAPPER_CEKERNEL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 schedule_generate_wrapper() {
-  local id="${1:?Usage: schedule_generate_wrapper <id> <repo> <path> <label>}"
-  local repo="${2:?Usage: schedule_generate_wrapper <id> <repo> <path> <label>}"
-  local captured_path="${3:?Usage: schedule_generate_wrapper <id> <repo> <path> <label>}"
-  local label="${4:?Usage: schedule_generate_wrapper <id> <repo> <path> <label>}"
+  local id="${1:?Usage: schedule_generate_wrapper <id> <repo> <path> <prompt>}"
+  local repo="${2:?Usage: schedule_generate_wrapper <id> <repo> <path> <prompt>}"
+  local captured_path="${3:?Usage: schedule_generate_wrapper <id> <repo> <path> <prompt>}"
+  local prompt="${4:?Usage: schedule_generate_wrapper <id> <repo> <path> <prompt>}"
 
   local runner_dir="${CEKERNEL_VAR_DIR}/runners"
   local runner_file="${runner_dir}/${id}.sh"
@@ -43,7 +43,7 @@ export ANTHROPIC_API_KEY="\${ANTHROPIC_API_KEY:-\$("\${CEKERNEL_DIR}/scripts/sch
 source "\${CEKERNEL_DIR}/scripts/scheduler/registry.sh"
 
 if cd "${repo}" && claude -p \\
-  "/dispatch --env headless --label ${label}" >> "\$LOG_FILE" 2>&1; then
+  "${prompt}" >> "\$LOG_FILE" 2>&1; then
   STATUS=0
 else
   STATUS=\$?

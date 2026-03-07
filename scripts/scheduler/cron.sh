@@ -61,7 +61,8 @@ cmd_register() {
   id="cekernel-cron-$(od -An -tx1 -N3 /dev/urandom | tr -d ' \n')"
 
   # 3. Generate wrapper script
-  schedule_generate_wrapper "$id" "$repo" "$PATH" "$label"
+  local prompt="/dispatch --env headless --label ${label}"
+  schedule_generate_wrapper "$id" "$repo" "$PATH" "$prompt"
   local runner="${CEKERNEL_VAR_DIR}/runners/${id}.sh"
 
   # 4. Register with OS scheduler
