@@ -38,7 +38,11 @@ teardown
 setup
 schedule_generate_wrapper "$TEST_ID" "$TEST_REPO" "$TEST_PATH" "$TEST_LABEL"
 RUNNER="${CEKERNEL_VAR_DIR}/runners/${TEST_ID}.sh"
-PERMS=$(stat -f '%Lp' "$RUNNER" 2>/dev/null || stat -c '%a' "$RUNNER" 2>/dev/null)
+if [[ "$(uname)" == "Darwin" ]]; then
+  PERMS=$(stat -f '%Lp' "$RUNNER")
+else
+  PERMS=$(stat -c '%a' "$RUNNER")
+fi
 assert_eq "wrapper has 700 permissions" "700" "$PERMS"
 teardown
 
