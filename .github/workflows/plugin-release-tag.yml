@@ -76,6 +76,8 @@ jobs:
 
           gh repo clone clonable-eden/plugins /tmp/plugins
           cd /tmp/plugins
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           jq --arg ref "${TAG}" \
             '(.plugins[] | select(.name == "'"${PLUGIN}"'") | .source).ref = $ref' \
