@@ -1,3 +1,62 @@
+# cekernel-v1.4.0
+
+## Highlights
+- **Scheduler infrastructure**: Added `/cron` (recurring) and `/at` (one-shot) skills powered by OS-native schedulers (macOS launchd / Linux crontab & atd)
+- **Runtime unification**: Consolidated IPC directory under `/usr/local/var/cekernel/ipc/`, unifying session management and scheduler state under `CEKERNEL_VAR_DIR`
+- **Issue lock**: `mkdir`-based repo × issue lockfile prevents duplicate Worker spawning for the same issue
+- **tmux backend stabilization**: Fixed apostrophe quoting in prompts, added env var cleanup and server reachability check. Status promoted to Stable
+- **Release automation**: Integrated CI workflow into `/release-cekernel` skill — tag, GitHub Release, and marketplace update run automatically on merge
+- **MIT License added**
+
+## New Features
+- `/cron` skill — recurring schedule management (launchd/crontab)
+- `/at` skill — one-shot schedule management (launchd/atd)
+- Scheduler infrastructure scripts: registry.sh, wrapper.sh, resolve-api-key.sh, preflight.sh
+- cron/at backend adapters (launchd, crontab, atd)
+- `issue-lock.sh` — `mkdir`-based repo × issue lockfile
+- Issue lock integration in spawn-worker.sh and notify-complete.sh
+- Lock check added to triage protocol
+- `--prompt` option for cron register
+- syslog format + per-job run log (wrapper.sh)
+- Launchd log artifact cleanup on cancel
+- CI workflow integration + marketplace auto-update in `/release-cekernel`
+- `make install` for runtime directory setup
+
+## Bug Fixes
+- tmux backend: fix shell quoting for prompts containing apostrophes (#237)
+- tmux backend: unset CLAUDECODE env vars when spawning child `claude -p` (#237)
+- tmux backend: add server reachability check to `backend_available()` (#237)
+- Test infrastructure: use temp directory for `CEKERNEL_VAR_DIR` to fix CI permission errors
+- preflight: use `resolve-api-key.sh` for API key validation
+- Fix Keychain service name to "Claude Code-credentials"
+- Registry: reject duplicate ID registration
+
+## Documentation
+- ADR-0011: scheduler design — launchd adoption, lock granularity, log design, `/at` backend
+- README: prerequisites, first steps, scheduler backend status table, structure tree update
+- internals.md: scheduler runtime, issue lock, env var cleanup
+- Added `CEKERNEL_VAR_DIR` to environment variable catalog
+
+## What's Changed
+* docs: add prerequisites, notes, and first steps to README by @clonable-eden in #217
+* Add MIT License to the project by @clonable-eden in #218
+* docs: ADR-0011 の設計改善 — launchd 採用、ロック粒度変更、通知追加 by @clonable-eden in #221
+* feat: add schedule infrastructure scripts by @clonable-eden in #222
+* feat: add /cron skill — recurring schedule management by @clonable-eden in #223
+* feat: add /at skill — one-shot scheduled job management by @clonable-eden in #224
+* feat: integrate release workflow into skill and add marketplace auto-update by @clonable-eden in #229
+* fix: move release-cekernel skill to .claude/skills/ and remove duplicate by @clonable-eden in #230
+* chore: scheduler release prep — symlinks, docs, backend status by @clonable-eden in #232
+* feat: scheduler log design — syslog format + per-job run log by @clonable-eden in #233
+* refactor: migrate IPC directory to /usr/local/var/cekernel/ipc/ by @clonable-eden in #234
+* feat: repo × issue lockfile for duplicate Worker prevention by @clonable-eden in #236
+* fix: tmux backend apostrophe escape, env cleanup, and server check by @clonable-eden in #240
+* docs: fix documentation gaps for 1.4.0 release by @clonable-eden in #239
+
+**Full Changelog**: https://github.com/clonable-eden/cekernel/compare/cekernel-v1.3.0...cekernel-v1.4.0
+
+---
+
 # cekernel-v1.3.0
 
 ## Highlights
