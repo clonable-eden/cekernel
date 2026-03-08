@@ -107,7 +107,9 @@ rollback() {
   rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.state"
   rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.priority"
   # Release issue lock
-  issue_lock_release "$REPO_ROOT" "$ISSUE_NUMBER"
+  if [[ -n "${REPO_ROOT:-}" ]]; then
+    issue_lock_release "$REPO_ROOT" "$ISSUE_NUMBER"
+  fi
 }
 trap rollback ERR
 

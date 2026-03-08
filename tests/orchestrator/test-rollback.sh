@@ -16,6 +16,7 @@ echo "test: rollback"
 export CEKERNEL_SESSION_ID="test-rollback-00000001"
 source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
 source "${CEKERNEL_DIR}/scripts/shared/claude-json-helper.sh"
+source "${CEKERNEL_DIR}/scripts/shared/issue-lock.sh"
 
 # ── Create temporary Git repository for testing ──
 TEST_TMP=$(mktemp -d)

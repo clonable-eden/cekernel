@@ -48,6 +48,10 @@ Detect whether cekernel is running as a plugin or locally using file-based detec
 
 Store these values for use in subsequent steps.
 
+Also resolve the cekernel scripts path for lock checking:
+- If `CEKERNEL_NS=local`: `CEKERNEL_SCRIPTS="$(git rev-parse --show-toplevel)/scripts"`
+- If `CEKERNEL_NS=plugin`: `CEKERNEL_SCRIPTS="$(dirname "$(which spawn-worker.sh 2>/dev/null)")/../.."/scripts`
+
 ### Step 1: Discover Issues
 
 Fetch all open issues with the target label:
@@ -57,6 +61,18 @@ gh issue list --label <label> --state open --json number,title --jq '.[] | "\(.n
 ```
 
 If no issues are found, report to the user and exit — there is nothing to process.
+
+### Step 1.5: Lock Filter
+
+Filter out issues already being processed by an active Worker:
+
+```bash
+source "${CEKERNEL_SCRIPTS}/shared/issue-lock.sh"
+issue_lock_check "$(git rev-parse --show-toplevel)" <issue-number>
+# exit 0 = locked (skip), exit 1 = unlocked (proceed)
+```
+
+Remove locked issues from the candidate list before triage. Report skipped issues to the user.
 
 ### Step 2: Triage
 

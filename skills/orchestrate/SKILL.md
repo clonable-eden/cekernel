@@ -40,9 +40,23 @@ Detect whether cekernel is running as a plugin or locally using file-based detec
 
 Store these values for use in subsequent steps.
 
-### Step 1: Issue Triage and Priority Assessment
+Also resolve the cekernel scripts path for lock checking:
+- If `CEKERNEL_NS=local`: `CEKERNEL_SCRIPTS="$(git rev-parse --show-toplevel)/scripts"`
+- If `CEKERNEL_NS=plugin`: `CEKERNEL_SCRIPTS="$(dirname "$(which spawn-worker.sh 2>/dev/null)")/../.."/scripts`
 
-Read `skills/references/triage.md` from the repository root (`$(git rev-parse --show-toplevel)/skills/references/triage.md`) and follow the triage protocol for each issue.
+### Step 1: Lock Filter and Triage
+
+First, filter out issues already being processed by an active Worker:
+
+```bash
+source "${CEKERNEL_SCRIPTS}/shared/issue-lock.sh"
+issue_lock_check "$(git rev-parse --show-toplevel)" <issue-number>
+# exit 0 = locked (skip), exit 1 = unlocked (proceed)
+```
+
+Remove locked issues from the candidate list and report skipped issues to the user.
+
+Then, read `skills/references/triage.md` from the repository root (`$(git rev-parse --show-toplevel)/skills/references/triage.md`) and follow the triage protocol for each remaining issue.
 
 After triage, delegate to the Orchestrator.
 

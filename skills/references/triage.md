@@ -3,6 +3,10 @@
 > Canonical source for cekernel issue triage logic.
 > Referenced by both `/orchestrate` and `/dispatch` skills.
 
+## Pre-check: Lock Filter
+
+Before triaging, skip any issue that is already locked by an active Worker. The calling skill is responsible for running `issue_lock_check` (from `scripts/shared/issue-lock.sh`) before entering triage — see dispatch/orchestrate SKILL.md for the concrete implementation.
+
 ## Single Issue Triage
 
 For each issue, check its content with `gh issue view` and verify:
