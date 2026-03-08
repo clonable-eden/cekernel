@@ -24,12 +24,12 @@ assert_eq "Existing CEKERNEL_SESSION_ID is preserved" "my-custom-session-abc1234
 
 # ── Test 4: CEKERNEL_IPC_DIR is correctly derived ──
 RESULT=$(export CEKERNEL_SESSION_ID="test-session-aabbccdd"; unset CEKERNEL_IPC_DIR; source "$SESSION_SCRIPT"; echo "$CEKERNEL_IPC_DIR")
-assert_eq "CEKERNEL_IPC_DIR is derived correctly" "/tmp/cekernel-ipc/test-session-aabbccdd" "$RESULT"
+assert_eq "CEKERNEL_IPC_DIR is derived correctly" "/usr/local/var/cekernel/ipc/test-session-aabbccdd" "$RESULT"
 
 # ── Test 5: CEKERNEL_IPC_DIR — correctly derived with auto-generated ID ──
 RESULT=$(unset CEKERNEL_SESSION_ID; unset CEKERNEL_IPC_DIR; source "$SESSION_SCRIPT"; echo "${CEKERNEL_IPC_DIR}|${CEKERNEL_SESSION_ID}")
 IPC_DIR="${RESULT%|*}"
 SID="${RESULT#*|}"
-assert_eq "CEKERNEL_IPC_DIR uses generated CEKERNEL_SESSION_ID" "/tmp/cekernel-ipc/${SID}" "$IPC_DIR"
+assert_eq "CEKERNEL_IPC_DIR uses generated CEKERNEL_SESSION_ID" "/usr/local/var/cekernel/ipc/${SID}" "$IPC_DIR"
 
 report_results
