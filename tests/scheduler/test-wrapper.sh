@@ -112,7 +112,7 @@ CONTENT=$(cat "$RUNNER")
 assert_match "claude output goes to run.log" "${TEST_ID}.run.log" "$CONTENT"
 teardown
 
-# ── Test 15: syslog START line written to schedule.log ──
+# ── Test 11: syslog START line written to schedule.log ──
 setup
 schedule_generate_wrapper "$TEST_ID" "$TEST_REPO" "$TEST_PATH" "$TEST_PROMPT"
 RUNNER="${CEKERNEL_VAR_DIR}/runners/${TEST_ID}.sh"
@@ -121,7 +121,7 @@ assert_match "syslog START in schedule.log" 'schedule.log' "$CONTENT"
 assert_match "START line format" 'START' "$CONTENT"
 teardown
 
-# ── Test 16: syslog END line written to schedule.log ──
+# ── Test 12: syslog END line written to schedule.log ──
 setup
 schedule_generate_wrapper "$TEST_ID" "$TEST_REPO" "$TEST_PATH" "$TEST_PROMPT"
 RUNNER="${CEKERNEL_VAR_DIR}/runners/${TEST_ID}.sh"
@@ -129,7 +129,7 @@ CONTENT=$(cat "$RUNNER")
 assert_match "END line format" 'END' "$CONTENT"
 teardown
 
-# ── Test 17: duration tracking via SECONDS ──
+# ── Test 13: duration tracking via SECONDS ──
 setup
 schedule_generate_wrapper "$TEST_ID" "$TEST_REPO" "$TEST_PATH" "$TEST_PROMPT"
 RUNNER="${CEKERNEL_VAR_DIR}/runners/${TEST_ID}.sh"
@@ -137,7 +137,7 @@ CONTENT=$(cat "$RUNNER")
 assert_match "uses SECONDS for duration" 'SECONDS' "$CONTENT"
 teardown
 
-# ── Test 11: no --max-budget-usd ──
+# ── Test 14: no --max-budget-usd ──
 setup
 schedule_generate_wrapper "$TEST_ID" "$TEST_REPO" "$TEST_PATH" "$TEST_PROMPT"
 RUNNER="${CEKERNEL_VAR_DIR}/runners/${TEST_ID}.sh"
@@ -149,7 +149,7 @@ else
 fi
 teardown
 
-# ── Test 12: no --no-session-persistence ──
+# ── Test 15: no --no-session-persistence ──
 setup
 schedule_generate_wrapper "$TEST_ID" "$TEST_REPO" "$TEST_PATH" "$TEST_PROMPT"
 RUNNER="${CEKERNEL_VAR_DIR}/runners/${TEST_ID}.sh"
@@ -161,7 +161,7 @@ else
 fi
 teardown
 
-# ── Test 13: resolve-api-key is referenced ──
+# ── Test 16: resolve-api-key is referenced ──
 setup
 schedule_generate_wrapper "$TEST_ID" "$TEST_REPO" "$TEST_PATH" "$TEST_PROMPT"
 RUNNER="${CEKERNEL_VAR_DIR}/runners/${TEST_ID}.sh"
@@ -169,7 +169,7 @@ CONTENT=$(cat "$RUNNER")
 assert_match "references resolve-api-key" "resolve-api-key" "$CONTENT"
 teardown
 
-# ── Test 14: registry update_status is called ──
+# ── Test 17: registry update_status is called ──
 setup
 schedule_generate_wrapper "$TEST_ID" "$TEST_REPO" "$TEST_PATH" "$TEST_PROMPT"
 RUNNER="${CEKERNEL_VAR_DIR}/runners/${TEST_ID}.sh"

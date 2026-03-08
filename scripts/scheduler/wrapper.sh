@@ -22,7 +22,8 @@ schedule_generate_wrapper() {
 
   local runner_dir="${CEKERNEL_VAR_DIR}/runners"
   local runner_file="${runner_dir}/${id}.sh"
-  local log_file="${CEKERNEL_VAR_DIR}/logs/schedule.log"
+  local syslog_file="${CEKERNEL_VAR_DIR}/logs/schedule.log"
+  local run_log="${CEKERNEL_VAR_DIR}/logs/${id}.run.log"
 
   cat > "$runner_file" <<RUNNER_EOF
 #!/usr/bin/env bash
@@ -33,7 +34,8 @@ set -euo pipefail
 ID="${id}"
 CEKERNEL_DIR="${_WRAPPER_CEKERNEL_DIR}"
 CEKERNEL_VAR_DIR="${CEKERNEL_VAR_DIR}"
-LOG_FILE="${log_file}"
+SYSLOG_FILE="${syslog_file}"
+RUN_LOG="${run_log}"
 
 export PATH="${captured_path}"
 
@@ -42,12 +44,20 @@ export ANTHROPIC_API_KEY="\${ANTHROPIC_API_KEY:-\$("\${CEKERNEL_DIR}/scripts/sch
 
 source "\${CEKERNEL_DIR}/scripts/scheduler/registry.sh"
 
+# syslog: START
+echo "\$(date '+%Y-%m-%dT%H:%M:%S%z') cekernel[\$ID]: START prompt=\"${prompt}\" repo=\"${repo}\"" >> "\$SYSLOG_FILE"
+SECONDS=0
+
 if cd "${repo}" && claude -p \\
-  "${prompt}" >> "\$LOG_FILE" 2>&1; then
+  "${prompt}" >> "\$RUN_LOG" 2>&1; then
   STATUS=0
 else
   STATUS=\$?
 fi
+
+# syslog: END
+DURATION="\${SECONDS}s"
+echo "\$(date '+%Y-%m-%dT%H:%M:%S%z') cekernel[\$ID]: END status=\$( [ "\$STATUS" -eq 0 ] && echo success || echo error ) duration=\$DURATION exit=\$STATUS" >> "\$SYSLOG_FILE"
 
 # Update registry with run status
 schedule_registry_update_status "\$ID" "\$( [ "\$STATUS" -eq 0 ] && echo success || echo error )"
