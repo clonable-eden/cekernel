@@ -21,7 +21,7 @@ mkdir -p "$CEKERNEL_IPC_DIR"
 export CEKERNEL_BACKEND=tmux
 source "${CEKERNEL_DIR}/scripts/shared/backend-adapter.sh"
 
-# ── Test 1: backend_available — tmux exists ──
+# ── Test 1: backend_available — tmux exists and server reachable ──
 tmux() { return 0; }
 export -f tmux
 if backend_available; then
@@ -140,6 +140,72 @@ rm -f "$MOCK_LOG"
 EXIT_CODE=0
 backend_kill_worker "99999" 2>/dev/null || EXIT_CODE=$?
 assert_eq "kill_worker for missing handle exits cleanly" "0" "$EXIT_CODE"
+
+# ── Test 9: Apostrophe in prompt is safely escaped ──
+MOCK_LOG=$(mktemp)
+SPLIT_CALL_COUNT=0
+export TMUX="/tmp/tmux-501/default,12345,0"
+tmux() {
+  echo "tmux $*" >> "$MOCK_LOG"
+  if [[ "$1" == "new-window" ]]; then echo "my-session:1.0"; fi
+  if [[ "$1" == "display-message" ]]; then echo "my-session"; fi
+  if [[ "$1" == "split-window" ]]; then
+    SPLIT_CALL_COUNT=$((SPLIT_CALL_COUNT + 1))
+    echo "my-session:1.$SPLIT_CALL_COUNT"
+  fi
+}
+export -f tmux
+backend_spawn_worker "410" "$WORKTREE" "Read the target repository's CLAUDE.md"
+LOGGED=$(cat "$MOCK_LOG")
+# The send-keys line for the claude command must not have an unescaped single quote
+# that would break the shell. Check that repository's is intact and properly quoted.
+if echo "$LOGGED" | grep "send-keys" | grep "claude" | grep -q "repository"; then
+  # Verify no bare single-quote breakage: the prompt should be in a form
+  # where the apostrophe doesn't prematurely close the quoting
+  CLAUDE_LINE=$(echo "$LOGGED" | grep "send-keys" | grep "claude")
+  # The claude command must use double quotes for the prompt (not single quotes)
+  # so that apostrophes don't break shell quoting.
+  # With double quotes: claude -p "...repository's..."
+  # With single quote escape: '...repository'\''s...'
+  # Either is acceptable. What's NOT acceptable: '...repository's...' (bare apostrophe in single quotes)
+  #
+  # Check: the command should NOT contain the pattern 'repository's (single-quote, text, apostrophe, text, single-quote)
+  # which indicates broken quoting.
+  if echo "$CLAUDE_LINE" | grep -q "\".*repository's.*\""; then
+    echo "  PASS: Apostrophe in prompt is safely escaped (double quotes)"
+    TESTS_PASSED=$((TESTS_PASSED + 1))
+  elif echo "$CLAUDE_LINE" | grep -q "repository'\\\\''s"; then
+    echo "  PASS: Apostrophe in prompt is safely escaped (single quote escape)"
+    TESTS_PASSED=$((TESTS_PASSED + 1))
+  else
+    echo "  FAIL: Apostrophe in prompt may break shell quoting"
+    echo "    line: $CLAUDE_LINE"
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+  fi
+else
+  echo "  FAIL: Claude command with prompt not found in tmux log"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+rm -f "$MOCK_LOG"
+
+# ── Test 10: CLAUDECODE env vars are unset in claude command ──
+MOCK_LOG=$(mktemp)
+SPLIT_CALL_COUNT=0
+tmux() {
+  echo "tmux $*" >> "$MOCK_LOG"
+  if [[ "$1" == "new-window" ]]; then echo "my-session:1.0"; fi
+  if [[ "$1" == "display-message" ]]; then echo "my-session"; fi
+  if [[ "$1" == "split-window" ]]; then
+    SPLIT_CALL_COUNT=$((SPLIT_CALL_COUNT + 1))
+    echo "my-session:1.$SPLIT_CALL_COUNT"
+  fi
+}
+export -f tmux
+backend_spawn_worker "411" "$WORKTREE" "test prompt"
+LOGGED=$(cat "$MOCK_LOG")
+CLAUDE_LINE=$(echo "$LOGGED" | grep "send-keys" | grep "claude")
+assert_match "unset CLAUDECODE in claude command" "unset CLAUDECODE" "$CLAUDE_LINE"
+rm -f "$MOCK_LOG"
 
 # ── Cleanup ──
 unset -f tmux 2>/dev/null || true
