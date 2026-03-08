@@ -194,13 +194,35 @@ The `os_backend` field identifies which backend manages each entry and tracks Ti
 
 **PATH snapshot**: The registry's `path` field captures the user's `$PATH` at registration time. Subsequent changes to the user's PATH (e.g., installing new tools, modifying shell profiles) are not reflected in existing schedules. Users must re-register (`cancel` + `register`) to update the PATH.
 
+### Logging
+
+The wrapper generates three categories of log files under `/usr/local/var/cekernel/logs/`:
+
+| File | Content | Format | Retained on cancel |
+|------|---------|--------|--------------------|
+| `schedule.log` | Lifecycle events (START/END) for all jobs | syslog-like timestamps with job ID | Yes (shared log) |
+| `<id>.run.log` | Raw `claude -p` stdout/stderr | Unstructured | **Yes** (diagnostic/audit) |
+| `<id>.stdout.log` | launchd `StandardOutPath` output | Platform artifact | No (removed on cancel) |
+| `<id>.stderr.log` | launchd `StandardErrorPath` output | Platform artifact | No (removed on cancel) |
+
+**`schedule.log`** provides operational visibility — a single file to monitor all scheduled executions:
+
+```
+2026-03-08T22:23:00+0900 cekernel[cekernel-at-da314f]: START prompt="/probe" repo="/path/to/repo"
+2026-03-08T22:24:30+0900 cekernel[cekernel-at-da314f]: END status=success duration=90s exit=0
+```
+
+**`<id>.run.log`** captures the full `claude -p` output for post-hoc diagnosis. This file is intentionally preserved after `cancel` — it serves as an audit trail and enables `--resume` for debugging failed sessions.
+
+**`<id>.stdout.log` / `<id>.stderr.log`** are launchd-specific artifacts (`StandardOutPath`/`StandardErrorPath` in the plist). These capture wrapper-level output (distinct from `claude -p` output). They are removed on `cancel` as they have no diagnostic value once the schedule entry is removed. The `crontab` and `atd` backends do not produce these files.
+
 ### Failure Handling
 
 When a scheduled run fails (non-zero exit from `claude -p` or `/dispatch`), the failure is:
 
-1. **Logged**: stdout/stderr is appended to `/usr/local/var/cekernel/logs/schedule.log` via the `>> ... 2>&1` redirect in the scheduled command. Diagnosis starts here. Session persistence is enabled (no `--no-session-persistence`), so `--resume` can be used to inspect the execution context after the fact.
+1. **Logged**: The syslog END line in `schedule.log` records `status=error` and the exit code. Full output is in `<id>.run.log`. Session persistence is enabled (no `--no-session-persistence`), so `--resume` can be used to inspect the execution context after the fact.
 2. **Recorded**: The wrapper script updates the registry entry's `last_run_status` (to `"error"`) and `last_run_at` fields after each execution. `/cron list` (or `/at list`) displays these fields, enabling at-a-glance health monitoring.
-3. **Notified (best-effort)**: The wrapper sends an OS-native desktop notification on failure — `osascript` on macOS, `notify-send` on Linux (WSL with WSLg). Notification is best-effort; the primary diagnostic sources are the log file and registry status. This follows the Rule of Silence — successful runs produce no notification.
+3. **Notified (best-effort)**: The wrapper sends an OS-native desktop notification on failure — `osascript` on macOS, `notify-send` on Linux (WSL with WSLg). Notification is best-effort; the primary diagnostic sources are `schedule.log`, `<id>.run.log`, and registry status. This follows the Rule of Silence — successful runs produce no notification.
 4. **Not retried automatically**: Tier 1 does not implement retry logic. A failed run simply waits for the next scheduled invocation. This follows the Rule of Repair ("When you must fail, fail noisily and as soon as possible") — failures are visible in the log, registry, and notification, not silently retried.
 
 ### Concurrency
