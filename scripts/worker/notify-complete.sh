@@ -14,6 +14,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../shared/session-id.sh"
 source "${SCRIPT_DIR}/../shared/worker-state.sh"
+source "${SCRIPT_DIR}/../shared/issue-lock.sh"
 
 ISSUE_NUMBER="${1:?Usage: notify-complete.sh <issue-number> <status> [detail]}"
 STATUS="${2:?Status required: merged | failed | cancelled}"
@@ -63,6 +64,12 @@ echo "$JSON" > "$FIFO"
 # ── Record lifecycle event in log (after successful FIFO write) ──
 if [[ -d "${CEKERNEL_IPC_DIR}/logs" ]]; then
   echo "[${TIMESTAMP}] ${EVENT} issue=#${ISSUE_NUMBER} status=${STATUS} detail=${DETAIL}" >> "$LOG_FILE"
+fi
+
+# ── Release issue lock ──
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"
+if [[ -n "$REPO_ROOT" ]]; then
+  issue_lock_release "$REPO_ROOT" "$ISSUE_NUMBER"
 fi
 
 echo "Notified orchestrator: issue #${ISSUE_NUMBER} ${STATUS}" >&2
