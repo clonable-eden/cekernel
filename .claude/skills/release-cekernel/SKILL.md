@@ -1,70 +1,189 @@
 ---
-description: Release a new version of the cekernel plugin
-allowed-tools: Read, Bash(git *), Bash(gh *)
+description: Analyze git log, recommend a version bump, and create a release PR with structured release notes
+argument-hint: "[version]"
+allowed-tools: Bash, Read, Edit, Write
 ---
 
 # /release-cekernel
 
-Release skill for the cekernel plugin. Analyzes git log to recommend a semver bump level, then triggers CI after user confirmation.
+Analyzes the git log since the last release tag, recommends a semantic version bump level, generates structured release notes, and creates a release PR directly.
+
+## Usage
+
+```
+/release-cekernel
+/release-cekernel 1.4.0
+```
+
+If a version is provided, skip the analysis and use it directly. Otherwise, analyze commits and recommend a version.
 
 ## Workflow
 
-### Step 1: Get Current Version
-
-Read the current version from `.claude-plugin/plugin.json`.
-
-### Step 2: Identify Latest Release Tag
+### Step 1: Determine Current Version and Last Tag
 
 ```bash
-git tag -l 'cekernel-v*' --sort=-v:refname | head -1
+PREV_TAG=$(git tag -l 'cekernel-v*' --sort=-v:refname | head -1)
+CURRENT_VERSION=$(jq -r '.version' .claude-plugin/plugin.json)
+echo "Current version: ${CURRENT_VERSION}"
+echo "Last tag: ${PREV_TAG}"
 ```
 
-If no tag exists, consider the full history.
-
-### Step 3: Get Changelog
+### Step 2: Analyze Commits Since Last Tag
 
 ```bash
-# If a tag exists
-git log <last-tag>..HEAD --oneline
-
-# If no tag exists
-git log --oneline
+git log "${PREV_TAG}..HEAD" --oneline --no-merges
 ```
 
-### Step 4: Determine Bump Level
+Classify each commit by its conventional commit prefix:
 
-Analyze changes according to semantic versioning rules to determine the bump level:
+| Prefix | Category | Bump |
+|--------|----------|------|
+| `feat:` | New Features | minor |
+| `fix:` | Bug Fixes | patch |
+| `docs:` | Documentation | patch |
+| `test:` | Tests | patch |
+| `refactor:` | Refactoring | patch |
+| Breaking changes | Breaking | major |
 
-| Bump | Condition | Example |
-|------|-----------|---------|
-| **patch** | Bug fixes, documentation updates, test additions | `fix:`, `docs:`, `test:`, `refactor:` |
-| **minor** | New scripts/skills, backward-compatible feature additions | `feat:` |
-| **major** | Breaking changes: argument changes, deprecated env vars, removed scripts | Changes that break existing callers |
+The highest-level bump wins:
+- Any breaking change → **major**
+- Any `feat:` → **minor**
+- Otherwise → **patch**
 
-Use conventional commit prefixes as guidance while also considering the actual content of each commit.
-When multiple changes are present, adopt the highest bump level.
+### Step 3: Recommend Version
 
-### Step 5: Confirm with User
+Calculate the recommended version from the current version and the determined bump level. Present to the user:
 
-Present the following information to the user:
+```
+## Release Analysis
 
-- Current version
-- Changelog (list of commits)
-- Recommended bump level and rationale
-- New version
+Last tag: cekernel-v1.3.0
+Commits since last tag: N
 
-Proceed only after user confirmation. If the user specifies a different bump level, follow their choice.
+### Changes
+- feat: 2 commits (minor bump)
+- fix: 3 commits
+- docs: 1 commit
 
-### Step 6: Trigger CI
+### Recommended bump: minor
+### Proposed version: 1.4.0
 
-```bash
-gh workflow run plugin-release.yml -f version=<new-version> -f plugin=cekernel
+Proceed? (y/n)
 ```
 
-### Step 7: Verify Results
+If the user provided a version argument, show the analysis but use the specified version instead.
 
-Check the workflow execution status and report the results to the user:
+Wait for user confirmation before proceeding.
+
+### Step 4: Generate Release Notes
+
+Generate `RELEASE_NOTES.md` following the [cekernel-v1.2.0](https://github.com/clonable-eden/cekernel/releases/tag/cekernel-v1.2.0) format.
+
+#### 4a: Gather PR list
 
 ```bash
-gh run list --workflow=plugin-release.yml --limit=1
+# Get merged PRs between last tag and HEAD
+git log "${PREV_TAG}..HEAD" --merges --oneline
+```
+
+Also use the GitHub API to get PR details:
+
+```bash
+gh pr list --state merged --base main --search "merged:>=$(git log -1 --format=%ci ${PREV_TAG} | cut -d' ' -f1)" --json number,title,author --limit 100
+```
+
+#### 4b: Build release notes
+
+Generate the following sections from the commit and PR analysis:
+
+```markdown
+## Highlights
+- Summary of the most important changes in this release (3-8 bullet points)
+- Focus on user-facing impact, not implementation details
+- Bold key terms for scannability
+
+## New Features
+- feat: commit descriptions (one bullet per feature)
+
+## Bug Fixes
+- fix: commit descriptions (one bullet per fix)
+
+## Documentation
+- docs: commit descriptions (one bullet per doc change)
+
+## What's Changed
+* PR title by @author in PR-URL (one line per merged PR)
+
+**Full Changelog**: https://github.com/clonable-eden/cekernel/compare/${PREV_TAG}...cekernel-v${VERSION}
+```
+
+Rules:
+- **Highlights** is written by Claude based on understanding of the changes. Summarize themes, not individual commits.
+- **New Features / Bug Fixes / Documentation** are derived from conventional commit prefixes. `refactor:` and `test:` commits go under a **Other Changes** section if present.
+- **What's Changed** lists all merged PRs with author attribution and links (same format as GitHub's `--generate-notes`).
+- **Full Changelog** is the compare URL between the previous tag and the new tag.
+
+#### 4c: Present for review
+
+Show the generated release notes to the user and wait for confirmation. The user may request edits before proceeding.
+
+### Step 5: Create Release Branch and PR
+
+After the user confirms both the version and the release notes:
+
+#### 5a: Create release branch
+
+```bash
+git checkout -b "release/cekernel-v${VERSION}"
+```
+
+#### 5b: Update plugin.json version
+
+Use `jq` to update the version field:
+
+```bash
+jq --arg v "${VERSION}" '.version = $v' .claude-plugin/plugin.json > tmp.json
+mv tmp.json .claude-plugin/plugin.json
+```
+
+#### 5c: Write RELEASE_NOTES.md
+
+Write the confirmed release notes to `RELEASE_NOTES.md` at the repository root.
+
+#### 5d: Commit and push
+
+```bash
+git add .claude-plugin/plugin.json RELEASE_NOTES.md
+git commit -m "release: cekernel v${VERSION}"
+git push -u origin "release/cekernel-v${VERSION}"
+```
+
+#### 5e: Create PR
+
+```bash
+gh pr create \
+  --title "release: cekernel v${VERSION}" \
+  --body "$(cat <<EOF
+Version bump for cekernel plugin.
+
+- Updates \`.claude-plugin/plugin.json\` version to \`${VERSION}\`
+- Adds \`RELEASE_NOTES.md\` for structured release notes
+- On merge, \`plugin-release-tag.yml\` will automatically create tag \`cekernel-v${VERSION}\` and GitHub Release
+
+EOF
+)"
+```
+
+### Step 6: Report Result
+
+```
+## Release PR Created
+
+- **PR**: #<number>
+- **Branch**: release/cekernel-v<VERSION>
+- **Version**: <VERSION>
+
+### Next Steps
+1. Review the PR and merge it
+2. On merge, `plugin-release-tag.yml` will automatically create tag `cekernel-v<VERSION>` and GitHub Release with the contents of RELEASE_NOTES.md
 ```
