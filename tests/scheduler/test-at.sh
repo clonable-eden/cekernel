@@ -182,4 +182,18 @@ else
 fi
 teardown
 
+# ── Test 14: cancel removes launchd stdout/stderr logs ──
+setup
+bash "$AT_SH" register --label ready --schedule "2026-03-15T09:00" --repo "$MOCK_REPO" >/dev/null 2>&1
+ENTRY_ID=$(jq -r '.[0].id' "${CEKERNEL_VAR_DIR}/schedules.json")
+# Simulate launchd log files
+touch "${CEKERNEL_VAR_DIR}/logs/${ENTRY_ID}.stdout.log"
+touch "${CEKERNEL_VAR_DIR}/logs/${ENTRY_ID}.stderr.log"
+touch "${CEKERNEL_VAR_DIR}/logs/${ENTRY_ID}.run.log"
+bash "$AT_SH" cancel "$ENTRY_ID" >/dev/null 2>&1
+assert_not_exists "stdout.log removed after cancel" "${CEKERNEL_VAR_DIR}/logs/${ENTRY_ID}.stdout.log"
+assert_not_exists "stderr.log removed after cancel" "${CEKERNEL_VAR_DIR}/logs/${ENTRY_ID}.stderr.log"
+assert_file_exists "run.log preserved after cancel" "${CEKERNEL_VAR_DIR}/logs/${ENTRY_ID}.run.log"
+teardown
+
 report_results
