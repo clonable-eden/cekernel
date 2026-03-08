@@ -23,6 +23,7 @@ source "${SCRIPT_DIR}/../shared/worker-state.sh"
 source "${SCRIPT_DIR}/../shared/worker-priority.sh"
 source "${SCRIPT_DIR}/../shared/task-file.sh"
 source "${SCRIPT_DIR}/../shared/checkpoint-file.sh"
+source "${SCRIPT_DIR}/../shared/issue-lock.sh"
 
 # ── Flag parsing ──
 RESUME=0
@@ -50,6 +51,12 @@ mkdir -p "$CEKERNEL_IPC_DIR"
 ACTIVE=$(active_worker_count)
 if [[ "$ACTIVE" -ge "$MAX_WORKERS" ]]; then
   echo "Error: max workers ($MAX_WORKERS) reached (active: $ACTIVE). Waiting..." >&2
+  exit 2
+fi
+
+# ── Issue Lock (duplicate Worker prevention) ──
+if ! issue_lock_acquire "$REPO_ROOT" "$ISSUE_NUMBER"; then
+  echo "Error: issue #${ISSUE_NUMBER} is already being processed by another Worker." >&2
   exit 2
 fi
 
@@ -99,6 +106,10 @@ rollback() {
   rm -f "${FIFO:-}"
   rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.state"
   rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.priority"
+  # Release issue lock
+  if [[ -n "${REPO_ROOT:-}" ]]; then
+    issue_lock_release "$REPO_ROOT" "$ISSUE_NUMBER"
+  fi
 }
 trap rollback ERR
 
