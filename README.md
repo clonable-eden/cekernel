@@ -52,6 +52,7 @@ Orchestrator (agent1)             Worker (agent2, 3, 4, ...)
 | `ps aux` | `worker-status.sh` |
 | process scheduler | Orchestrator queuing logic (priority queue + preemption) |
 | semaphore | Concurrency guard via FIFO count |
+| `flock` / mutex | `issue-lock.sh` (repo × issue lockfile) |
 | `cron` / `systemd timer` | `/cron` skill + OS-native schedulers (launchd/crontab) |
 | `at` (one-shot job) | `/at` skill + OS-native schedulers (launchd/atd) |
 | `/var/` | `/usr/local/var/cekernel/` (runtime state) |
@@ -123,6 +124,7 @@ scripts/
     checkpoint-file.sh     # Checkpoint file helpers for suspend/resume
     worker-priority.sh     # Worker priority (nice value) management
     worker-state.sh        # Worker process state management
+    issue-lock.sh          # Repo × issue lockfile (duplicate Worker prevention)
     backends/
       headless.sh          # Headless backend implementation
       tmux.sh              # tmux backend implementation
@@ -181,7 +183,7 @@ cekernel is primarily designed for **monorepo** structures. While it may work wi
 |---------|--------|
 | WezTerm | Stable |
 | Headless | Stable |
-| tmux | Experimental — created but not actively tested. No guarantee of correct operation. |
+| tmux | Stable |
 
 **Scheduler backend support:**
 
@@ -227,7 +229,7 @@ sudo mkdir -p /usr/local/var/cekernel && sudo chown $(whoami):admin /usr/local/v
 make install
 ```
 
-This creates `locks/`, `logs/`, `runners/`, and `schedules.json` under `/usr/local/var/cekernel/`. Required for `/cron` and `/at` skills.
+This creates `ipc/`, `locks/`, `logs/`, `runners/`, and `schedules.json` under `/usr/local/var/cekernel/`. Required for `/cron`, `/at` skills and IPC.
 
 ### Update
 

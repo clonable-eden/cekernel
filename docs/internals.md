@@ -149,6 +149,7 @@ Scheduled execution infrastructure for `/cron` and `/at` skills. Runtime state i
 ```
 /usr/local/var/cekernel/
 ├── schedules.json          # Schedule registry (CRUD via registry.sh)
+├── ipc/                    # Session-scoped IPC directories ({SESSION_ID}/)
 ├── locks/                  # Issue-level locks (repo-hash/issue-number.lock)
 ├── logs/
 │   └── schedule.log        # Scheduled execution output
