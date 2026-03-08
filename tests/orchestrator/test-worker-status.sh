@@ -47,14 +47,14 @@ assert_match "Output contains uptime field" '"uptime":' "$OUTPUT"
 # ── Test 7: Exit 1 when session directory does not exist ──
 rm -rf "$CEKERNEL_IPC_DIR"
 export CEKERNEL_SESSION_ID="test-wstatus-nonexistent"
-export CEKERNEL_IPC_DIR="/tmp/cekernel-ipc/${CEKERNEL_SESSION_ID}"
+export CEKERNEL_IPC_DIR="${CEKERNEL_VAR_DIR:-/usr/local/var/cekernel}/ipc/${CEKERNEL_SESSION_ID}"
 EXIT_CODE=0
 bash "$STATUS_SCRIPT" 2>/dev/null || EXIT_CODE=$?
 assert_eq "Missing session dir: exit 1" "1" "$EXIT_CODE"
 
 # ── Cleanup ──
 export CEKERNEL_SESSION_ID="test-wstatus-00000001"
-export CEKERNEL_IPC_DIR="/tmp/cekernel-ipc/${CEKERNEL_SESSION_ID}"
+export CEKERNEL_IPC_DIR="${CEKERNEL_VAR_DIR:-/usr/local/var/cekernel}/ipc/${CEKERNEL_SESSION_ID}"
 rm -rf "$CEKERNEL_IPC_DIR"
 
 report_results

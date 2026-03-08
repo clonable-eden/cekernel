@@ -28,7 +28,7 @@ source "${SCRIPT_DIR}/../shared/worker-state.sh"
 source "${SCRIPT_DIR}/../shared/worker-priority.sh"
 source "${SCRIPT_DIR}/../shared/checkpoint-file.sh"
 
-IPC_BASE="${CEKERNEL_IPC_BASE:-/tmp/cekernel-ipc}"
+IPC_BASE="${CEKERNEL_IPC_BASE:-${CEKERNEL_VAR_DIR:-/usr/local/var/cekernel}/ipc}"
 
 # ── Usage ──
 usage() {

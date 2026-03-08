@@ -57,7 +57,8 @@ wezterm.on('user-var-changed', function(window, pane, name, value)
     size = 0.4,
     cwd = worktree,
   }
-  local ipc_dir = os.getenv('CEKERNEL_IPC_DIR') or ('/tmp/cekernel-ipc/' .. session_id)
+  local var_dir = os.getenv('CEKERNEL_VAR_DIR') or '/usr/local/var/cekernel'
+  local ipc_dir = os.getenv('CEKERNEL_IPC_DIR') or (var_dir .. '/ipc/' .. session_id)
   right_pane:send_text(
     "watch -n 5 'cat " .. ipc_dir .. "/worker-" .. issue_number .. ".state 2>/dev/null"
     .. ' && echo "---"'
