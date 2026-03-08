@@ -63,7 +63,7 @@ Schedule metadata is persisted in `/usr/local/var/cekernel/schedules.json`:
     "schedule": "0 9 * * 1-5",
     "label": "ready",
     "prompt": "/dispatch --env headless --label ready",  // prompt string passed to claude -p
-    "repo": "/Users/ryosuke/git/project-alpha",
+    "repo": "/path/to/project-alpha",
     "path": "/opt/homebrew/bin:/usr/bin:/bin:...",
     "os_backend": "launchd",  // "launchd" (macOS) | "crontab" (Linux/WSL) | "atd" (Linux/WSL, /at only)
     "os_ref": "cekernel-cron-a1b2c3",
