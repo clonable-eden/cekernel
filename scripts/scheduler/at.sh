@@ -177,8 +177,11 @@ cmd_cancel() {
   # 2. Remove from OS scheduler
   at_backend_cancel "$os_ref"
 
-  # 3. Remove runner script
+  # 3. Remove runner script and launchd log artifacts
   rm -f "${CEKERNEL_VAR_DIR}/runners/${id}.sh"
+  rm -f "${CEKERNEL_VAR_DIR}/logs/${id}.stdout.log"
+  rm -f "${CEKERNEL_VAR_DIR}/logs/${id}.stderr.log"
+  # Note: ${id}.run.log is intentionally preserved for diagnostics
 
   # 4. Remove from registry
   schedule_registry_remove "$id"

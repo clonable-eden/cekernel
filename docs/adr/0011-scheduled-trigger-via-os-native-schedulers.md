@@ -63,7 +63,7 @@ Schedule metadata is persisted in `/usr/local/var/cekernel/schedules.json`:
     "schedule": "0 9 * * 1-5",
     "label": "ready",
     "prompt": "/dispatch --env headless --label ready",  // prompt string passed to claude -p
-    "repo": "/Users/ryosuke/git/project-alpha",
+    "repo": "/path/to/project-alpha",
     "path": "/opt/homebrew/bin:/usr/bin:/bin:...",
     "os_backend": "launchd",  // "launchd" (macOS) | "crontab" (Linux/WSL) | "atd" (Linux/WSL, /at only)
     "os_ref": "cekernel-cron-a1b2c3",
@@ -93,21 +93,32 @@ Concurrency control is **not** handled at the wrapper level. Instead, it is dele
 set -euo pipefail
 
 ID="cekernel-cron-a1b2c3"
-LOG_FILE="/usr/local/var/cekernel/logs/schedule.log"
+SYSLOG_FILE="/usr/local/var/cekernel/logs/schedule.log"
+RUN_LOG="/usr/local/var/cekernel/logs/cekernel-cron-a1b2c3.run.log"
 
 export PATH=<captured-user-path>
 # Resolve API key dynamically (env var > OS keychain fallback)
 export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-$(resolve-api-key 2>/dev/null)}"
 
+source "<cekernel-dir>/scripts/scheduler/registry.sh"
+
+# syslog: START
+echo "$(date '+%Y-%m-%dT%H:%M:%S%z') cekernel[$ID]: START prompt=\"/dispatch ...\" repo=\"/path/to/repo\"" >> "$SYSLOG_FILE"
+SECONDS=0
+
 if cd /path/to/repo && claude -p \
-  "/dispatch --env headless --label ready" >> "$LOG_FILE" 2>&1; then
+  "/dispatch --env headless --label ready" >> "$RUN_LOG" 2>&1; then
   STATUS=0
 else
   STATUS=$?
 fi
 
+# syslog: END
+DURATION="${SECONDS}s"
+echo "$(date '+%Y-%m-%dT%H:%M:%S%z') cekernel[$ID]: END status=$([ "$STATUS" -eq 0 ] && echo success || echo error) duration=$DURATION exit=$STATUS" >> "$SYSLOG_FILE"
+
 # Update registry with run status
-# (implementation: jq update on /usr/local/var/cekernel/schedules.json)
+schedule_registry_update_status "$ID" "$([ "$STATUS" -eq 0 ] && echo success || echo error)"
 
 # Notify on failure (best-effort, OS-native)
 if [ "$STATUS" -ne 0 ]; then
@@ -140,7 +151,7 @@ macOS uses launchd from Tier 1 because cron jobs are silently skipped during sle
 
 | Platform | Tier 1 (MVP) | Tier 2 |
 |----------|-------------|--------|
-| macOS | launchd (`RunAtLoad` + dynamic plist) | — |
+| macOS | launchd (`StartCalendarInterval` + dynamic plist + bootout cleanup) | — |
 | Linux | `at` / `atd` | systemd-run --on-calendar |
 | Windows (WSL) | `at` / `atd` | schtasks (native) |
 
@@ -194,13 +205,35 @@ The `os_backend` field identifies which backend manages each entry and tracks Ti
 
 **PATH snapshot**: The registry's `path` field captures the user's `$PATH` at registration time. Subsequent changes to the user's PATH (e.g., installing new tools, modifying shell profiles) are not reflected in existing schedules. Users must re-register (`cancel` + `register`) to update the PATH.
 
+### Logging
+
+The wrapper generates three categories of log files under `/usr/local/var/cekernel/logs/`:
+
+| File | Content | Format | Retained on cancel |
+|------|---------|--------|--------------------|
+| `schedule.log` | Lifecycle events (START/END) for all jobs | syslog-like timestamps with job ID | Yes (shared log) |
+| `<id>.run.log` | Raw `claude -p` stdout/stderr | Unstructured | **Yes** (diagnostic/audit) |
+| `<id>.stdout.log` | launchd `StandardOutPath` output | Platform artifact | No (removed on cancel) |
+| `<id>.stderr.log` | launchd `StandardErrorPath` output | Platform artifact | No (removed on cancel) |
+
+**`schedule.log`** provides operational visibility — a single file to monitor all scheduled executions:
+
+```
+2026-03-08T22:23:00+0900 cekernel[cekernel-at-da314f]: START prompt="/probe" repo="/path/to/repo"
+2026-03-08T22:24:30+0900 cekernel[cekernel-at-da314f]: END status=success duration=90s exit=0
+```
+
+**`<id>.run.log`** captures the full `claude -p` output for post-hoc diagnosis. This file is intentionally preserved after `cancel` — it serves as an audit trail and enables `--resume` for debugging failed sessions.
+
+**`<id>.stdout.log` / `<id>.stderr.log`** are launchd-specific artifacts (`StandardOutPath`/`StandardErrorPath` in the plist). These capture wrapper-level output (distinct from `claude -p` output). They are removed on `cancel` as they have no diagnostic value once the schedule entry is removed. The `crontab` and `atd` backends do not produce these files.
+
 ### Failure Handling
 
 When a scheduled run fails (non-zero exit from `claude -p` or `/dispatch`), the failure is:
 
-1. **Logged**: stdout/stderr is appended to `/usr/local/var/cekernel/logs/schedule.log` via the `>> ... 2>&1` redirect in the scheduled command. Diagnosis starts here. Session persistence is enabled (no `--no-session-persistence`), so `--resume` can be used to inspect the execution context after the fact.
+1. **Logged**: The syslog END line in `schedule.log` records `status=error` and the exit code. Full output is in `<id>.run.log`. Session persistence is enabled (no `--no-session-persistence`), so `--resume` can be used to inspect the execution context after the fact.
 2. **Recorded**: The wrapper script updates the registry entry's `last_run_status` (to `"error"`) and `last_run_at` fields after each execution. `/cron list` (or `/at list`) displays these fields, enabling at-a-glance health monitoring.
-3. **Notified (best-effort)**: The wrapper sends an OS-native desktop notification on failure — `osascript` on macOS, `notify-send` on Linux (WSL with WSLg). Notification is best-effort; the primary diagnostic sources are the log file and registry status. This follows the Rule of Silence — successful runs produce no notification.
+3. **Notified (best-effort)**: The wrapper sends an OS-native desktop notification on failure — `osascript` on macOS, `notify-send` on Linux (WSL with WSLg). Notification is best-effort; the primary diagnostic sources are `schedule.log`, `<id>.run.log`, and registry status. This follows the Rule of Silence — successful runs produce no notification.
 4. **Not retried automatically**: Tier 1 does not implement retry logic. A failed run simply waits for the next scheduled invocation. This follows the Rule of Repair ("When you must fail, fail noisily and as soon as possible") — failures are visible in the log, registry, and notification, not silently retried.
 
 ### Concurrency
@@ -252,6 +285,7 @@ Rejected: cron jobs are silently skipped during macOS sleep — a frequent occur
 - Linux/WSL crontab still lacks missed-run catch-up (mitigated in Tier 2 with systemd)
 - `ANTHROPIC_API_KEY` must be available in the non-interactive environment (security consideration)
 - `path` is a registration-time snapshot; PATH changes require re-registration
+- For recurring cron entries, `<id>.run.log` grows indefinitely across runs (appended on each execution). Log rotation is not implemented in Tier 1
 
 ### Trade-offs
 
