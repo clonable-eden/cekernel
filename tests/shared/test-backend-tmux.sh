@@ -21,7 +21,7 @@ mkdir -p "$CEKERNEL_IPC_DIR"
 export CEKERNEL_BACKEND=tmux
 source "${CEKERNEL_DIR}/scripts/shared/backend-adapter.sh"
 
-# ── Test 1: backend_available — tmux exists ──
+# ── Test 1: backend_available — tmux exists and server reachable ──
 tmux() { return 0; }
 export -f tmux
 if backend_available; then
