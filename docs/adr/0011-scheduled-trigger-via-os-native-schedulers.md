@@ -93,21 +93,32 @@ Concurrency control is **not** handled at the wrapper level. Instead, it is dele
 set -euo pipefail
 
 ID="cekernel-cron-a1b2c3"
-LOG_FILE="/usr/local/var/cekernel/logs/schedule.log"
+SYSLOG_FILE="/usr/local/var/cekernel/logs/schedule.log"
+RUN_LOG="/usr/local/var/cekernel/logs/cekernel-cron-a1b2c3.run.log"
 
 export PATH=<captured-user-path>
 # Resolve API key dynamically (env var > OS keychain fallback)
 export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-$(resolve-api-key 2>/dev/null)}"
 
+source "<cekernel-dir>/scripts/scheduler/registry.sh"
+
+# syslog: START
+echo "$(date '+%Y-%m-%dT%H:%M:%S%z') cekernel[$ID]: START prompt=\"/dispatch ...\" repo=\"/path/to/repo\"" >> "$SYSLOG_FILE"
+SECONDS=0
+
 if cd /path/to/repo && claude -p \
-  "/dispatch --env headless --label ready" >> "$LOG_FILE" 2>&1; then
+  "/dispatch --env headless --label ready" >> "$RUN_LOG" 2>&1; then
   STATUS=0
 else
   STATUS=$?
 fi
 
+# syslog: END
+DURATION="${SECONDS}s"
+echo "$(date '+%Y-%m-%dT%H:%M:%S%z') cekernel[$ID]: END status=$([ "$STATUS" -eq 0 ] && echo success || echo error) duration=$DURATION exit=$STATUS" >> "$SYSLOG_FILE"
+
 # Update registry with run status
-# (implementation: jq update on /usr/local/var/cekernel/schedules.json)
+schedule_registry_update_status "$ID" "$([ "$STATUS" -eq 0 ] && echo success || echo error)"
 
 # Notify on failure (best-effort, OS-native)
 if [ "$STATUS" -ne 0 ]; then
@@ -140,7 +151,7 @@ macOS uses launchd from Tier 1 because cron jobs are silently skipped during sle
 
 | Platform | Tier 1 (MVP) | Tier 2 |
 |----------|-------------|--------|
-| macOS | launchd (`RunAtLoad` + dynamic plist) | — |
+| macOS | launchd (`StartCalendarInterval` + dynamic plist + bootout cleanup) | — |
 | Linux | `at` / `atd` | systemd-run --on-calendar |
 | Windows (WSL) | `at` / `atd` | schtasks (native) |
 
@@ -274,6 +285,7 @@ Rejected: cron jobs are silently skipped during macOS sleep — a frequent occur
 - Linux/WSL crontab still lacks missed-run catch-up (mitigated in Tier 2 with systemd)
 - `ANTHROPIC_API_KEY` must be available in the non-interactive environment (security consideration)
 - `path` is a registration-time snapshot; PATH changes require re-registration
+- For recurring cron entries, `<id>.run.log` grows indefinitely across runs (appended on each execution). Log rotation is not implemented in Tier 1
 
 ### Trade-offs
 
