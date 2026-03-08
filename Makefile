@@ -9,6 +9,7 @@ install:
 		exit 1; \
 	fi
 	@rm -f $(CEKERNEL_VAR_DIR)/.write-test
+	mkdir -p $(CEKERNEL_VAR_DIR)/ipc
 	mkdir -p $(CEKERNEL_VAR_DIR)/locks
 	mkdir -p $(CEKERNEL_VAR_DIR)/logs
 	mkdir -p $(CEKERNEL_VAR_DIR)/runners

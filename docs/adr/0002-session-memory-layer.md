@@ -189,3 +189,11 @@ SQLite introduces schema management, migration concerns, a new dependency assump
 **Freshness vs. Efficiency**: The task file trades real-time freshness for efficiency. A Worker spawned at 9:00 sees the issue as of 9:00, even if a human edits it at 9:05. This is actually desirable — implementing against a moving target is worse than implementing against a stable snapshot. If the issue changes materially, the correct action is to abort and re-spawn, not to silently pick up changes mid-implementation.
 
 **Simplicity vs. Capability**: Phase 1 deliberately omits cross-Worker communication. Two Workers cannot share discoveries through the task file alone. This capability is deferred to Phase 2 (SQLite), following the Rule of Optimization: get the simple version working first, then add sophistication when the need is demonstrated.
+
+## Amendment: IPC directory migration (#220)
+
+The IPC base directory has been migrated from `/tmp/cekernel-ipc/` to `/usr/local/var/cekernel/ipc/` as part of the runtime state unification (#220, per ADR-0011).
+
+All IPC paths referenced in this ADR — including the Phase 2 example — now reside under `/usr/local/var/cekernel/ipc/{SESSION_ID}/` instead of `/tmp/cekernel-ipc/{SESSION_ID}/`. The session-scoped structure within the directory (FIFOs, logs, state files) is unchanged. Only the parent path has moved.
+
+This migration consolidates all cekernel runtime state (IPC, locks, logs, runners, schedules) under a single namespace, consistent with ADR-0011's design.

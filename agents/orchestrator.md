@@ -302,8 +302,8 @@ Use `worker-status.sh` to check active Workers in the session.
 ```bash
 export CEKERNEL_SESSION_ID=<ID> && worker-status.sh
 # Example output (JSON Lines):
-# {"issue":4,"worktree":"/path/.worktrees/issue/4-...","fifo":"/tmp/cekernel-ipc/.../worker-4","uptime":"12m"}
-# {"issue":5,"worktree":"/path/.worktrees/issue/5-...","fifo":"/tmp/cekernel-ipc/.../worker-5","uptime":"8m"}
+# {"issue":4,"worktree":"/path/.worktrees/issue/4-...","fifo":"/usr/local/var/cekernel/ipc/.../worker-4","uptime":"12m"}
+# {"issue":5,"worktree":"/path/.worktrees/issue/5-...","fifo":"/usr/local/var/cekernel/ipc/.../worker-5","uptime":"8m"}
 ```
 
 During background monitoring (while `watch-worker.sh` runs via `run_in_background`), periodically call `worker-status.sh` to report progress to the user. Output the status and any relevant observations about Worker progress.

@@ -23,7 +23,7 @@ Auto-generated or derived. Not intended for user configuration.
 | Variable | Default | Used by | Purpose |
 |----------|---------|---------|---------|
 | `CEKERNEL_SESSION_ID` | Auto-generated (`{repo}-{hex8}`) | `session-id.sh` -> all scripts | Session namespace for IPC |
-| `CEKERNEL_IPC_DIR` | `/tmp/cekernel-ipc/${SESSION_ID}` | `session-id.sh` -> all scripts | IPC directory path |
+| `CEKERNEL_IPC_DIR` | `/usr/local/var/cekernel/ipc/${SESSION_ID}` | `session-id.sh` -> all scripts | IPC directory path |
 | `CEKERNEL_ACTIVE_BACKEND` | Derived from `CEKERNEL_BACKEND` | `backend-adapter.sh` (internal) | Resolved backend name |
 
 ## Meta Variable

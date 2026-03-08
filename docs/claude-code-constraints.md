@@ -146,7 +146,7 @@ in-process state. Each session is fully independent. Coordination must
 occur through the filesystem or external services.
 
 **Implications for cekernel**:
-- The session IPC directory (`/tmp/cekernel-ipc/{SESSION_ID}`) is the
+- The session IPC directory (`/usr/local/var/cekernel/ipc/{SESSION_ID}`) is the
   correct coordination point
 - Workers in separate terminal panes correctly communicate via files and FIFOs
 - There is no "shared memory" shortcut between agents
