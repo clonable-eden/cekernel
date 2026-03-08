@@ -7,6 +7,10 @@ TOTAL_PASS=0
 TOTAL_FAIL=0
 FAILED_FILES=()
 
+# Use a temporary directory for runtime state so tests don't depend on system paths
+export CEKERNEL_VAR_DIR="${CEKERNEL_VAR_DIR:-$(mktemp -d)}"
+_CEKERNEL_VAR_DIR_CREATED=1
+
 echo "=== cekernel test runner ==="
 echo ""
 
@@ -33,10 +37,10 @@ for category in shared orchestrator worker scheduler; do
   done
 done
 
-# Cleanup test IPC remnants
-# Individual tests use trap/cleanup but some leave directories behind.
-# Remove all test-* session directories to prevent orchctrl ls pollution.
-rm -rf "${CEKERNEL_VAR_DIR:-/usr/local/var/cekernel}/ipc/test-"*
+# Cleanup test runtime state directory
+if [[ "${_CEKERNEL_VAR_DIR_CREATED:-}" == "1" ]]; then
+  rm -rf "$CEKERNEL_VAR_DIR"
+fi
 
 echo "==========================="
 if [[ ${#FAILED_FILES[@]} -eq 0 ]]; then
