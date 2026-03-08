@@ -183,6 +183,14 @@ cekernel is primarily designed for **monorepo** structures. While it may work wi
 | Headless | Stable |
 | tmux | Experimental — created but not actively tested. No guarantee of correct operation. |
 
+**Scheduler backend support:**
+
+| Backend | Platform | Status |
+|---------|----------|--------|
+| launchd | macOS | Verified — `/cron` and `/at` tested on macOS with real launchd execution |
+| crontab | Linux/WSL | Untested — unit tests pass, but no live execution verification yet |
+| atd | Linux/WSL | Untested — unit tests pass, but no live execution verification yet |
+
 **Cross-repository issues:** If you manage issues in a separate meta-repository, pass the full path or URL to `/orchestrate`:
 
 ```bash

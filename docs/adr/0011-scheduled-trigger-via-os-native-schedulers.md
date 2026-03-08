@@ -62,6 +62,7 @@ Schedule metadata is persisted in `/usr/local/var/cekernel/schedules.json`:
     "type": "cron",
     "schedule": "0 9 * * 1-5",
     "label": "ready",
+    "prompt": "/dispatch --env headless --label ready",  // prompt string passed to claude -p
     "repo": "/Users/ryosuke/git/project-alpha",
     "path": "/opt/homebrew/bin:/usr/bin:/bin:...",
     "os_backend": "launchd",  // "launchd" (macOS) | "crontab" (Linux/WSL) | "atd" (Linux/WSL, /at only)
@@ -76,6 +77,7 @@ Schedule metadata is persisted in `/usr/local/var/cekernel/schedules.json`:
 - `register` writes to both the registry and the OS scheduler
 - `list` reads the registry file and verifies each entry against the OS scheduler. Entries whose `os_ref` is not found in the OS scheduler are flagged as `drifted` (e.g., removed externally via `crontab -e`). This prevents the registry from silently diverging from the actual scheduled state.
 - `cancel` uses `os_ref` to remove from the OS scheduler, then removes from the registry
+- `prompt` stores the prompt string passed to `claude -p`. When `--label` is used, it is auto-generated as `/dispatch --env headless --label <label>`. When `--prompt` is used, the value is stored directly. `--prompt` takes precedence over `--label`
 - `path` captures the user's `$PATH` at registration time (snapshot — see Platform Constraints)
 - For `at` (one-shot) entries: after execution, the entry remains in the registry with `last_run_status` updated. This preserves execution history for diagnostics. Users can clean up completed entries via `/at cancel [id]`
 
