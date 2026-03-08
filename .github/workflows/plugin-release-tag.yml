@@ -38,15 +38,55 @@ jobs:
         run: |
           TAG="${{ steps.extract.outputs.tag }}"
           PLUGIN="${{ steps.extract.outputs.plugin }}"
-          PREV_TAG=$(git tag -l "${PLUGIN}-v*" --sort=-v:refname | head -1)
 
-          if [ -n "${PREV_TAG}" ]; then
+          if [ -f RELEASE_NOTES.md ]; then
+            # Extract section for this version (from "# <TAG>" to next "---" or EOF)
+            awk -v tag="# ${TAG}" \
+              '$0==tag{f=1;next} f&&/^---$/{exit} f&&s==0&&/^$/{next} f{s=1;print}' \
+              RELEASE_NOTES.md > /tmp/release-body.md
             gh release create "${TAG}" \
               --title "${TAG}" \
-              --generate-notes \
-              --notes-start-tag "${PREV_TAG}"
+              --notes-file /tmp/release-body.md
           else
-            gh release create "${TAG}" \
-              --title "${TAG}" \
-              --generate-notes
+            PREV_TAG=$(git tag -l "${PLUGIN}-v*" --sort=-v:refname | head -1)
+            if [ -n "${PREV_TAG}" ]; then
+              gh release create "${TAG}" \
+                --title "${TAG}" \
+                --generate-notes \
+                --notes-start-tag "${PREV_TAG}"
+            else
+              gh release create "${TAG}" \
+                --title "${TAG}" \
+                --generate-notes
+            fi
           fi
+
+      - name: Update marketplace
+        env:
+          GH_TOKEN: ${{ secrets.MARKETPLACE_PAT }}
+        run: |
+          TAG="${{ steps.extract.outputs.tag }}"
+          PLUGIN="${{ steps.extract.outputs.plugin }}"
+
+          # Skip if MARKETPLACE_PAT is not configured
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "MARKETPLACE_PAT not configured, skipping marketplace update"
+            exit 0
+          fi
+
+          gh repo clone clonable-eden/plugins /tmp/plugins
+          cd /tmp/plugins
+
+          jq --arg ref "${TAG}" \
+            '(.plugins[] | select(.name == "'"${PLUGIN}"'") | .source).ref = $ref' \
+            .claude-plugin/marketplace.json > tmp.json
+          mv tmp.json .claude-plugin/marketplace.json
+
+          BRANCH="chore/${TAG}"
+          git checkout -b "${BRANCH}"
+          git add .claude-plugin/marketplace.json
+          git commit -m "chore: update ${PLUGIN} to ${TAG}"
+          git push -u origin "${BRANCH}"
+          gh pr create \
+            --title "chore: update ${PLUGIN} to ${TAG}" \
+            --body "Automated update from ${PLUGIN} release."
