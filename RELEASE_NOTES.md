@@ -1,41 +1,41 @@
 # cekernel-v1.4.0
 
 ## Highlights
-- **スケジューラ基盤**: `/cron` (定期実行) と `/at` (ワンショット実行) スキルを追加。OS ネイティブスケジューラ (macOS launchd / Linux crontab・atd) を利用した定時実行が可能に
-- **ランタイム統合**: IPC ディレクトリを `/usr/local/var/cekernel/ipc/` に統合。セッション管理とスケジューラの状態を `CEKERNEL_VAR_DIR` 配下に一元化
-- **Issue ロック**: repo × issue 単位の `mkdir` ベースロックファイルにより、同一 issue への重複 Worker 起動を防止
-- **tmux バックエンド安定化**: アポストロフィを含むプロンプトのクォート修正、環境変数クリーンアップ、サーバー到達性チェックを追加。ステータスを Stable に昇格
-- **リリース自動化**: `/release-cekernel` スキルに CI ワークフロー統合。マージ時にタグ・GitHub Release・マーケットプレイス更新が自動実行
-- **MIT ライセンス追加**
+- **Scheduler infrastructure**: Added `/cron` (recurring) and `/at` (one-shot) skills powered by OS-native schedulers (macOS launchd / Linux crontab & atd)
+- **Runtime unification**: Consolidated IPC directory under `/usr/local/var/cekernel/ipc/`, unifying session management and scheduler state under `CEKERNEL_VAR_DIR`
+- **Issue lock**: `mkdir`-based repo × issue lockfile prevents duplicate Worker spawning for the same issue
+- **tmux backend stabilization**: Fixed apostrophe quoting in prompts, added env var cleanup and server reachability check. Status promoted to Stable
+- **Release automation**: Integrated CI workflow into `/release-cekernel` skill — tag, GitHub Release, and marketplace update run automatically on merge
+- **MIT License added**
 
 ## New Features
-- `/cron` スキル — 定期スケジュール管理 (launchd/crontab)
-- `/at` スキル — ワンショットスケジュール管理 (launchd/atd)
-- スケジューラ基盤スクリプト群: registry.sh, wrapper.sh, resolve-api-key.sh, preflight.sh
-- cron/at バックエンドアダプタ (launchd, crontab, atd)
-- `issue-lock.sh` — repo × issue 単位のロックファイル
-- spawn-worker.sh / notify-complete.sh へのロック統合
-- triage プロトコルにロックチェック追加
-- `--prompt` オプションを cron register に追加
-- syslog フォーマット + per-job run log (wrapper.sh)
-- cancel 時の launchd ログ成果物クリーンアップ
-- `/release-cekernel` に CI ワークフロー統合 + マーケットプレイス自動更新
-- `make install` によるランタイムディレクトリセットアップ
+- `/cron` skill — recurring schedule management (launchd/crontab)
+- `/at` skill — one-shot schedule management (launchd/atd)
+- Scheduler infrastructure scripts: registry.sh, wrapper.sh, resolve-api-key.sh, preflight.sh
+- cron/at backend adapters (launchd, crontab, atd)
+- `issue-lock.sh` — `mkdir`-based repo × issue lockfile
+- Issue lock integration in spawn-worker.sh and notify-complete.sh
+- Lock check added to triage protocol
+- `--prompt` option for cron register
+- syslog format + per-job run log (wrapper.sh)
+- Launchd log artifact cleanup on cancel
+- CI workflow integration + marketplace auto-update in `/release-cekernel`
+- `make install` for runtime directory setup
 
 ## Bug Fixes
-- tmux backend: アポストロフィを含むプロンプトのシェルクォート修正 (#237)
-- tmux backend: 子 `claude -p` 起動時の CLAUDECODE 環境変数 unset (#237)
-- tmux backend: `backend_available()` にサーバー到達性チェック追加 (#237)
-- テスト基盤: `CEKERNEL_VAR_DIR` を一時ディレクトリに変更し CI 環境での権限エラーを解消
-- preflight: `resolve-api-key.sh` を使用した API キー検証に修正
-- Keychain サービス名を "Claude Code-credentials" に修正
-- registry: 重複 ID の登録を拒否
+- tmux backend: fix shell quoting for prompts containing apostrophes (#237)
+- tmux backend: unset CLAUDECODE env vars when spawning child `claude -p` (#237)
+- tmux backend: add server reachability check to `backend_available()` (#237)
+- Test infrastructure: use temp directory for `CEKERNEL_VAR_DIR` to fix CI permission errors
+- preflight: use `resolve-api-key.sh` for API key validation
+- Fix Keychain service name to "Claude Code-credentials"
+- Registry: reject duplicate ID registration
 
 ## Documentation
-- ADR-0011: スケジューラ設計 — launchd 採用、ロック粒度変更、ログ設計、`/at` バックエンド
-- README: prerequisites、first steps、スケジューラバックエンド状態表、構造ツリー更新
-- internals.md: スケジューラランタイム、Issue ロック、環境変数クリーンアップ
-- 環境変数カタログに `CEKERNEL_VAR_DIR` 追加
+- ADR-0011: scheduler design — launchd adoption, lock granularity, log design, `/at` backend
+- README: prerequisites, first steps, scheduler backend status table, structure tree update
+- internals.md: scheduler runtime, issue lock, env var cleanup
+- Added `CEKERNEL_VAR_DIR` to environment variable catalog
 
 ## What's Changed
 * docs: add prerequisites, notes, and first steps to README by @clonable-eden in #217
