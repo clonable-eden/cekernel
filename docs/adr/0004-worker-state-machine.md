@@ -54,7 +54,7 @@ The `CI_WAITING → CI_FIXING → CI_WAITING` cycle corresponds to the Worker pr
 ### State file format
 
 ```
-/tmp/cekernel-ipc/{SESSION_ID}/
+/usr/local/var/cekernel/ipc/{SESSION_ID}/
   ├── worker-4              # FIFO (existing)
   ├── worker-4.state        # NEW: state file
   └── ...

@@ -247,7 +247,7 @@ The dispatch layer (wrapper script) does **not** acquire locks. Dispatch is a li
 
 The lockfile uses `mkdir`-based locking — the same pattern as `claude-json-helper.sh`. `mkdir` is atomic and universally available (unlike `flock`, which requires `util-linux` on macOS). Stale lock detection is implemented by writing the PID into the lock directory; on lock acquisition failure, `kill -0 <pid>` verifies the holder is still alive. If the holder is dead, the stale lock is removed and acquisition is retried.
 
-**Runtime state directory**: `/usr/local/var/cekernel/` is the canonical location for cekernel's runtime state (locks, logs, runners). Single-user is assumed. The existing session-scoped IPC directory (`/tmp/cekernel-ipc/`) will be migrated to this namespace in a future issue to unify runtime state management.
+**Runtime state directory**: `/usr/local/var/cekernel/` is the canonical location for cekernel's runtime state (ipc, locks, logs, runners). Single-user is assumed. The session-scoped IPC directory has been migrated from `/tmp/cekernel-ipc/` to `/usr/local/var/cekernel/ipc/` (#220).
 
 ## Alternatives Considered
 

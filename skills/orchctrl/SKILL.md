@@ -74,7 +74,7 @@ Format the output as a readable table for the user:
 bash "$ORCHCTRL" log <target>
 ```
 
-Shows the last 100 lines of the Worker's log file. Saves the user from searching for log file locations in `/tmp/cekernel-ipc/`.
+Shows the last 100 lines of the Worker's log file. Saves the user from searching for log file locations in `/usr/local/var/cekernel/ipc/`.
 
 #### inspect — Detailed Worker view
 

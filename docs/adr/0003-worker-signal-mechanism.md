@@ -34,7 +34,7 @@ Introduce a **file-based cooperative signal mechanism** using the existing IPC d
 The Orchestrator (or a new `send-signal.sh` script) writes a signal file:
 
 ```
-/tmp/cekernel-ipc/{SESSION_ID}/
+/usr/local/var/cekernel/ipc/{SESSION_ID}/
   ├── worker-4              # FIFO (existing: completion notification)
   ├── worker-4.signal       # NEW: signal file
   └── ...
@@ -110,7 +110,7 @@ Signal files are plain text. A human can create one with `echo TERM > worker-4.s
 
 > Rule of Transparency: "Design for visibility to make inspection and debugging easier."
 
-Signal files are visible in the filesystem. `ls /tmp/cekernel-ipc/{SESSION_ID}/` immediately shows which Workers have pending signals. The signal is not hidden in a pipe buffer or process memory — it sits on disk until consumed, inspectable at any time.
+Signal files are visible in the filesystem. `ls /usr/local/var/cekernel/ipc/{SESSION_ID}/` immediately shows which Workers have pending signals. The signal is not hidden in a pipe buffer or process memory — it sits on disk until consumed, inspectable at any time.
 
 > Rule of Repair: "When you must fail, fail noisily and as soon as possible."
 
