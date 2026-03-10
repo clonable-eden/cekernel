@@ -6,7 +6,7 @@ Proposed
 
 ## Context
 
-Workers currently handle the entire issue lifecycle end-to-end: implementation, PR creation, CI verification, self-approval, and merge. This monolithic lifecycle has a structural flaw — the entity that writes the code is the same entity that approves and merges it. There is no quality gate between "code is written" and "code is on main."
+Workers currently handle the entire issue lifecycle end-to-end: implementation, PR creation, CI verification, self-approval, and merge. This monolithic lifecycle has a structural flaw — the same agent context that writes the code also evaluates and merges it. There is no quality gate between "code is written" and "code is on main."
 
 ### Current State
 
@@ -14,28 +14,34 @@ Workers currently handle the entire issue lifecycle end-to-end: implementation, 
 Orchestrator → spawn Worker → [implement → PR → CI → approve → merge] → notify(merged)
 ```
 
-The Worker uses the human operator's GitHub credentials (the operator appears as Co-Author). The cekernel ruleset (`main` branch protection, ID: 13364710) currently sets `require_code_owner_review: false` and `require_last_push_approval: false`, allowing the Worker to approve and merge its own PR.
+The Worker implements code, creates a PR, waits for CI, then approves and merges its own PR — all within the same context window. There is no independent evaluation of the code before it reaches main.
 
 ### Problem
 
-This is the equivalent of a Unix process writing to a file, verifying its own output, and committing the result — all without any external observer. In OS terms, it is like running without access control:
+The core issue is **confirmation bias at the context window level**. The same agent context that wrote the code also evaluates it. This is analogous to a Unix process writing to a file, verifying its own output, and committing the result — all without any external observer.
 
 | Concern | Current State |
 |---------|---------------|
 | Write access | Worker pushes code |
-| Read/review access | Worker reviews its own code |
+| Read/review access | Worker reviews its own code (same context window) |
 | Merge authorization | Worker merges its own PR |
-| Identity separation | None — Worker uses operator's credentials for all actions |
+| Quality gate | None — no independent evaluation before merge |
 
 When cekernel is self-hosted (its own issues resolved via `/orchestrate`), this lack of review becomes a direct quality risk.
 
-### Prerequisites
-
-- A GitHub App with `pull_requests: write` permission installed on the repository (used for the Reviewer's separate identity). The Claude GitHub App (`claude[bot]`), already installed via Claude Code's `/install-github-app`, satisfies this requirement without additional setup
-
 ## Decision
 
-Split the Worker lifecycle at the CI pass boundary. Workers stop after CI verification; a new Reviewer agent handles review with a separate identity, and the Orchestrator manages the merge decision.
+Split the Worker lifecycle at the CI pass boundary. Workers stop after CI verification; a new Reviewer agent evaluates the code in a separate context window, and the Orchestrator manages the merge decision.
+
+### Design Principle: cekernel Owns No Identity
+
+cekernel is infrastructure — it provides mechanisms, not policy. All GitHub operations (push, review, merge) are performed using the **operator's credentials**. cekernel does not introduce its own GitHub identity (no bot accounts, no GitHub App tokens, no managed secrets).
+
+- Worker uses the operator's `gh` authentication to push code and create PRs
+- Reviewer uses the operator's `gh` authentication to submit review comments
+- Orchestrator uses the operator's `gh` authentication to merge PRs
+
+Identity separation (e.g., for `require_last_push_approval` enforcement) is the operator's responsibility, not cekernel's. If an operator wants identity-separated review, they configure a second identity via `CEKERNEL_REVIEWER_GH_TOKEN` and adjust their repository's branch ruleset accordingly. cekernel provides the configuration slot but does not require it.
 
 ### New Lifecycle
 
@@ -44,7 +50,7 @@ Orchestrator → spawn Worker → [implement → PR → CI] → notify(ci-passed
                     ↑              ↓
                     |         Orchestrator → Reviewer (subagent, run_in_background)
                     |              ↓
-                    |         [review → approve] → Orchestrator merges → desktop notification
+                    |         [review → approve] → Orchestrator merges or notifies human → desktop notification
                     |              or
                     └──────── [review → reject → changes-requested]
                               → Worker re-spawn (--resume) → [fix → push → CI]
@@ -54,16 +60,16 @@ Orchestrator → spawn Worker → [implement → PR → CI] → notify(ci-passed
 Three roles with distinct responsibilities:
 
 - **Worker**: implementation engine (mechanism) — writes code, pushes, waits for CI
-- **Reviewer**: review gate (policy) — evaluates code, approves or rejects via GitHub App
-- **Orchestrator**: lifecycle manager (coordination) — spawns Workers, invokes Reviewer, merges PRs, cleans up
+- **Reviewer**: quality gate (policy) — evaluates code in a separate context, approves or rejects
+- **Orchestrator**: lifecycle manager (coordination) — spawns Workers, invokes Reviewer, manages merge, cleans up
 
 ### OS Analogy Extension
 
 | OS Concept | cekernel (current) | cekernel (proposed) |
 |------------|-------------------|---------------------|
 | Process | Worker (implement + merge) | Worker (implement only) |
-| Access control | None | Reviewer as gatekeeper |
-| Identity | Single (operator) | Dual (operator + GitHub App) |
+| Access control | None | Reviewer as quality gate |
+| Evaluation context | Single (writer = reviewer) | Dual (separate context windows) |
 | Audit trail | Self-certified | Independently reviewed |
 
 ### Component Changes
@@ -105,14 +111,16 @@ The Reviewer is architecturally distinct from the Worker:
 | Execution model | Separate terminal session (backend) | Orchestrator subagent (`run_in_background`) |
 | Address space | git worktree (isolated copy) | Main working tree (read-only review) |
 | Duration | Long (implementation) | Short (review only) |
-| Identity | Operator's GitHub credentials | GitHub App credentials |
+| Identity | Operator's GitHub credentials | Operator's GitHub credentials (or optional separate token) |
 | Tools | Read, Edit, Write, Bash | Bash only (`gh` for review operations) |
+
+The Reviewer's value comes from **context separation**, not identity separation. A separate agent context evaluating code written by another context avoids the confirmation bias inherent in self-review.
 
 Reviewer responsibilities:
 
 1. Read the target repository's CLAUDE.md and referenced documents
 2. Read the PR diff (`gh pr diff`) and issue body (intent)
-3. Submit review via GitHub App authentication (`CEKERNEL_REVIEWER_GH_TOKEN`)
+3. Submit review via `gh pr review`
 4. On approve: `gh pr review --approve` → return `approved` to the Orchestrator
 5. On reject: `gh pr review --request-changes` → return `changes-requested` to the Orchestrator
 
@@ -145,7 +153,7 @@ Retry limit: `CEKERNEL_REVIEW_MAX_RETRIES` (default: 2). After exhaustion, escal
 
 #### Reviewer Error Handling
 
-The Reviewer subagent can fail in several ways: GitHub App token expired, GitHub API outage, subagent context exhaustion, or unexpected output (neither `approved` nor `changes-requested`). Following the Rule of Repair ("when you must fail, fail noisily and as soon as possible"), all Reviewer failures are treated as escalation:
+The Reviewer subagent can fail in several ways: GitHub API outage, subagent context exhaustion, or unexpected output (neither `approved` nor `changes-requested`). Following the Rule of Repair ("when you must fail, fail noisily and as soon as possible"), all Reviewer failures are treated as escalation:
 
 - Orchestrator receives error or unrecognized result from Reviewer → treat as escalation
 - Desktop notification sent to human with error details
@@ -199,22 +207,9 @@ Refactor `wrapper.sh` to use the shared helper. New notification triggers:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CEKERNEL_AUTO_MERGE` | `true` | `false`: Orchestrator does not merge after approval; human merges |
+| `CEKERNEL_AUTO_MERGE` | `false` | `true`: Orchestrator merges after Reviewer approval; `false`: human merges |
 | `CEKERNEL_REVIEW_MAX_RETRIES` | `2` | Max reject → re-implement cycles before escalation |
-
-Note: `CEKERNEL_REVIEWER_GH_TOKEN` is intentionally omitted. The preferred design is to leverage Claude Code's built-in GitHub App authentication (`claude[bot]`) rather than managing a separate token. If the built-in authentication is insufficient, a fallback token variable may be introduced during implementation.
-
-#### GitHub Ruleset
-
-Update cekernel ruleset (ID: 13364710):
-
-```
-require_last_push_approval: false → true
-```
-
-This single change ensures the Worker (operator credentials, last pusher) cannot approve its own PR. The Reviewer (GitHub App, different identity) can approve. Combined with `dismiss_stale_reviews_on_push: true` (already set), any new push invalidates prior approvals, forcing re-review.
-
-CODEOWNERS is not needed — identity separation via GitHub App is sufficient.
+| `CEKERNEL_REVIEWER_GH_TOKEN` | (unset) | Optional: separate GitHub token for Reviewer identity separation. When unset, Reviewer uses the operator's `gh` authentication |
 
 #### State Machine
 
@@ -247,7 +242,7 @@ The Reviewer is composable — it can be replaced with human review, a different
 
 > **Rule of Transparency**: "Design for visibility to make inspection and debugging easier."
 
-Adding a review step creates an explicit audit trail. Every merge is preceded by a review comment from a distinct identity, visible in the PR timeline. The `changes-requested` → `re-implement` cycle is also visible in issue comments.
+Adding a review step creates an explicit audit trail. Every merge is preceded by a review comment on the PR, visible in the PR timeline. The `changes-requested` → `re-implement` cycle is also visible in issue comments.
 
 > **Rule of Least Surprise**: "In interface design, always do the least surprising thing."
 
@@ -256,8 +251,6 @@ Developers expect code review before merge. The current auto-merge-without-revie
 ### Platform Constraints
 
 **Subagent execution model** (Confidence: Evolving): The Reviewer runs as an Orchestrator subagent via `run_in_background`. Per the platform constraints document, subagents cannot communicate with the parent during execution — the parent receives only the final output. This is acceptable for the Reviewer because review is a single-shot operation: read diff, submit review, return result. No mid-execution communication is needed.
-
-**Identity switching within a session**: The Reviewer must submit reviews as a different identity from the operator (who is the last pusher). The design principle is to avoid managing additional secrets locally — no private keys, no PATs, no dedicated tokens in the environment. The preferred approach is to leverage Claude Code's own GitHub App authentication (`claude[bot]`), which is already installed on the repository and provides `pull_requests: write` permission. This eliminates the need for `CEKERNEL_REVIEWER_GH_TOKEN` as a separately managed secret. The exact mechanism (whether Claude Code exposes this authentication to subagents, or requires an alternative approach) is to be validated during implementation (Issue B). Fallback options include: a dedicated GitHub App with private key in a secret manager, or a machine user account with a fine-grained PAT in Keychain.
 
 **Background task reliability** (Confidence: Evolving): The Orchestrator spawns the Reviewer with `run_in_background`. If the background notification is delayed or missed, the Orchestrator's existing polling patterns (used for `watch-worker.sh`) can serve as fallback. However, since the Reviewer is short-lived (review only, no implementation), the risk of missed notifications is lower than for long-running Workers.
 
@@ -270,7 +263,7 @@ All PRs require human review. No Reviewer agent.
 - **Pro**: Maximum quality assurance, full human judgment
 - **Con**: Violates the Rule of Economy — "Programmer time is expensive; conserve it in preference to machine time." For routine, well-scoped issues (the majority of cekernel's self-hosted work), human review is bottleneck overhead
 - **Con**: Breaks the autonomous pipeline that makes `/orchestrate` valuable
-- **Rejected**: Does not scale. Suitable as a fallback (`CEKERNEL_AUTO_MERGE=false`) but not as the default
+- **Rejected**: Does not scale. Suitable as a deployment choice (`CEKERNEL_AUTO_MERGE=false`) but not as the only option
 
 ### Alternative: Worker Self-Review with Separate Pass
 
@@ -278,35 +271,24 @@ The Worker performs a second pass on its own code before merging, acting as both
 
 - **Pro**: No new agent needed, simpler architecture
 - **Con**: Violates Rule of Separation — policy (review) and mechanism (implementation) remain coupled in the same process
-- **Con**: No identity separation — still the same credentials for push and approve
 - **Con**: Confirmation bias — the same context window that wrote the code is unlikely to catch its own mistakes
-- **Rejected**: Does not address the fundamental problem of self-certification
-
-### Alternative: CODEOWNERS-Based Enforcement
-
-Use GitHub's CODEOWNERS file with `require_code_owner_review: true` to enforce review.
-
-- **Pro**: GitHub-native, well-understood mechanism
-- **Con**: CODEOWNERS assigns reviewers based on file paths, not review capability. The Reviewer agent doesn't map naturally to file ownership
-- **Con**: GitHub Apps cannot be listed as code owners, complicating the identity separation design
-- **Con**: Adds file-path-based complexity that is unnecessary when identity separation already provides the access control needed
-- **Rejected**: `require_last_push_approval: true` achieves the same access control effect with less mechanism
+- **Rejected**: Does not address the fundamental problem of same-context self-review
 
 ## Consequences
 
 ### Positive
 
-- **Quality gate**: Every merge is preceded by an independent review from a separate identity
-- **Audit trail**: PR timeline shows distinct author (Worker/operator) and reviewer (GitHub App) identities
+- **Quality gate**: Every merge is preceded by an independent review from a separate agent context, reducing confirmation bias
+- **Audit trail**: PR timeline shows review comments before merge, providing visibility into what was evaluated
 - **Composability**: Review strategy is swappable — automated, human, or hybrid — without changing Worker or Orchestrator core logic
 - **Principle of least privilege**: Worker loses merge authority, reducing the blast radius of a malfunctioning Worker
 - **Backward compatible**: `status=merged` remains valid for legacy/transitional use; the Orchestrator handles both flows
+- **No secret management**: Default configuration requires no additional tokens or credentials — operates entirely on the operator's existing `gh` authentication
 
 ### Negative
 
 - **Increased latency**: The review step adds time between CI pass and merge. For small, routine changes, this overhead may feel unnecessary
 - **New component**: The Reviewer agent is a new moving part that must be maintained, tested, and monitored
-- **GitHub App dependency**: Reviewer authentication requires a configured GitHub App. Environments without an App fall back to human-only review
 - **Retry complexity**: The reject → re-implement → re-review cycle adds state management complexity to the Orchestrator
 
 ### Trade-offs
@@ -315,4 +297,4 @@ Use GitHub's CODEOWNERS file with `require_code_owner_review: true` to enforce r
 
 **Simplicity vs. separation**: Adding a Reviewer agent increases system complexity (Rule of Simplicity tension). However, the three-way separation of implementation (Worker), review (Reviewer), and lifecycle management including merge (Orchestrator) follows the Rule of Separation rigorously — each component handles exactly one concern. The complexity is justified by the quality assurance it provides.
 
-**Latency vs. correctness**: The review step adds wall-clock time to the issue lifecycle. For cekernel's self-hosted development (low volume, high correctness requirements), this is an acceptable trade-off. Environments with different priorities can set `CEKERNEL_AUTO_MERGE=false` to skip automated merge and rely on human review and merge at their own pace.
+**Latency vs. correctness**: The review step adds wall-clock time to the issue lifecycle. For cekernel's self-hosted development (low volume, high correctness requirements), this is an acceptable trade-off. Environments with different priorities can set `CEKERNEL_AUTO_MERGE=true` to enable automated merge after Reviewer approval.
