@@ -14,6 +14,8 @@ These can be set via env profiles or explicit `export`.
 | `CEKERNEL_CHECKPOINT_FILENAME` | `.cekernel-checkpoint.md` | Any filename | `checkpoint-file.sh` | Checkpoint file name in worktree |
 | `CEKERNEL_TASK_FILENAME` | `.cekernel-task.md` | Any filename | `task-file.sh` | Task file name in worktree |
 | `CEKERNEL_CI_MAX_RETRIES` | `3` | Positive integer | `worker.md` (Phase 3) | Maximum CI retry attempts before Worker reports failure |
+| `CEKERNEL_AUTO_MERGE` | `false` | `true`, `false` | Orchestrator | `true`: Reviewer 承認後に Orchestrator が自動マージ。`false`: desktop 通知のみ、人間がマージ |
+| `CEKERNEL_REVIEW_MAX_RETRIES` | `2` | Positive integer | Orchestrator | Reviewer の reject → Worker re-implement サイクルの上限。超過時は人間にエスカレーション |
 | `CEKERNEL_VAR_DIR` | `/usr/local/var/cekernel` | Directory path | `registry.sh`, `wrapper.sh` | Runtime state directory (locks, logs, runners, registry) |
 
 ## Internal Variables
