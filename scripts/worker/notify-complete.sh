@@ -2,7 +2,7 @@
 # notify-complete.sh — Worker → Orchestrator completion notification (named pipe)
 #
 # Usage: notify-complete.sh <issue-number> <status> [detail]
-#   status: merged | failed | cancelled
+#   status: merged | failed | cancelled | ci-passed
 #   detail: PR number (merged), error reason (failed), or signal info (cancelled)
 #
 # Example:
