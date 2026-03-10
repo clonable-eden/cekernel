@@ -41,7 +41,7 @@ cekernel is infrastructure — it provides mechanisms, not policy. All GitHub op
 - Reviewer uses the operator's `gh` authentication to submit review comments
 - Orchestrator uses the operator's `gh` authentication to merge PRs
 
-Identity separation (e.g., for `require_last_push_approval` enforcement) is the operator's responsibility, not cekernel's. If an operator wants identity-separated review, they configure a second identity via `CEKERNEL_REVIEWER_GH_TOKEN` and adjust their repository's branch ruleset accordingly. cekernel provides the configuration slot but does not require it.
+Identity separation (e.g., for `require_last_push_approval` enforcement) is the operator's responsibility, not cekernel's. cekernel does not provide identity-switching mechanisms; if an operator needs it, they manage it outside of cekernel.
 
 ### New Lifecycle
 
@@ -111,7 +111,7 @@ The Reviewer is architecturally distinct from the Worker:
 | Execution model | Separate terminal session (backend) | Orchestrator subagent (`run_in_background`) |
 | Address space | git worktree (isolated copy) | Main working tree (read-only review) |
 | Duration | Long (implementation) | Short (review only) |
-| Identity | Operator's GitHub credentials | Operator's GitHub credentials (or optional separate token) |
+| Identity | Operator's GitHub credentials | Operator's GitHub credentials |
 | Tools | Read, Edit, Write, Bash | Bash only (`gh` for review operations) |
 
 The Reviewer's value comes from **context separation**, not identity separation. A separate agent context evaluating code written by another context avoids the confirmation bias inherent in self-review.
@@ -209,7 +209,6 @@ Refactor `wrapper.sh` to use the shared helper. New notification triggers:
 |----------|---------|-------------|
 | `CEKERNEL_AUTO_MERGE` | `false` | `true`: Orchestrator merges after Reviewer approval; `false`: human merges |
 | `CEKERNEL_REVIEW_MAX_RETRIES` | `2` | Max reject → re-implement cycles before escalation |
-| `CEKERNEL_REVIEWER_GH_TOKEN` | (unset) | Optional: separate GitHub token for Reviewer identity separation. When unset, Reviewer uses the operator's `gh` authentication |
 
 #### State Machine
 
