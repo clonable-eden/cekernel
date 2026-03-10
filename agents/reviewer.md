@@ -35,8 +35,8 @@ Read the target repository's CLAUDE.md and any referenced documents to understan
 - Project-specific rules
 
 ```bash
-# Read CLAUDE.md from the repository root
-cat CLAUDE.md
+# Read CLAUDE.md from the repository root (may be at <root>/CLAUDE.md or <root>/.claude/CLAUDE.md)
+cat CLAUDE.md 2>/dev/null || cat .claude/CLAUDE.md
 ```
 
 If CLAUDE.md references other documents, read those as well.
@@ -94,7 +94,7 @@ The review body must clearly describe what needs to be fixed so that the Worker 
 Return a single word to the Orchestrator indicating the verdict:
 
 - `approved` — PR is ready for merge (Orchestrator decides whether to auto-merge or wait for human)
-- `changes-requested` — PR needs rework (Orchestrator re-spawns Worker with `--resume`)
+- `changes-requested` — PR needs rework (Orchestrator spawns a new Worker with `--resume` to reuse the existing worktree)
 
 ## Constraints
 
