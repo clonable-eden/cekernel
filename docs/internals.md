@@ -19,7 +19,7 @@ Worker lifecycle events are recorded in the session-scoped log directory.
 
 ```
 [2026-02-25T15:30:00Z] SPAWN issue=#4 branch=issue/4-add-feature
-[2026-02-25T15:45:00Z] COMPLETE issue=#4 status=merged detail=42
+[2026-02-25T15:45:00Z] COMPLETE issue=#4 status=ci-passed detail=42
 [2026-02-25T15:46:00Z] FAILED issue=#7 status=failed detail=CI failed 3 times
 ```
 

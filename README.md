@@ -174,7 +174,7 @@ cekernel is primarily designed for **monorepo** structures. While it may work wi
 
 **Recommended for target repositories:**
 
-- CI should be set up (unit tests, integration tests, e2e tests). Workers rely on CI to verify their changes before merging.
+- CI should be set up (unit tests, integration tests, e2e tests). Workers rely on CI to verify their changes.
 - CD (continuous deployment) is optional — cekernel only handles the implement → PR → CI → merge lifecycle.
 
 **Backend support:**
@@ -256,7 +256,7 @@ This creates `ipc/`, `locks/`, `logs/`, `runners/`, and `schedules.json` under `
    /cekernel:orchestrate <issue-number>
    ```
 
-   Use `--env` to select your preferred backend (e.g., `--env headless`). This will spawn a Worker that implements the change, creates a PR, verifies CI, and merges it automatically.
+   Use `--env` to select your preferred backend (e.g., `--env headless`). This will spawn a Worker that implements the change, creates a PR, and verifies CI.
 
 This gives you a quick end-to-end verification that cekernel is working correctly in your repository.
 

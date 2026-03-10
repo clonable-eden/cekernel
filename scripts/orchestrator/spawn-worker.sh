@@ -214,12 +214,12 @@ BASH_PREFIX="source .cekernel-env"
 # ── Launch Worker via backend ──
 # Initial prompt for Worker:
 # 1. Read the target repository's CLAUDE.md first
-# 2. Follow kernel's protocol only for lifecycle (PR → CI → merge → notify)
+# 2. Follow kernel's protocol only for lifecycle (PR → CI → notify)
 # 3. Follow the target repository's conventions for implementation
 if [[ "$RESUME" -eq 1 ]]; then
-  PROMPT="Resume issue #${ISSUE_NUMBER}. Read .cekernel-checkpoint.md to understand previous progress, then continue from where the previous Worker left off. First read the target repository's CLAUDE.md and fully follow its conventions. Follow only the kernel Worker Protocol for lifecycle: implement → create PR → verify CI → merge. When done, run notify-complete.sh ${ISSUE_NUMBER} merged <pr-number>. When executing Bash during processing, always prefix with: ${BASH_PREFIX} &&"
+  PROMPT="Resume issue #${ISSUE_NUMBER}. Read .cekernel-checkpoint.md to understand previous progress, then continue from where the previous Worker left off. First read the target repository's CLAUDE.md and fully follow its conventions. Follow only the kernel Worker Protocol for lifecycle: implement → create PR → verify CI. When done, run notify-complete.sh ${ISSUE_NUMBER} ci-passed <pr-number>. When executing Bash during processing, always prefix with: ${BASH_PREFIX} &&"
 else
-  PROMPT="Resolve issue #${ISSUE_NUMBER}. First read the target repository's CLAUDE.md and fully follow its conventions. Follow only the kernel Worker Protocol for lifecycle: implement → create PR → verify CI → merge. When done, run notify-complete.sh ${ISSUE_NUMBER} merged <pr-number>. When executing Bash during processing, always prefix with: ${BASH_PREFIX} &&"
+  PROMPT="Resolve issue #${ISSUE_NUMBER}. First read the target repository's CLAUDE.md and fully follow its conventions. Follow only the kernel Worker Protocol for lifecycle: implement → create PR → verify CI. When done, run notify-complete.sh ${ISSUE_NUMBER} ci-passed <pr-number>. When executing Bash during processing, always prefix with: ${BASH_PREFIX} &&"
 fi
 
 # Backend handles workspace resolution, window spawning, and handle file management internally.
