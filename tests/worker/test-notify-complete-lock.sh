@@ -30,55 +30,35 @@ setup_fifo() {
   cat "$fifo" > /dev/null &
 }
 
-# ── Test 1: ci-passed retains lock ──
-ISSUE=70
-issue_lock_acquire "$TEMP_REPO" "$ISSUE"
-# Verify lock exists before running
-issue_lock_check "$TEMP_REPO" "$ISSUE"
-assert_eq "lock exists before ci-passed" "0" "$?"
+# ── Table-driven tests ──
+# Format: status:detail:expect_locked (1=lock retained, 0=lock released)
+TEST_CASES=(
+  "ci-passed:42:1"
+  "merged:99:0"
+  "failed:CI failed:0"
+  "cancelled:TERM signal:0"
+)
 
-setup_fifo "$ISSUE"
-bash -c "cd '$TEMP_REPO' && bash '${CEKERNEL_DIR}/scripts/worker/notify-complete.sh' '$ISSUE' ci-passed 42" 2>/dev/null || true
+ISSUE_BASE=70
+for test_case in "${TEST_CASES[@]}"; do
+  IFS=: read -r STATUS DETAIL EXPECT_LOCKED <<< "$test_case"
+  ISSUE=$ISSUE_BASE
+  ISSUE_BASE=$((ISSUE_BASE + 1))
 
-LOCK_CHECK=0
-issue_lock_check "$TEMP_REPO" "$ISSUE" || LOCK_CHECK=$?
-assert_eq "ci-passed retains lock" "0" "$LOCK_CHECK"
+  issue_lock_acquire "$TEMP_REPO" "$ISSUE"
+  setup_fifo "$ISSUE"
+  bash -c "cd '$TEMP_REPO' && bash '${CEKERNEL_DIR}/scripts/worker/notify-complete.sh' '$ISSUE' '$STATUS' '$DETAIL'" 2>/dev/null || true
 
-# Cleanup lock for next test
-issue_lock_release "$TEMP_REPO" "$ISSUE"
+  LOCK_CHECK=0
+  issue_lock_check "$TEMP_REPO" "$ISSUE" || LOCK_CHECK=$?
 
-# ── Test 2: merged releases lock ──
-ISSUE=71
-issue_lock_acquire "$TEMP_REPO" "$ISSUE"
-
-setup_fifo "$ISSUE"
-bash -c "cd '$TEMP_REPO' && bash '${CEKERNEL_DIR}/scripts/worker/notify-complete.sh' '$ISSUE' merged 99" 2>/dev/null || true
-
-LOCK_CHECK=0
-issue_lock_check "$TEMP_REPO" "$ISSUE" || LOCK_CHECK=$?
-assert_eq "merged releases lock" "1" "$LOCK_CHECK"
-
-# ── Test 3: failed releases lock ──
-ISSUE=72
-issue_lock_acquire "$TEMP_REPO" "$ISSUE"
-
-setup_fifo "$ISSUE"
-bash -c "cd '$TEMP_REPO' && bash '${CEKERNEL_DIR}/scripts/worker/notify-complete.sh' '$ISSUE' failed 'CI failed'" 2>/dev/null || true
-
-LOCK_CHECK=0
-issue_lock_check "$TEMP_REPO" "$ISSUE" || LOCK_CHECK=$?
-assert_eq "failed releases lock" "1" "$LOCK_CHECK"
-
-# ── Test 4: cancelled releases lock ──
-ISSUE=73
-issue_lock_acquire "$TEMP_REPO" "$ISSUE"
-
-setup_fifo "$ISSUE"
-bash -c "cd '$TEMP_REPO' && bash '${CEKERNEL_DIR}/scripts/worker/notify-complete.sh' '$ISSUE' cancelled 'TERM signal'" 2>/dev/null || true
-
-LOCK_CHECK=0
-issue_lock_check "$TEMP_REPO" "$ISSUE" || LOCK_CHECK=$?
-assert_eq "cancelled releases lock" "1" "$LOCK_CHECK"
+  if [[ "$EXPECT_LOCKED" -eq 1 ]]; then
+    assert_eq "${STATUS} retains lock" "0" "$LOCK_CHECK"
+    issue_lock_release "$TEMP_REPO" "$ISSUE"
+  else
+    assert_eq "${STATUS} releases lock" "1" "$LOCK_CHECK"
+  fi
+done
 
 # Cleanup
 rm -rf "$CEKERNEL_IPC_DIR"
