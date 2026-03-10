@@ -66,10 +66,12 @@ if [[ -d "${CEKERNEL_IPC_DIR}/logs" ]]; then
   echo "[${TIMESTAMP}] ${EVENT} issue=#${ISSUE_NUMBER} status=${STATUS} detail=${DETAIL}" >> "$LOG_FILE"
 fi
 
-# ── Release issue lock ──
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"
-if [[ -n "$REPO_ROOT" ]]; then
-  issue_lock_release "$REPO_ROOT" "$ISSUE_NUMBER"
+# ── Release issue lock (skip for ci-passed — Orchestrator manages lifecycle) ──
+if [[ "$STATUS" != "ci-passed" ]]; then
+  REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"
+  if [[ -n "$REPO_ROOT" ]]; then
+    issue_lock_release "$REPO_ROOT" "$ISSUE_NUMBER"
+  fi
 fi
 
 echo "Notified orchestrator: issue #${ISSUE_NUMBER} ${STATUS}" >&2
