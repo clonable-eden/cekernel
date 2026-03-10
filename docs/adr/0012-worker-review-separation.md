@@ -31,8 +31,7 @@ When cekernel is self-hosted (its own issues resolved via `/orchestrate`), this 
 
 ### Prerequisites
 
-- An existing GitHub App with repository access (used for the Reviewer's separate identity)
-- The GitHub App must have `pull_requests: write` permission to submit reviews
+- A GitHub App with `pull_requests: write` permission installed on the repository (used for the Reviewer's separate identity). The Claude GitHub App (`claude[bot]`), already installed via Claude Code's `/install-github-app`, satisfies this requirement without additional setup
 
 ## Decision
 
@@ -201,8 +200,9 @@ Refactor `wrapper.sh` to use the shared helper. New notification triggers:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CEKERNEL_AUTO_MERGE` | `true` | `false`: Orchestrator does not merge after approval; human merges |
-| `CEKERNEL_REVIEWER_GH_TOKEN` | (none) | GitHub App installation token for reviews |
 | `CEKERNEL_REVIEW_MAX_RETRIES` | `2` | Max reject → re-implement cycles before escalation |
+
+Note: `CEKERNEL_REVIEWER_GH_TOKEN` is intentionally omitted. The preferred design is to leverage Claude Code's built-in GitHub App authentication (`claude[bot]`) rather than managing a separate token. If the built-in authentication is insufficient, a fallback token variable may be introduced during implementation.
 
 #### GitHub Ruleset
 
@@ -257,7 +257,7 @@ Developers expect code review before merge. The current auto-merge-without-revie
 
 **Subagent execution model** (Confidence: Evolving): The Reviewer runs as an Orchestrator subagent via `run_in_background`. Per the platform constraints document, subagents cannot communicate with the parent during execution — the parent receives only the final output. This is acceptable for the Reviewer because review is a single-shot operation: read diff, submit review, return result. No mid-execution communication is needed.
 
-**Identity switching within a session**: The Reviewer needs to use `CEKERNEL_REVIEWER_GH_TOKEN` (GitHub App) instead of the operator's `gh` credentials. This is achieved by setting `GH_TOKEN` in the environment before `gh pr review` commands. Since each Bash tool call in Claude Code runs in an independent shell, setting `GH_TOKEN` within the Reviewer's Bash calls does not leak into the Worker's environment.
+**Identity switching within a session**: The Reviewer must submit reviews as a different identity from the operator (who is the last pusher). The design principle is to avoid managing additional secrets locally — no private keys, no PATs, no dedicated tokens in the environment. The preferred approach is to leverage Claude Code's own GitHub App authentication (`claude[bot]`), which is already installed on the repository and provides `pull_requests: write` permission. This eliminates the need for `CEKERNEL_REVIEWER_GH_TOKEN` as a separately managed secret. The exact mechanism (whether Claude Code exposes this authentication to subagents, or requires an alternative approach) is to be validated during implementation (Issue B). Fallback options include: a dedicated GitHub App with private key in a secret manager, or a machine user account with a fine-grained PAT in Keychain.
 
 **Background task reliability** (Confidence: Evolving): The Orchestrator spawns the Reviewer with `run_in_background`. If the background notification is delayed or missed, the Orchestrator's existing polling patterns (used for `watch-worker.sh`) can serve as fallback. However, since the Reviewer is short-lived (review only, no implementation), the risk of missed notifications is lower than for long-running Workers.
 
