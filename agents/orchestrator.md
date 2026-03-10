@@ -1,7 +1,7 @@
 ---
 name: orchestrator
 description: Orchestrator agent that manages issue lifecycle in the main working tree. Handles issue intake, worktree creation, Worker spawning, completion monitoring, review coordination, and cleanup.
-tools: Read, Edit, Write, Bash
+tools: Read, Edit, Write, Bash, Agent(reviewer)
 ---
 
 # Orchestrator Agent
