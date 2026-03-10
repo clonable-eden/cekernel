@@ -43,6 +43,7 @@ export PATH="${captured_path}"
 export ANTHROPIC_API_KEY="\${ANTHROPIC_API_KEY:-\$("\${CEKERNEL_DIR}/scripts/scheduler/resolve-api-key.sh" 2>/dev/null)}"
 
 source "\${CEKERNEL_DIR}/scripts/scheduler/registry.sh"
+source "\${CEKERNEL_DIR}/scripts/shared/desktop-notify.sh"
 
 # syslog: START
 echo "\$(date '+%Y-%m-%dT%H:%M:%S%z') cekernel[\$ID]: START prompt=\"${prompt}\" repo=\"${repo}\"" >> "\$SYSLOG_FILE"
@@ -64,12 +65,7 @@ schedule_registry_update_status "\$ID" "\$( [ "\$STATUS" -eq 0 ] && echo success
 
 # Notify on failure (best-effort, OS-native)
 if [ "\$STATUS" -ne 0 ]; then
-  case "\$(uname)" in
-    Darwin)
-      osascript -e "display notification \"Schedule \$ID failed (exit \$STATUS)\" with title \"cekernel\"" 2>/dev/null ;;
-    Linux)
-      notify-send "cekernel" "Schedule \$ID failed (exit \$STATUS)" 2>/dev/null ;;
-  esac
+  desktop_notify "cekernel" "Schedule \$ID failed (exit \$STATUS)"
 fi
 
 exit \$STATUS
