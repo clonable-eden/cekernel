@@ -93,8 +93,8 @@ else
 fi
 
 # ── Test 5: desktop_notify requires title argument ──
-# Missing title should cause an error
-if PATH="${MOCK_BIN}:${PATH}" desktop_notify 2>/dev/null; then
+# Missing title should cause an error (run in subshell since ${1:?} exits the shell)
+if (desktop_notify 2>/dev/null); then
   echo "  FAIL: desktop_notify should fail when title is missing"
   TESTS_FAILED=$((TESTS_FAILED + 1))
 else
@@ -103,7 +103,7 @@ else
 fi
 
 # ── Test 6: desktop_notify requires message argument ──
-if PATH="${MOCK_BIN}:${PATH}" desktop_notify "Title" 2>/dev/null; then
+if (desktop_notify "Title" 2>/dev/null); then
   echo "  FAIL: desktop_notify should fail when message is missing"
   TESTS_FAILED=$((TESTS_FAILED + 1))
 else
