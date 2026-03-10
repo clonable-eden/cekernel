@@ -88,20 +88,20 @@ assert_match "uses if/else pattern" "if cd .* && claude -p" "$CONTENT"
 assert_match "has else clause" "else" "$CONTENT"
 teardown
 
-# ── Test 8: OS-native notification code (Darwin osascript) ──
+# ── Test 8: sources desktop-notify.sh shared helper ──
 setup
 schedule_generate_wrapper "$TEST_ID" "$TEST_REPO" "$TEST_PATH" "$TEST_PROMPT"
 RUNNER="${CEKERNEL_VAR_DIR}/runners/${TEST_ID}.sh"
 CONTENT=$(cat "$RUNNER")
-assert_match "contains osascript notification" "osascript" "$CONTENT"
+assert_match "sources desktop-notify.sh" "desktop-notify.sh" "$CONTENT"
 teardown
 
-# ── Test 9: OS-native notification code (Linux notify-send) ──
+# ── Test 9: uses desktop_notify function for failure notification ──
 setup
 schedule_generate_wrapper "$TEST_ID" "$TEST_REPO" "$TEST_PATH" "$TEST_PROMPT"
 RUNNER="${CEKERNEL_VAR_DIR}/runners/${TEST_ID}.sh"
 CONTENT=$(cat "$RUNNER")
-assert_match "contains notify-send" "notify-send" "$CONTENT"
+assert_match "uses desktop_notify function" "desktop_notify" "$CONTENT"
 teardown
 
 # ── Test 10: claude -p output goes to <id>.run.log (not schedule.log) ──
