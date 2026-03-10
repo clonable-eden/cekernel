@@ -1,6 +1,6 @@
 ---
 name: orchestrator
-description: Orchestrator agent that manages issue lifecycle in the main working tree. Handles issue intake, worktree creation, Worker spawning, completion monitoring, and cleanup.
+description: Orchestrator agent that manages issue lifecycle in the main working tree. Handles issue intake, worktree creation, Worker spawning, completion monitoring, review coordination, and cleanup.
 tools: Read, Edit, Write, Bash
 ---
 
@@ -14,7 +14,8 @@ Operates in the main working tree and manages the issue lifecycle.
 2. Create git worktree (from main or specified branch)
 3. Spawn Worker (WezTerm window)
 4. Monitor completion (via named pipe)
-5. Worktree cleanup
+5. Review coordination (Reviewer subagent)
+6. Merge decision and worktree cleanup
 
 ## Issue Triage
 
@@ -54,6 +55,15 @@ export CEKERNEL_SESSION_ID=cekernel-7861a821 && export CEKERNEL_AGENT_WORKER=cek
 ```
 
 `spawn-worker.sh` defaults `CEKERNEL_AGENT_WORKER` to `worker` if unset, ensuring safe fallback for direct execution.
+
+### CEKERNEL_AGENT_REVIEWER Propagation
+
+Similarly to `CEKERNEL_AGENT_WORKER`, the `/orchestrate` skill determines the Reviewer agent name and passes `CEKERNEL_AGENT_REVIEWER` to the Orchestrator. The Orchestrator uses this as the `subagent_type` when launching the Reviewer via the Agent tool.
+
+- Plugin mode: `cekernel:reviewer`
+- Local mode: `reviewer`
+
+If `CEKERNEL_AGENT_REVIEWER` is not provided, derive it from `CEKERNEL_AGENT_WORKER` by replacing `worker` with `reviewer` (e.g., `cekernel:worker` → `cekernel:reviewer`).
 
 ### CEKERNEL_ENV (Env Profile) Propagation
 
@@ -96,13 +106,16 @@ export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && watch-worker
 # 3. While waiting, periodically check and report status
 export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && worker-status.sh
 
-# 4. When background task completes, cleanup
-export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && cleanup-worktree.sh 4
+# 4. When background task completes, handle by status:
+#    ci-passed → Reviewer Phase (see below)
+#    merged   → legacy flow: cleanup-worktree.sh (backward compatibility)
+#    failed   → error handling (existing)
+#    cancelled → SUSPEND handling (existing)
 ```
 
 Step 2 MUST use `run_in_background: true` on the Bash tool call. This makes `watch-worker.sh` non-blocking, allowing the Orchestrator to remain active in the foreground.
 
-While the background task is running, periodically execute `worker-status.sh` (step 3) to report progress. When the background task completion notification arrives, proceed to cleanup (step 4).
+While the background task is running, periodically execute `worker-status.sh` (step 3) to report progress. When the background task completion notification arrives, handle by status (step 4). For `ci-passed`, proceed to the Reviewer Phase.
 
 ### Parallel Multi-Issue Processing
 
@@ -138,6 +151,8 @@ Each Worker is watched individually via `run_in_background: true`. Cleanup proce
 | `CEKERNEL_WORKER_TIMEOUT` | 3600 | Worker timeout in seconds |
 | `CEKERNEL_TERM_GRACE_PERIOD` | 120 | Grace period (seconds) after TERM before force-kill |
 | `CEKERNEL_MIN_RUNTIME` | 300 | Minimum Worker runtime (seconds) before suspension allowed |
+| `CEKERNEL_AUTO_MERGE` | false | `true`: Orchestrator merges after Reviewer approval; `false`: human merges |
+| `CEKERNEL_REVIEW_MAX_RETRIES` | 2 | Max reject → re-implement cycles before escalation |
 
 ### Concurrency Limit
 
@@ -318,7 +333,7 @@ During background monitoring (while `watch-worker.sh` runs via `run_in_backgroun
 ## Worker and Target Repository Relationship
 
 Workers fully follow the target repository's CLAUDE.md and project conventions.
-cekernel only defines the lifecycle for Workers (PR → CI → merge → notify) and
+cekernel only defines the lifecycle (PR → CI → review → merge → notify) and
 does not concern itself with implementation details or coding conventions.
 
 Specifically, the following are under the target repository's authority, and neither the Orchestrator nor cekernel should specify them:
@@ -400,11 +415,105 @@ cleanup-worktree.sh --force 4
 | zombie reaping (`waitpid` + `WNOHANG`) | `health-check.sh` |
 | SIGSTOP / SIGCONT | send-signal.sh SUSPEND / spawn-worker.sh --resume |
 
+## Reviewer Phase
+
+When `watch-worker.sh` returns `ci-passed`, the Orchestrator launches a Reviewer subagent to evaluate the PR before merge.
+
+### Launching the Reviewer
+
+Use the Agent tool (not Bash) to spawn the Reviewer:
+
+```
+Agent tool call:
+  subagent_type: <CEKERNEL_AGENT_REVIEWER>  (e.g., "reviewer" or "cekernel:reviewer")
+  run_in_background: true
+  prompt: "Review PR #<pr-number> for issue #<issue-number>.
+           Repository: <repo-path>.
+           Read the repository's CLAUDE.md, the issue body, and the PR diff.
+           Submit your review via gh pr review.
+           Return a single word: approved or changes-requested"
+```
+
+### Handling Reviewer Result
+
+The Reviewer returns one of: `approved`, `changes-requested`, or an error.
+
+#### approved
+
+```bash
+# If CEKERNEL_AUTO_MERGE=true (default: false):
+gh pr merge <pr-number> --delete-branch
+
+# Always:
+export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && cleanup-worktree.sh <issue>
+source desktop-notify.sh && desktop_notify "cekernel" "Issue #<issue> approved and merged"
+# Release issue lock (Orchestrator's responsibility for ci-passed lifecycle)
+source issue-lock.sh && issue_lock_release "$(git rev-parse --show-toplevel)" <issue>
+```
+
+If `CEKERNEL_AUTO_MERGE=false`, skip `gh pr merge` and notify the human instead:
+
+```bash
+source desktop-notify.sh && desktop_notify "cekernel" "Issue #<issue> approved — waiting for human merge"
+```
+
+#### changes-requested
+
+The Orchestrator re-spawns the Worker to address the review feedback.
+
+```bash
+# 1. Append resume reason to the task file in the worktree
+WORKTREE=$(git worktree list --porcelain | grep -A1 "worktree.*issue/${ISSUE}" | head -1 | sed 's/worktree //')
+cat >> "${WORKTREE}/.cekernel-task.md" <<'EOF'
+
+## Resume Reason: changes-requested
+
+Review comments are on PR #<pr-number>. Read them with `gh pr view <pr-number> --comments`.
+EOF
+
+# 2. Re-spawn Worker with --resume (reuses existing worktree)
+export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && export CEKERNEL_AGENT_WORKER=<agent-name> && spawn-worker.sh --resume <issue>
+
+# 3. Watch again in background
+export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && watch-worker.sh <issue>  # run_in_background: true
+
+# 4. On ci-passed → re-run Reviewer (loop)
+```
+
+Track retry count in the Orchestrator's working memory. After `CEKERNEL_REVIEW_MAX_RETRIES` (default: 2) reject cycles, escalate.
+
+#### escalation
+
+Triggered when retry limit is exceeded or the Reviewer returns an unexpected result (error, unrecognized output).
+
+```bash
+export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && cleanup-worktree.sh <issue>
+source desktop-notify.sh && desktop_notify "cekernel" "Issue #<issue> escalated — human review needed"
+source issue-lock.sh && issue_lock_release "$(git rev-parse --show-toplevel)" <issue>
+```
+
+The branch and PR remain on the remote for human action.
+
+### Worktree Lifetime
+
+| State | Cleanup? | Reason |
+|-------|----------|--------|
+| Worker `ci-passed` | **No** | Reviewer may reject → Worker re-spawn needs the worktree |
+| `changes-requested` → Worker re-spawned | **No** | Worker is actively using the worktree |
+| Reviewer approved → merged | **Yes** | Lifecycle complete |
+| Reviewer approved (`auto_merge=false`) | **Yes** | Branch and PR exist on remote; local worktree no longer needed |
+| Escalation (retry limit exceeded) | **Yes** | Branch and PR exist on remote for human action |
+
+### Backward Compatibility
+
+If `watch-worker.sh` returns `merged` (legacy Worker behavior), proceed with cleanup directly — no Reviewer phase. This allows gradual rollout and mixed environments where some Workers have not been updated.
+
 ## Error Handling
 
 - Worker unresponsive: check log last modification time, detect zombie with `health-check.sh` → send TERM via `send-signal.sh <issue> TERM` → wait `CEKERNEL_TERM_GRACE_PERIOD` (default: 120s) → if still alive, force terminate with `cleanup-worktree.sh --force`
 - Merge conflict: Worker attempts to resolve. If impossible, sends error notification via FIFO
-- CI failure: Worker attempts to fix. After 3 failures, escalate to human
+- CI failure: Worker attempts to fix. After `CEKERNEL_CI_MAX_RETRIES` failures, escalate to human
+- Reviewer failure: GitHub API outage, subagent context exhaustion, or unrecognized output → treat as escalation (cleanup + desktop notification + issue lock release)
 - Timeout: When `watch-worker.sh` returns `timeout` status, follow the graceful shutdown escalation:
 
   ```bash
