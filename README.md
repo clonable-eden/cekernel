@@ -66,12 +66,16 @@ For details on logging, IPC, and resource governance, see [internals.md](./docs/
 ```
 .claude-plugin/
   plugin.json              # Plugin manifest
+.github/
+  CODEOWNERS               # Code owners definition
+  workflows/
+    cekernel-tests.yml     # CI test workflow
+    plugin-release-tag.yml # Release tag automation
 agents/
   orchestrator.md          # Orchestrator protocol definition
-  worker.md                # Worker protocol definition
-  reviewer.md              # Reviewer protocol definition (Orchestrator subagent)
   probe.md                 # Namespace detection diagnostic agent
-Makefile                   # Runtime directory setup (make install)
+  reviewer.md              # Reviewer protocol definition (Orchestrator subagent)
+  worker.md                # Worker protocol definition
 config/
   Makefile                 # WezTerm plugin install/uninstall
   README.md                # WezTerm backend setup guide
@@ -82,7 +86,61 @@ docs/
   internals.md             # Logging, IPC, resource governance details
   tdd.md                   # Test-driven development guide
   unix-philosophy.md       # UNIX philosophy reference
+envs/
+  ci.env                   # CI profile (headless, 1800s timeout)
+  default.env              # Default profile (wezterm, 3 workers)
+  headless.env             # Headless profile (headless, 5 workers)
+  README.md                # Environment variable catalog
+Makefile                   # Runtime directory setup (make install)
+RELEASE_NOTES.md           # Structured release notes
+scripts/
+  orchestrator/
+    cleanup-worktree.sh    # Remove worktree + branch + logs
+    health-check.sh        # Detect zombie Workers
+    orchctrl.sh            # Worker control interface (systemctl for cekernel)
+    send-signal.sh         # Send signal (TERM/SUSPEND) to a running Worker
+    spawn-worker.sh        # Create worktree + launch Worker via backend (with concurrency guard)
+    watch-logs.sh          # Real-time Worker log monitoring
+    watch-worker.sh        # Monitor Worker completion (FIFO + state file + crash detection)
+    worker-status.sh       # List active Workers
+  scheduler/
+    at-backend.sh          # At backend adapter (launchd/atd)
+    at-backends/
+      atd.sh               # Linux/WSL atd backend
+      launchd.sh           # macOS launchd backend (plist + one-shot cleanup)
+    at.sh                  # /at command handler (register/list/cancel)
+    cron-backend.sh        # Cron backend adapter (launchd/crontab)
+    cron-backends/
+      crontab.sh           # Linux/WSL crontab backend
+      launchd.sh           # macOS launchd backend (plist + cron expr parser)
+    cron.sh                # /cron command handler (register/list/cancel)
+    preflight.sh           # Registration preflight checks
+    registry.sh            # Schedule registry CRUD
+    resolve-api-key.sh     # API key dynamic resolution
+    wrapper.sh             # Runner script generator
+  shared/
+    backend-adapter.sh     # Backend abstraction layer (wezterm/tmux/headless)
+    backends/
+      headless.sh          # Headless backend implementation
+      tmux.sh              # tmux backend implementation
+      wezterm.sh           # WezTerm backend implementation
+    checkpoint-file.sh     # Checkpoint file helpers for suspend/resume
+    claude-json-helper.sh  # ~/.claude.json trust entry read/write helper
+    desktop-notify.sh      # OS-native notification helper
+    issue-lock.sh          # Repo × issue lockfile (duplicate Worker prevention)
+    load-env.sh            # Environment profile loader (multi-layer search)
+    session-id.sh          # Session ID generation + IPC directory derivation
+    task-file.sh           # Local task file extraction (session memory: page cache)
+    worker-priority.sh     # Worker priority (nice value) management
+    worker-state.sh        # Worker process state management
+  worker/
+    check-signal.sh        # Check for pending signal (Worker-side)
+    notify-complete.sh     # Worker → Orchestrator completion notification
 skills/
+  at/
+    SKILL.md               # /at skill — one-shot schedule management
+  cron/
+    SKILL.md               # /cron skill — recurring schedule management
   dispatch/
     SKILL.md               # /dispatch skill — batch-process ready-labeled issues
   orchctrl/
@@ -91,69 +149,18 @@ skills/
     SKILL.md               # /orchestrate skill — issue delegation
   probe/
     SKILL.md               # /probe skill — namespace detection diagnostic
-  cron/
-    SKILL.md               # /cron skill — recurring schedule management
-  at/
-    SKILL.md               # /at skill — one-shot schedule management
-  unix-architect/
-    SKILL.md               # /unix-architect skill — ADR authoring and review
   references/
     namespace-detection.md # Canonical namespace detection logic
     triage.md              # Canonical issue triage protocol
-envs/
-  README.md                # Environment variable catalog
-  default.env              # Default profile (wezterm, 3 workers)
-  headless.env             # Headless profile (headless, 5 workers)
-  ci.env                   # CI profile (headless, 1800s timeout)
-scripts/
-  orchestrator/
-    spawn-worker.sh        # Create worktree + launch Worker via backend (with concurrency guard)
-    watch-worker.sh        # Monitor Worker completion (FIFO + state file + crash detection)
-    watch-logs.sh          # Real-time Worker log monitoring
-    cleanup-worktree.sh    # Remove worktree + branch + logs
-    health-check.sh        # Detect zombie Workers
-    worker-status.sh       # List active Workers
-    orchctrl.sh            # Worker control interface (systemctl for cekernel)
-    send-signal.sh         # Send signal (TERM/SUSPEND) to a running Worker
-  worker/
-    notify-complete.sh     # Worker → Orchestrator completion notification
-    check-signal.sh        # Check for pending signal (Worker-side)
-  shared/
-    session-id.sh          # Session ID generation + IPC directory derivation
-    claude-json-helper.sh  # ~/.claude.json trust entry read/write helper
-    backend-adapter.sh     # Backend abstraction layer (wezterm/tmux/headless)
-    task-file.sh           # Local task file extraction (session memory: page cache)
-    load-env.sh            # Environment profile loader (multi-layer search)
-    checkpoint-file.sh     # Checkpoint file helpers for suspend/resume
-    worker-priority.sh     # Worker priority (nice value) management
-    worker-state.sh        # Worker process state management
-    issue-lock.sh          # Repo × issue lockfile (duplicate Worker prevention)
-    backends/
-      headless.sh          # Headless backend implementation
-      tmux.sh              # tmux backend implementation
-      wezterm.sh           # WezTerm backend implementation
-  scheduler/
-    registry.sh            # Schedule registry CRUD
-    wrapper.sh             # Runner script generator
-    resolve-api-key.sh     # API key dynamic resolution
-    preflight.sh           # Registration preflight checks
-    cron.sh                # /cron command handler (register/list/cancel)
-    cron-backend.sh        # Cron backend adapter (launchd/crontab)
-    cron-backends/
-      launchd.sh           # macOS launchd backend (plist + cron expr parser)
-      crontab.sh           # Linux/WSL crontab backend
-    at.sh                  # /at command handler (register/list/cancel)
-    at-backend.sh          # At backend adapter (launchd/atd)
-    at-backends/
-      launchd.sh           # macOS launchd backend (plist + one-shot cleanup)
-      atd.sh               # Linux/WSL atd backend
+  unix-architect/
+    SKILL.md               # /unix-architect skill — ADR authoring and review
 tests/
-  run-tests.sh             # Test runner
   helpers.sh               # Assertion helpers
   orchestrator/test-*.sh   # Orchestrator script tests
-  worker/test-*.sh         # Worker script tests
-  shared/test-*.sh         # Shared helper tests
+  run-tests.sh             # Test runner
   scheduler/test-*.sh      # Scheduler script tests
+  shared/test-*.sh         # Shared helper tests
+  worker/test-*.sh         # Worker script tests
 ```
 
 ## Dependencies
