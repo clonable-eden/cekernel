@@ -223,3 +223,23 @@ Alternative 3 (SQLite) was correctly deferred per Rule of Optimization. ADR-0002
 ### Related: CI retry count (#82)
 
 During review, the hardcoded 3-retry limit in the Worker protocol was identified as a potential improvement area. Filed as #82 (separate from this ADR, as retry policy is a Worker protocol concern, not a state machine concern).
+
+### Amendment: Worker-Reviewer separation (ADR-0012)
+
+ADR-0012 splits the Worker lifecycle at the CI pass boundary. The following states are affected:
+
+- **`MERGING` removed**: Workers no longer merge. The `RUNNING:phase3:merging` state is deleted from the model.
+- **`COMPLETED` → `CI_PASSED`**: The Worker's terminal success state changes from `TERMINATED:merged` to `TERMINATED:ci-passed`. Merge is now the Orchestrator's responsibility after Reviewer approval.
+
+Updated state model:
+
+```
+SPAWNING → PLANNING → RUNNING → PR_CREATED → CI_WAITING → CI_PASSED (terminal)
+                                                  ↑  ↓
+                                                  CI_FIXING ───┘
+                                                     ↓
+                                                   FAILED (after CEKERNEL_CI_MAX_RETRIES)
+                                                          → CANCELLED (via signal, ADR-0003)
+```
+
+The transition from `CI_PASSED` to merged (or back to `RUNNING` via re-spawn after Reviewer rejection) is managed by the Orchestrator, not the Worker.

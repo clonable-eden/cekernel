@@ -14,9 +14,11 @@ Orchestrator (agent1)             Worker (agent2, 3, 4, ...)
   | receive issue |               | implement     |
   | create wktree |--spawn------->| test          |
   | monitor FIFO  |               | create PR     |
-  |   ...waiting  |               | CI + merge    |
+  |   ...waiting  |               | CI verify     |
   |   <--signal---|<--notify------| notify done   |
-  | cleanup       |               +---------------+
+  | review (agent)|               +---------------+
+  | merge / human |
+  | cleanup       |
   +---------------+
 ```
 
@@ -67,6 +69,7 @@ For details on logging, IPC, and resource governance, see [internals.md](./docs/
 agents/
   orchestrator.md          # Orchestrator protocol definition
   worker.md                # Worker protocol definition
+  reviewer.md              # Reviewer protocol definition (Orchestrator subagent)
   probe.md                 # Namespace detection diagnostic agent
 Makefile                   # Runtime directory setup (make install)
 config/
@@ -175,7 +178,7 @@ cekernel is primarily designed for **monorepo** structures. While it may work wi
 **Recommended for target repositories:**
 
 - CI should be set up (unit tests, integration tests, e2e tests). Workers rely on CI to verify their changes.
-- CD (continuous deployment) is optional — cekernel only handles the implement → PR → CI → merge lifecycle.
+- CD (continuous deployment) is optional — cekernel only handles the implement → PR → CI → review → merge lifecycle.
 
 **Backend support:**
 
@@ -354,7 +357,7 @@ Each repository can freely customize allowed tools and commands.
 
 ## Constraint: Separation of Authority
 
-cekernel defines only the **lifecycle** (spawn → PR → CI → merge → notify → cleanup).
+cekernel defines only the **lifecycle** (spawn → PR → CI → review → merge → notify → cleanup).
 
 When Workers actually write code, they **fully follow the target repository's CLAUDE.md and project conventions**.
 If cekernel rules conflict with the target repository's conventions, the target repository always takes precedence.
