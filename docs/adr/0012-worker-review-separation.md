@@ -73,10 +73,11 @@ Three roles with distinct responsibilities:
 
 The Worker's lifecycle ends at CI pass:
 
-- **Phase 3** becomes "CI Verification" only — the `phase3:merging` state is removed
+- **Phase 3** becomes "CI Verification" only — the `phase3:merging` state is removed (amends ADR-0004: `MERGING` state removed from Worker, replaced by `CI_PASSED` as the Worker's final state before Orchestrator takes over)
 - **Completion status**: `notify-complete.sh <issue> ci-passed <pr-number>` (new status)
 - **Prohibition**: Worker **must not merge**. This is a hard constraint in the agent definition, not a suggestion
 - **Prompt update**: `spawn-worker.sh` prompt changes from `"implement → create PR → verify CI → merge"` to `"implement → create PR → verify CI"`
+- **Issue lock**: `notify-complete.sh` currently releases the issue lock unconditionally (line 69-73). With `ci-passed`, the lock must **not** be released — the issue is still being processed (Reviewer pending, possible re-spawn). The lock is released only on terminal statuses (`merged`, `failed`, `cancelled`) or by the Orchestrator at the end of the full lifecycle (escalation). This prevents duplicate Workers from being spawned for the same issue between `ci-passed` and re-spawn
 
 #### Worker: Resume After Rejection
 
@@ -143,6 +144,17 @@ Reviewer result:
 
 Retry limit: `CEKERNEL_REVIEW_MAX_RETRIES` (default: 2). After exhaustion, escalate to human via desktop notification.
 
+#### Reviewer Error Handling
+
+The Reviewer subagent can fail in several ways: GitHub App token expired, GitHub API outage, subagent context exhaustion, or unexpected output (neither `approved` nor `changes-requested`). Following the Rule of Repair ("when you must fail, fail noisily and as soon as possible"), all Reviewer failures are treated as escalation:
+
+- Orchestrator receives error or unrecognized result from Reviewer → treat as escalation
+- Desktop notification sent to human with error details
+- Worktree cleaned up (branch and PR exist on remote for human action)
+- Issue lock released by Orchestrator
+
+This avoids silent failure modes and ensures a human is always notified when the automated flow cannot complete.
+
 #### Worktree Lifetime
 
 The introduction of a review phase changes when worktree cleanup can occur. Currently, the Worker notifies `merged` and the Orchestrator cleans up immediately. In the proposed flow, the worktree must be preserved longer because the reject → re-spawn cycle reuses it via `spawn-worker.sh --resume`.
@@ -160,6 +172,12 @@ The Reviewer runs as an Orchestrator subagent, so its result is returned directl
 In the `auto_merge=false` and escalation cases, the Orchestrator cleans up the local worktree immediately upon receiving the Reviewer's result. The branch remains on the remote and the PR remains on GitHub for human action. Remote branch deletion is handled by `gh pr merge --delete-branch` (when the human merges) or the repository's auto-delete branch setting.
 
 If a human later requests additional changes on an approved-but-not-merged PR, the automated flow has already concluded. The human can either fix it directly or re-run `/orchestrate` to spawn a new Worker with a fresh worktree.
+
+#### Concurrency Slot Behavior
+
+The concurrency guard in `spawn-worker.sh` counts FIFOs in the IPC directory. When `watch-worker.sh` receives `ci-passed`, it removes the FIFO, freeing the concurrency slot. The worktree persists (for potential re-spawn), but the slot is free for other Workers.
+
+If the Reviewer rejects and the Worker is re-spawned via `spawn-worker.sh --resume`, a new FIFO is created, consuming a slot. This means the Worker only holds a concurrency slot while actively running — between `ci-passed` and any re-spawn decision, the slot is available for other Workers. This is the correct behavior: review is a lightweight subagent operation that should not block Worker slots.
 
 #### Desktop Notifications
 
