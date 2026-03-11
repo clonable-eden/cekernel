@@ -7,7 +7,7 @@
 #
 # Sourced by backend-adapter.sh when CEKERNEL_BACKEND=headless.
 #
-# Handle file: ${CEKERNEL_IPC_DIR}/handle-{issue} contains PID (numeric).
+# Handle file: ${CEKERNEL_IPC_DIR}/handle-{issue}.{type} contains PID (numeric).
 # Process group: setsid creates a new process group for clean termination.
 
 # ── External API ──
@@ -17,13 +17,14 @@ backend_available() {
   return 0
 }
 
-# backend_spawn_worker <issue> <worktree> <prompt>
+# backend_spawn_worker <issue> <type> <worktree> <prompt>
 # Spawns a Worker as a background process via setsid.
 # Saves PID to handle file internally.
 backend_spawn_worker() {
   local issue="$1"
-  local worktree="$2"
-  local prompt="$3"
+  local type="$2"
+  local worktree="$3"
+  local prompt="$4"
 
   # Ensure log directory exists
   local log_dir="${CEKERNEL_IPC_DIR}/logs"
@@ -46,35 +47,57 @@ backend_spawn_worker() {
   local pid=$!
 
   # Save handle (PID)
-  echo "$pid" > "${CEKERNEL_IPC_DIR}/handle-${issue}"
+  echo "$pid" > "${CEKERNEL_IPC_DIR}/handle-${issue}.${type}"
 }
 
-# backend_worker_alive <issue>
+# backend_worker_alive <issue> [type]
 # exit 0 if alive, exit 1 if dead or no handle
+# If type is omitted, checks any handle-{issue}.* file.
 backend_worker_alive() {
   local issue="$1"
-  local handle_file="${CEKERNEL_IPC_DIR}/handle-${issue}"
+  local type="${2:-}"
 
-  [[ -f "$handle_file" ]] || return 1
-
-  local pid
-  pid=$(cat "$handle_file")
-  kill -0 "$pid" 2>/dev/null
+  if [[ -n "$type" ]]; then
+    local handle_file="${CEKERNEL_IPC_DIR}/handle-${issue}.${type}"
+    [[ -f "$handle_file" ]] || return 1
+    local pid
+    pid=$(cat "$handle_file")
+    kill -0 "$pid" 2>/dev/null
+  else
+    local found=0
+    for handle_file in "${CEKERNEL_IPC_DIR}"/handle-"${issue}".*; do
+      [[ -f "$handle_file" ]] || continue
+      found=1
+      local pid
+      pid=$(cat "$handle_file")
+      if kill -0 "$pid" 2>/dev/null; then
+        return 0
+      fi
+    done
+    [[ "$found" -eq 1 ]] || return 1
+    return 1
+  fi
 }
 
-# backend_kill_worker <issue>
+# backend_kill_worker <issue> [type]
 # Kills the entire process group. No error if handle missing or process dead.
+# If type is omitted, kills all handle-{issue}.* handles.
 backend_kill_worker() {
   local issue="$1"
-  local handle_file="${CEKERNEL_IPC_DIR}/handle-${issue}"
+  local type="${2:-}"
 
-  [[ -f "$handle_file" ]] || return 0
-
-  local pid
-  pid=$(cat "$handle_file")
-
-  # Kill the Worker process and its children.
-  # First try to kill the process group (negative PID).
-  # Fall back to killing just the PID if process group kill fails.
-  kill -- -"$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
+  if [[ -n "$type" ]]; then
+    local handle_file="${CEKERNEL_IPC_DIR}/handle-${issue}.${type}"
+    [[ -f "$handle_file" ]] || return 0
+    local pid
+    pid=$(cat "$handle_file")
+    kill -- -"$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
+  else
+    for handle_file in "${CEKERNEL_IPC_DIR}"/handle-"${issue}".*; do
+      [[ -f "$handle_file" ]] || continue
+      local pid
+      pid=$(cat "$handle_file")
+      kill -- -"$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
+    done
+  fi
 }

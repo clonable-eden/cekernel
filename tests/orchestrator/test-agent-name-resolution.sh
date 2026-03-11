@@ -69,7 +69,7 @@ ISSUE="600"
 WORKTREE="${TEST_TMP}/worktree"
 mkdir -p "$WORKTREE"
 
-backend_spawn_worker "$ISSUE" "$WORKTREE" "test prompt"
+backend_spawn_worker "$ISSUE" "worker" "$WORKTREE" "test prompt"
 sleep 0.3
 
 if [[ -f "$ARGS_FILE" ]]; then
@@ -90,7 +90,7 @@ ARGS_FILE="${TEST_TMP}/args-3b.txt"
 export CEKERNEL_AGENT_ARGS_FILE="$ARGS_FILE"
 
 ISSUE2="601"
-backend_spawn_worker "$ISSUE2" "$WORKTREE" "test prompt 2"
+backend_spawn_worker "$ISSUE2" "worker" "$WORKTREE" "test prompt 2"
 sleep 0.3
 
 if [[ -f "$ARGS_FILE" ]]; then

@@ -43,7 +43,7 @@ mkdir -p "$CEKERNEL_IPC_DIR/logs"
 # Create a live process and record its PID in a handle file
 sleep 300 &
 SLEEP_PID=$!
-echo "$SLEEP_PID" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE_NUMBER}"
+echo "$SLEEP_PID" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE_NUMBER}.worker"
 
 # Write RUNNING state
 worker_state_write "$ISSUE_NUMBER" RUNNING "phase1:implement"

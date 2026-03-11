@@ -53,9 +53,9 @@ ISSUE="500"
 WORKTREE="${TEST_TMP}/worktree"
 mkdir -p "$WORKTREE"
 
-backend_spawn_worker "$ISSUE" "$WORKTREE" "test prompt"
+backend_spawn_worker "$ISSUE" "worker" "$WORKTREE" "test prompt"
 
-HANDLE_FILE="${CEKERNEL_IPC_DIR}/handle-${ISSUE}"
+HANDLE_FILE="${CEKERNEL_IPC_DIR}/handle-${ISSUE}.worker"
 assert_file_exists "Handle file created after spawn" "$HANDLE_FILE"
 
 # Handle file should contain a numeric PID
@@ -109,7 +109,7 @@ assert_eq "kill_worker for non-existent handle exits cleanly" "0" "$EXIT_CODE"
 
 # ── Test 7: Log file is created for spawned worker ──
 ISSUE2="501"
-backend_spawn_worker "$ISSUE2" "$WORKTREE" "test prompt 2"
+backend_spawn_worker "$ISSUE2" "worker" "$WORKTREE" "test prompt 2"
 sleep 0.2
 
 LOG_FILE="${CEKERNEL_IPC_DIR}/logs/worker-${ISSUE2}.stdout.log"
@@ -121,7 +121,7 @@ sleep 0.2
 
 # ── Test 8: SESSION_ID is propagated to worker process ──
 # We can't easily check this with a mock, but verify the handle exists
-HANDLE_FILE2="${CEKERNEL_IPC_DIR}/handle-${ISSUE2}"
+HANDLE_FILE2="${CEKERNEL_IPC_DIR}/handle-${ISSUE2}.worker"
 assert_file_exists "Handle file created for second worker" "$HANDLE_FILE2"
 
 # ── Restore PATH ──

@@ -104,8 +104,8 @@ WORKTREE="${WORKTREE_DIR}/${BRANCH}"
 rollback() {
   echo "Error: spawn.sh failed. Rolling back..." >&2
   # Kill process via backend (handle file managed internally)
-  backend_kill_worker "$ISSUE_NUMBER" 2>/dev/null || true
-  rm -f "${CEKERNEL_IPC_DIR}/handle-${ISSUE_NUMBER}"
+  backend_kill_worker "$ISSUE_NUMBER" "$AGENT_TYPE" 2>/dev/null || true
+  rm -f "${CEKERNEL_IPC_DIR}/handle-${ISSUE_NUMBER}.${AGENT_TYPE}"
   # In resume mode, do not destroy the existing worktree/branch
   if [[ "${RESUME:-0}" -eq 0 ]]; then
     # Unregister trust
@@ -251,8 +251,8 @@ else
 fi
 
 # Backend handles workspace resolution, window spawning, and handle file management internally.
-# Callers pass only (issue, worktree, prompt) — the backend decides how to launch.
-backend_spawn_worker "$ISSUE_NUMBER" "$WORKTREE" "$PROMPT"
+# Callers pass (issue, type, worktree, prompt) — the backend decides how to launch.
+backend_spawn_worker "$ISSUE_NUMBER" "$AGENT_TYPE" "$WORKTREE" "$PROMPT"
 
 # ── State: READY (Worktree ready, Claude agent starting) ──
 worker_state_write "$ISSUE_NUMBER" READY "agent-starting"

@@ -63,9 +63,9 @@ export -f wezterm
 export WEZTERM_PANE=42
 ISSUE="300"
 WORKTREE="/tmp/test-worktree"
-backend_spawn_worker "$ISSUE" "$WORKTREE" "test prompt"
+backend_spawn_worker "$ISSUE" "worker" "$WORKTREE" "test prompt"
 
-HANDLE_FILE="${CEKERNEL_IPC_DIR}/handle-${ISSUE}"
+HANDLE_FILE="${CEKERNEL_IPC_DIR}/handle-${ISSUE}.worker"
 assert_file_exists "Handle file created after spawn" "$HANDLE_FILE"
 
 HANDLE=$(cat "$HANDLE_FILE")
@@ -154,7 +154,7 @@ backend_kill_worker "99999" 2>/dev/null || EXIT_CODE=$?
 assert_eq "kill_worker for missing handle exits cleanly" "0" "$EXIT_CODE"
 
 # ── Test 9: backend_worker_alive — compact JSON (no spaces) ──
-echo "42" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE}"
+echo "42" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE}.worker"
 wezterm() {
   if [[ "$1" == "cli" && "$2" == "list" ]]; then
     echo '[{"pane_id":42},{"pane_id":43}]'
@@ -185,7 +185,7 @@ export -f wezterm
 export WEZTERM_PANE=42
 ISSUE="301"
 WORKTREE="/tmp/test-worktree"
-backend_spawn_worker "$ISSUE" "$WORKTREE" "test prompt with long content"
+backend_spawn_worker "$ISSUE" "worker" "$WORKTREE" "test prompt with long content"
 
 PAYLOAD_FILE="${CEKERNEL_IPC_DIR}/payload-${ISSUE}.b64"
 assert_file_exists "Payload file created after spawn" "$PAYLOAD_FILE"
@@ -218,7 +218,7 @@ rm -f "$MOCK_LOG"
 assert_file_exists "Payload file exists before kill" "$PAYLOAD_FILE"
 
 # Create handle file for the kill
-echo "42" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE}"
+echo "42" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE}.worker"
 MOCK_LOG=$(mktemp)
 wezterm() {
   echo "wezterm $*" >> "$MOCK_LOG"
