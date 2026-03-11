@@ -61,21 +61,23 @@ jobs:
             fi
           fi
 
+      - name: Checkout plugins repository
+        if: ${{ secrets.MARKETPLACE_PAT != '' }}
+        uses: actions/checkout@v6
+        with:
+          repository: clonable-eden/plugins
+          token: ${{ secrets.MARKETPLACE_PAT }}
+          path: plugins-checkout
+
       - name: Update marketplace
+        if: ${{ secrets.MARKETPLACE_PAT != '' }}
         env:
           GH_TOKEN: ${{ secrets.MARKETPLACE_PAT }}
         run: |
           TAG="${{ steps.extract.outputs.tag }}"
           PLUGIN="${{ steps.extract.outputs.plugin }}"
 
-          # Skip if MARKETPLACE_PAT is not configured
-          if [ -z "${GH_TOKEN}" ]; then
-            echo "MARKETPLACE_PAT not configured, skipping marketplace update"
-            exit 0
-          fi
-
-          gh repo clone clonable-eden/plugins /tmp/plugins
-          cd /tmp/plugins
+          cd ${{ github.workspace }}/plugins-checkout
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
