@@ -108,11 +108,12 @@ The Reviewer is architecturally distinct from the Worker:
 
 | Aspect | Worker | Reviewer |
 |--------|--------|----------|
-| Execution model | Separate terminal session (backend) | Orchestrator subagent (`run_in_background`) |
-| Address space | git worktree (isolated copy) | Main working tree (read-only review) |
+| Execution model | Separate terminal session (backend) | Independent process via `spawn-reviewer.sh` (spawn + FIFO) |
+| Address space | git worktree (isolated copy) | Reuses Worker's worktree via `--resume` (read-only review) |
 | Duration | Long (implementation) | Short (review only) |
 | Identity | Operator's GitHub credentials | Operator's GitHub credentials |
 | Tools | Read, Edit, Write, Bash | Bash only (`gh` for review operations) |
+| Communication | FIFO via `notify-complete.sh` | FIFO via `notify-complete.sh` |
 
 The Reviewer's value comes from **context separation**, not identity separation. A separate agent context evaluating code written by another context avoids the confirmation bias inherent in self-review.
 
@@ -133,29 +134,29 @@ The Reviewer does **not** need a worktree because it does not modify files — i
 The Orchestrator gains a new phase between Worker completion and cleanup:
 
 ```
-watch-worker.sh notification received:
-  status=ci-passed       → launch Reviewer subagent
+watch.sh notification received (Worker):
+  status=ci-passed       → spawn Reviewer via spawn-reviewer.sh + watch.sh
   status=merged          → legacy flow (backward compatibility, eventual removal)
   status=failed          → error handling (existing)
   status=cancelled       → SUSPEND handling (existing)
 
-Reviewer result:
-  approved (auto_merge=true)  → Orchestrator runs gh pr merge → cleanup-worktree.sh + desktop notification
-  approved (auto_merge=false) → cleanup-worktree.sh + desktop notification (human merges on GitHub)
-  changes-requested           → append resume reason to task file
-                                → spawn-worker.sh --resume
-                                → watch-worker.sh (run_in_background)
-                                → on ci-passed → Reviewer re-run
-  escalation                  → cleanup-worktree.sh + desktop notification (human intervenes)
+watch.sh notification received (Reviewer):
+  result=approved (auto_merge=true)  → Orchestrator runs gh pr merge → cleanup-worktree.sh + desktop notification
+  result=approved (auto_merge=false) → cleanup-worktree.sh + desktop notification (human merges on GitHub)
+  result=changes-requested           → append resume reason to task file
+                                       → spawn-worker.sh --resume
+                                       → watch.sh (run_in_background)
+                                       → on ci-passed → Reviewer re-run
+  result=failed / escalation         → cleanup-worktree.sh + desktop notification (human intervenes)
 ```
 
 Retry limit: `CEKERNEL_REVIEW_MAX_RETRIES` (default: 2). After exhaustion, escalate to human via desktop notification.
 
 #### Reviewer Error Handling
 
-The Reviewer subagent can fail in several ways: GitHub API outage, subagent context exhaustion, or unexpected output (neither `approved` nor `changes-requested`). Following the Rule of Repair ("when you must fail, fail noisily and as soon as possible"), all Reviewer failures are treated as escalation:
+The Reviewer process can fail in several ways: GitHub API outage, process crash, or unexpected output (neither `approved` nor `changes-requested`). Following the Rule of Repair ("when you must fail, fail noisily and as soon as possible"), all Reviewer failures are treated as escalation:
 
-- Orchestrator receives error or unrecognized result from Reviewer → treat as escalation
+- Orchestrator receives `failed` status or unrecognized result from Reviewer FIFO → treat as escalation
 - Desktop notification sent to human with error details
 - Worktree cleaned up (branch and PR exist on remote for human action)
 - Issue lock released by Orchestrator
@@ -249,9 +250,44 @@ Developers expect code review before merge. The current auto-merge-without-revie
 
 ### Platform Constraints
 
-**Subagent execution model** (Confidence: Evolving): The Reviewer runs as an Orchestrator subagent via `run_in_background`. Per the platform constraints document, subagents cannot communicate with the parent during execution — the parent receives only the final output. This is acceptable for the Reviewer because review is a single-shot operation: read diff, submit review, return result. No mid-execution communication is needed.
+**Subagent nesting limitation** (Confidence: Stable): Claude Code does not support deeply nested subagent hierarchies reliably. When the `/orchestrate` skill launches the Orchestrator as a subagent, and the Orchestrator then attempts to launch the Reviewer as a further nested subagent, the nesting depth can cause reliability issues. This constraint led to the adoption of the spawn + FIFO pattern for the Reviewer (see Amendment below).
 
-**Background task reliability** (Confidence: Evolving): The Orchestrator spawns the Reviewer with `run_in_background`. If the background notification is delayed or missed, the Orchestrator's existing polling patterns (used for `watch-worker.sh`) can serve as fallback. However, since the Reviewer is short-lived (review only, no implementation), the risk of missed notifications is lower than for long-running Workers.
+### Amendment: Spawn + FIFO Pattern for Reviewer (2026-03)
+
+The original design proposed running the Reviewer as an Orchestrator subagent via the `Agent` tool with `run_in_background`. In practice, this creates a subagent nesting problem:
+
+```
+/orchestrate skill → Task(orchestrator) → Agent(reviewer)
+```
+
+The Orchestrator itself runs as a subagent of the `/orchestrate` skill. Spawning the Reviewer as a further nested subagent hits Claude Code's subagent nesting limitations, which can cause reliability issues and context exhaustion.
+
+**Resolution**: The Reviewer now uses the same spawn + FIFO pattern as Workers:
+
+```
+/orchestrate skill → Task(orchestrator) → spawn-reviewer.sh → FIFO notification
+```
+
+The Orchestrator spawns the Reviewer as an independent process via `spawn-reviewer.sh` (a wrapper for `spawn.sh --agent reviewer`). The Reviewer communicates its result (`approved`, `changes-requested`, or `failed`) back to the Orchestrator via `notify-complete.sh`, which writes to a FIFO. The Orchestrator monitors this via `watch.sh`, following the same pattern used for Workers.
+
+**Changes from original design**:
+
+| Aspect | Original (subagent) | Amended (spawn + FIFO) |
+|--------|---------------------|------------------------|
+| Execution model | `Agent(reviewer)` subagent | Independent process via `spawn-reviewer.sh` |
+| Communication | Subagent return value | FIFO via `notify-complete.sh` |
+| Orchestrator tools | `Agent(reviewer)` in tools list | Bash only (no Agent tool needed) |
+| Nesting depth | 3 levels (skill → orchestrator → reviewer) | 2 levels (skill → orchestrator) + independent process |
+| Monitoring | Subagent `run_in_background` | `watch.sh` with `run_in_background` |
+
+The Reviewer's core responsibilities (read diff, evaluate, submit review) remain unchanged. Only the execution and communication model changed.
+
+**Impact on other components**:
+
+- `agents/orchestrator.md`: `Agent(reviewer)` removed from tools; Reviewer Phase uses `spawn-reviewer.sh` + `watch.sh`
+- `agents/reviewer.md`: Output via `notify-complete.sh` instead of return value
+- `skills/orchestrate/SKILL.md`, `skills/dispatch/SKILL.md`: Reviewer launch instructions updated to spawn-based
+- `docs/claude-code-constraints.md`: Subagent nesting limitation documented
 
 ## Alternatives Considered
 

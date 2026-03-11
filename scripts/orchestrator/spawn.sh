@@ -30,11 +30,13 @@ source "${SCRIPT_DIR}/../shared/issue-lock.sh"
 AGENT_TYPE=""
 RESUME=0
 PRIORITY="normal"
+CUSTOM_PROMPT=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --agent) AGENT_TYPE="${2:?--agent requires a value}"; shift 2 ;;
     --resume) RESUME=1; shift ;;
     --priority) PRIORITY="${2:?--priority requires a value}"; shift 2 ;;
+    --prompt) CUSTOM_PROMPT="${2:?--prompt requires a value}"; shift 2 ;;
     *) break ;;
   esac
 done
@@ -238,11 +240,11 @@ EOF
 BASH_PREFIX="source .cekernel-env"
 
 # ── Launch process via backend ──
-# Initial prompt for process:
-# 1. Read the target repository's CLAUDE.md first
-# 2. Follow kernel's protocol only for lifecycle (PR -> CI -> notify)
-# 3. Follow the target repository's conventions for implementation
-if [[ "$RESUME" -eq 1 ]]; then
+# If --prompt was provided, use it. Otherwise, use the default Worker prompt.
+# The BASH_PREFIX is always appended to ensure correct environment setup.
+if [[ -n "$CUSTOM_PROMPT" ]]; then
+  PROMPT="${CUSTOM_PROMPT} When executing Bash during processing, always prefix with: ${BASH_PREFIX} &&"
+elif [[ "$RESUME" -eq 1 ]]; then
   PROMPT="Resume issue #${ISSUE_NUMBER}. Read .cekernel-checkpoint.md to understand previous progress, then continue from where the previous Worker left off. First read the target repository's CLAUDE.md and fully follow its conventions. Follow only the kernel Worker Protocol for lifecycle: implement → create PR → verify CI. When done, run notify-complete.sh ${ISSUE_NUMBER} ci-passed <pr-number>. When executing Bash during processing, always prefix with: ${BASH_PREFIX} &&"
 else
   PROMPT="Resolve issue #${ISSUE_NUMBER}. First read the target repository's CLAUDE.md and fully follow its conventions. Follow only the kernel Worker Protocol for lifecycle: implement → create PR → verify CI. When done, run notify-complete.sh ${ISSUE_NUMBER} ci-passed <pr-number>. When executing Bash during processing, always prefix with: ${BASH_PREFIX} &&"
