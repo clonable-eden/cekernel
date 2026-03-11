@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# worker-status.sh — List active Workers
+# process-status.sh — List active processes (Workers and Reviewers)
 #
-# Usage: worker-status.sh
-# Output: JSON Lines (1 line = 1 Worker)
-#   {"issue": 4, "worktree": "...", "fifo": "...", "uptime": "12m", "state": "RUNNING", "state_detail": "phase1:implement", "priority": 10, "priority_name": "normal"}
+# Usage: process-status.sh
+# Output: JSON Lines (1 line = 1 process)
+#   {"issue": 4, "type": "worker", "worktree": "...", "fifo": "...", "uptime": "12m", "state": "RUNNING", "state_detail": "phase1:implement", "priority": 10, "priority_name": "normal"}
 #
 # Exit codes:
 #   0 — Success
@@ -22,10 +22,18 @@ fi
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"
 
-# Collect Worker info from FIFO list
+# Collect process info from FIFO list
 find "$CEKERNEL_IPC_DIR" -maxdepth 1 -name 'worker-*' -type p 2>/dev/null | sort | while read -r fifo; do
   basename_fifo=$(basename "$fifo")
   issue="${basename_fifo#worker-}"
+
+  # Read process type from .type file
+  type_file="${CEKERNEL_IPC_DIR}/worker-${issue}.type"
+  if [[ -f "$type_file" ]]; then
+    process_type=$(tr -d '[:space:]' < "$type_file")
+  else
+    process_type="unknown"
+  fi
 
   # Look up worktree path
   worktree=""
@@ -75,6 +83,7 @@ find "$CEKERNEL_IPC_DIR" -maxdepth 1 -name 'worker-*' -type p 2>/dev/null | sort
   # JSON output
   jq -cn \
     --argjson issue "$issue" \
+    --arg type "$process_type" \
     --arg worktree "$worktree" \
     --arg fifo "$fifo" \
     --arg uptime "$uptime" \
@@ -82,5 +91,5 @@ find "$CEKERNEL_IPC_DIR" -maxdepth 1 -name 'worker-*' -type p 2>/dev/null | sort
     --arg state_detail "$worker_state_detail" \
     --argjson priority "$worker_priority" \
     --arg priority_name "$worker_priority_name" \
-    '{issue: $issue, worktree: $worktree, fifo: $fifo, uptime: $uptime, state: $state, state_detail: $state_detail, priority: $priority, priority_name: $priority_name}'
+    '{issue: $issue, type: $type, worktree: $worktree, fifo: $fifo, uptime: $uptime, state: $state, state_detail: $state_detail, priority: $priority, priority_name: $priority_name}'
 done

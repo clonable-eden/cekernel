@@ -51,7 +51,7 @@ Orchestrator (agent1)             Worker (agent2, 3, 4, ...)
 | log rotation | Logs deleted by `cleanup-worktree.sh` |
 | page cache | `.cekernel-task.md` (issue data pre-extracted at spawn) |
 | `ulimit -u` (max processes) | `CEKERNEL_MAX_PROCESSES` |
-| `ps aux` | `worker-status.sh` |
+| `ps aux` | `process-status.sh` |
 | process scheduler | Orchestrator queuing logic (priority queue + preemption) |
 | semaphore | Concurrency guard via FIFO count |
 | `flock` / mutex | `issue-lock.sh` (repo × issue lockfile) |
@@ -103,7 +103,7 @@ scripts/
     spawn-worker.sh        # Spawn Worker (thin wrapper for spawn.sh --agent worker)
     watch-logs.sh          # Real-time Worker log monitoring
     watch-worker.sh        # Monitor Worker completion (FIFO + state file + crash detection)
-    worker-status.sh       # List active Workers
+    process-status.sh       # List active processes (Workers and Reviewers)
   scheduler/
     at-backend.sh          # At backend adapter (launchd/atd)
     at-backends/

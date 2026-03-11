@@ -129,7 +129,7 @@ Phase 4 (Notify)
 
 ## State Reporting
 
-Workers report their state at each phase boundary using `worker_state_write`. This makes Worker activity visible to `worker-status.sh`, `health-check.sh`, and the Orchestrator.
+Workers report their state at each phase boundary using `worker_state_write`. This makes Worker activity visible to `process-status.sh`, `health-check.sh`, and the Orchestrator.
 
 ```bash
 source worker-state.sh && worker_state_write <issue-number> RUNNING "phase1:implement"
