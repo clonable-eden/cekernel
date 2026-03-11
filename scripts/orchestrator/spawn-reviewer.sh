@@ -14,4 +14,21 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec "${SCRIPT_DIR}/spawn.sh" --agent reviewer "$@"
+
+# Extract issue number from args (skip flags and their values)
+ISSUE=""
+SKIP_NEXT=0
+for arg in "$@"; do
+  if [[ "$SKIP_NEXT" -eq 1 ]]; then
+    SKIP_NEXT=0; continue
+  fi
+  case "$arg" in
+    --resume) ;;
+    --priority) SKIP_NEXT=1 ;;
+    [0-9]*) ISSUE="$arg"; break ;;
+  esac
+done
+
+REVIEWER_PROMPT="Review the PR for issue #${ISSUE}. Read the repository's CLAUDE.md, the issue body (.cekernel-task.md), and the PR diff. Submit your review via gh pr review. When done, run notify-complete.sh ${ISSUE} <result> <pr-number> where result is: approved, changes-requested, or failed."
+
+exec "${SCRIPT_DIR}/spawn.sh" --agent reviewer --prompt "$REVIEWER_PROMPT" "$@"
