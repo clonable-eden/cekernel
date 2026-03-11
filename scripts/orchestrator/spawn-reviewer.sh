@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 # spawn-reviewer.sh — Spawn a Reviewer process (wrapper for spawn.sh --agent reviewer)
 #
-# Usage: spawn-reviewer.sh [--resume] [--priority <priority>] <issue-number> [base-branch]
+# Usage: spawn-reviewer.sh [--priority <priority>] <issue-number> [base-branch]
 #   priority: critical|high|normal|low or numeric 0-19 (default: normal)
 # Output: FIFO path (stdout last line)
 # Options:
-#   --resume    Resume a suspended Reviewer (reuse existing worktree)
 #   --priority  Set reviewer priority (nice value)
 # Exit codes:
 #   0 — Reviewer spawned successfully
@@ -23,7 +22,6 @@ for arg in "$@"; do
     SKIP_NEXT=0; continue
   fi
   case "$arg" in
-    --resume) ;;
     --priority) SKIP_NEXT=1 ;;
     [0-9]*) ISSUE="$arg"; break ;;
   esac
