@@ -41,14 +41,14 @@ export -f wezterm
 # We test the rollback() defined in spawn-worker.sh directly,
 # using the same variable names and logic here.
 source_rollback() {
-  # Extract only the rollback function from spawn-worker.sh
-  # This assumes it matches the rollback() in spawn-worker.sh
-  local script="${CEKERNEL_DIR}/scripts/orchestrator/spawn-worker.sh"
+  # Extract only the rollback function from spawn.sh
+  # This assumes it matches the rollback() in spawn.sh
+  local script="${CEKERNEL_DIR}/scripts/orchestrator/spawn.sh"
   # Extract and eval the rollback function
   local func_body
   func_body=$(sed -n '/^rollback()/,/^}/p' "$script")
   if [[ -z "$func_body" ]]; then
-    echo "  FAIL: rollback() function not found in spawn-worker.sh" >&2
+    echo "  FAIL: rollback() function not found in spawn.sh" >&2
     return 1
   fi
   eval "$func_body"

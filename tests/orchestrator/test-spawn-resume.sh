@@ -17,16 +17,17 @@ echo "test: spawn-resume"
 # ── Extract flag parsing section from spawn-worker.sh ──
 # We test the --resume flag is accepted by the parsing loop
 
-SPAWN_SCRIPT="${CEKERNEL_DIR}/scripts/orchestrator/spawn-worker.sh"
+SPAWN_SCRIPT="${CEKERNEL_DIR}/scripts/orchestrator/spawn.sh"
+SPAWN_WORKER_SCRIPT="${CEKERNEL_DIR}/scripts/orchestrator/spawn-worker.sh"
 
-# ── Test 1: --resume flag is recognized in spawn-worker.sh ──
-# Check that spawn-worker.sh contains --resume handling
+# ── Test 1: --resume flag is recognized in spawn.sh ──
+# Check that spawn.sh contains --resume handling
 SCRIPT_CONTENT=$(cat "$SPAWN_SCRIPT")
 if [[ "$SCRIPT_CONTENT" == *"--resume"* ]]; then
-  echo "  PASS: spawn-worker.sh contains --resume flag handling"
+  echo "  PASS: spawn.sh contains --resume flag handling"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
-  echo "  FAIL: spawn-worker.sh does not contain --resume flag handling"
+  echo "  FAIL: spawn.sh does not contain --resume flag handling"
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
@@ -40,7 +41,7 @@ rm -rf "$CEKERNEL_IPC_DIR"
 mkdir -p "$CEKERNEL_IPC_DIR"
 
 EXIT_CODE=0
-bash "$SPAWN_SCRIPT" --resume 99999 2>/dev/null || EXIT_CODE=$?
+bash "$SPAWN_WORKER_SCRIPT" --resume 99999 2>/dev/null || EXIT_CODE=$?
 if [[ "$EXIT_CODE" -ne 0 ]]; then
   echo "  PASS: Resume with non-existent worktree exits non-zero (exit=$EXIT_CODE)"
   TESTS_PASSED=$((TESTS_PASSED + 1))

@@ -63,6 +63,8 @@ fi
 rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}"
 # State file cleanup
 rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.state"
+# Type file cleanup
+rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.type"
 # Signal file cleanup
 rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.signal"
 # Handle file cleanup (in case not already removed)
