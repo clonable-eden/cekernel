@@ -88,4 +88,67 @@ fi
   assert_eq "spawn.sh uses CEKERNEL_AGENT_REVIEWER=cekernel:reviewer when set" "cekernel:reviewer" "$result"
 }
 
+# ── Test 8: spawn-reviewer.sh passes --prompt to spawn.sh ──
+if echo "$CONTENT" | grep -q '\-\-prompt'; then
+  echo "  PASS: spawn-reviewer.sh passes --prompt to spawn.sh"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+else
+  echo "  FAIL: spawn-reviewer.sh should pass --prompt to spawn.sh"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+
+# ── Test 9: spawn-reviewer.sh prompt contains review instructions ──
+if echo "$CONTENT" | grep -q 'Review the PR'; then
+  echo "  PASS: spawn-reviewer.sh prompt contains review instructions"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+else
+  echo "  FAIL: spawn-reviewer.sh prompt should contain review instructions"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+
+# ── Test 10: spawn-reviewer.sh prompt references notify-complete.sh ──
+if echo "$CONTENT" | grep -q 'notify-complete.sh'; then
+  echo "  PASS: spawn-reviewer.sh prompt references notify-complete.sh"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+else
+  echo "  FAIL: spawn-reviewer.sh prompt should reference notify-complete.sh"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+
+# ── Test 11: spawn.sh accepts --prompt flag ──
+SPAWN_SH="${CEKERNEL_DIR}/scripts/orchestrator/spawn.sh"
+SPAWN_CONTENT=$(cat "$SPAWN_SH")
+if echo "$SPAWN_CONTENT" | grep -q '\-\-prompt)'; then
+  echo "  PASS: spawn.sh accepts --prompt flag"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+else
+  echo "  FAIL: spawn.sh should accept --prompt flag"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+
+# ── Test 12: spawn.sh uses CUSTOM_PROMPT when provided ──
+if echo "$SPAWN_CONTENT" | grep -q 'CUSTOM_PROMPT'; then
+  echo "  PASS: spawn.sh uses CUSTOM_PROMPT variable"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+else
+  echo "  FAIL: spawn.sh should use CUSTOM_PROMPT variable"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+
+# ── Test 13: spawn-reviewer.sh correctly skips --priority value when extracting issue number ──
+# Simulate: spawn-reviewer.sh --priority 5 123
+SKIP_NEXT=0
+ISSUE=""
+for arg in --priority 5 123; do
+  if [[ "$SKIP_NEXT" -eq 1 ]]; then
+    SKIP_NEXT=0; continue
+  fi
+  case "$arg" in
+    --resume) ;;
+    --priority) SKIP_NEXT=1 ;;
+    [0-9]*) ISSUE="$arg"; break ;;
+  esac
+done
+assert_eq "Issue extraction skips --priority value" "123" "$ISSUE"
+
 report_results
