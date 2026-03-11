@@ -37,7 +37,7 @@ EVENT="COMPLETE"
 # ── Write JSON message to FIFO ──
 # This write unblocks the orchestrator's blocking read (primary fast path).
 # If FIFO is missing, log a warning but exit 0 — the state file fallback will
-# be detected by watch-worker.sh's polling loop.
+# be detected by watch.sh's polling loop.
 if [[ ! -p "$FIFO" ]]; then
   echo "Warning: FIFO not found at $FIFO" >&2
   echo "Orchestrator will detect completion via state file fallback." >&2
