@@ -116,6 +116,8 @@ export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=default && export CEKERNE
 export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=default && watch.sh 42  # run_in_background: true
 ```
 
+**MUST NOT**: Do not include Agent tool language (`subagent_type`, `Agent(worker)`, `Agent(reviewer)`, etc.) in the Orchestrator prompt. Workers and Reviewers are spawned by the Orchestrator via `spawn-worker.sh` / `spawn-reviewer.sh` (Bash), following its own agent definition. The skill must not dictate how the Orchestrator launches subprocesses.
+
 The Orchestrator autonomously executes:
 
 1. Issue verification and triage (FAIL for ambiguous issues)
