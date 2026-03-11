@@ -64,29 +64,24 @@ fi
 # ── Test 6: spawn.sh resolves CEKERNEL_AGENT_REVIEWER for reviewer type ──
 # The dynamic agent name resolution in spawn.sh constructs CEKERNEL_AGENT_REVIEWER
 # from the agent type. Verify this logic works for "reviewer".
-(
+RESULT_6=$(
   AGENT_TYPE="reviewer"
   AGENT_VAR="CEKERNEL_AGENT_$(echo "$AGENT_TYPE" | tr '[:lower:]' '[:upper:]')"
-  # When CEKERNEL_AGENT_REVIEWER is unset, default to "reviewer"
   unset CEKERNEL_AGENT_REVIEWER
   AGENT_NAME="${!AGENT_VAR:-$AGENT_TYPE}"
   echo "$AGENT_NAME"
-) | {
-  read -r result
-  assert_eq "spawn.sh defaults CEKERNEL_AGENT_REVIEWER to 'reviewer'" "reviewer" "$result"
-}
+)
+assert_eq "spawn.sh defaults CEKERNEL_AGENT_REVIEWER to 'reviewer'" "reviewer" "$RESULT_6"
 
 # ── Test 7: spawn.sh uses CEKERNEL_AGENT_REVIEWER when set ──
-(
+RESULT_7=$(
   AGENT_TYPE="reviewer"
   export CEKERNEL_AGENT_REVIEWER="cekernel:reviewer"
   AGENT_VAR="CEKERNEL_AGENT_$(echo "$AGENT_TYPE" | tr '[:lower:]' '[:upper:]')"
   AGENT_NAME="${!AGENT_VAR:-$AGENT_TYPE}"
   echo "$AGENT_NAME"
-) | {
-  read -r result
-  assert_eq "spawn.sh uses CEKERNEL_AGENT_REVIEWER=cekernel:reviewer when set" "cekernel:reviewer" "$result"
-}
+)
+assert_eq "spawn.sh uses CEKERNEL_AGENT_REVIEWER=cekernel:reviewer when set" "cekernel:reviewer" "$RESULT_7"
 
 # ── Test 8: spawn-reviewer.sh passes --prompt to spawn.sh ──
 if echo "$CONTENT" | grep -q '\-\-prompt'; then
