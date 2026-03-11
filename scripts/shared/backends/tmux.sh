@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # backends/tmux.sh — tmux backend (ADR-0005 API)
 #
-# Implements 4 external API functions using tmux.
+# Implements 5 external API functions using tmux.
 # Sourced by backend-adapter.sh when CEKERNEL_BACKEND=tmux.
 #
 # Handle file: ${CEKERNEL_IPC_DIR}/handle-{issue}.{type} contains tmux pane target

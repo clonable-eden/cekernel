@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # backends/wezterm.sh — WezTerm backend (ADR-0005 API)
 #
-# Implements 4 external API functions using WezTerm CLI.
+# Implements 5 external API functions using WezTerm CLI.
 # Sourced by backend-adapter.sh when CEKERNEL_BACKEND=wezterm.
 #
 # Handle file: ${CEKERNEL_IPC_DIR}/handle-{issue}.{type} contains WezTerm pane ID (numeric).

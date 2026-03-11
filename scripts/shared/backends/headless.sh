@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # backends/headless.sh — Headless backend (ADR-0005)
 #
-# Implements 4 external API functions using background processes.
+# Implements 5 external API functions using background processes.
 # No terminal multiplexer required — Workers run as background processes
 # with stdout/stderr redirected to log files.
 #
