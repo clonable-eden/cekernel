@@ -33,7 +33,7 @@ POLL_INTERVAL="${CEKERNEL_POLL_INTERVAL:-30}"
 build_result_from_state() {
   local state_json="$1"
   echo "$state_json" | jq -c \
-    '{issue: .issue, status: .detail, detail: "detected-via-state-fallback", timestamp: .timestamp}'
+    '{issue: .issue, result: .detail, detail: "detected-via-state-fallback", timestamp: .timestamp}'
 }
 
 # ── Helper: log to worker log file ──
@@ -101,7 +101,7 @@ watch_one() {
     # Crash detection: if handle file exists but Worker process is dead, it crashed
     # Only check when handle file is present (without it, we can't verify process status)
     if [[ -f "${CEKERNEL_IPC_DIR}/handle-${issue}" ]] && ! backend_worker_alive "$issue" 2>/dev/null; then
-      result="{\"issue\":${issue},\"status\":\"crashed\",\"detail\":\"Worker process died without completing\"}"
+      result="{\"issue\":${issue},\"result\":\"crashed\",\"detail\":\"Worker process died without completing\"}"
       echo "Error: issue #${issue} Worker process crashed (state: ${state})." >&2
       log_event "$issue" "WORKER_CRASH" "issue=#${issue} state=${state}"
       [[ $has_fifo -eq 1 ]] && exec 3>&-
@@ -116,15 +116,16 @@ watch_one() {
   if [[ -z "$result" ]]; then
     [[ $has_fifo -eq 1 ]] && exec 3>&-
     rm -f "$fifo"
-    result="{\"issue\":${issue},\"status\":\"timeout\",\"detail\":\"No response within ${TIMEOUT}s\"}"
+    result="{\"issue\":${issue},\"result\":\"timeout\",\"detail\":\"No response within ${TIMEOUT}s\"}"
     echo "Issue #${issue} timed out after ${TIMEOUT}s." >&2
     log_event "$issue" "WATCH_TIMEOUT" "issue=#${issue} timeout=${TIMEOUT}s"
   fi
 
   echo "$result" > "${RESULT_DIR}/${issue}"
   local result_status
-  result_status=$(echo "$result" | jq -r '.status')
-  [[ "$result_status" != "timeout" && "$result_status" != "error" && "$result_status" != "crashed" ]]
+  local result_value
+  result_value=$(echo "$result" | jq -r '.result')
+  [[ "$result_value" != "timeout" && "$result_value" != "error" && "$result_value" != "crashed" ]]
 }
 
 for issue in "${ISSUE_NUMBERS[@]}"; do

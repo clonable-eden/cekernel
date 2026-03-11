@@ -75,7 +75,7 @@ rm -f "$RESULT_FILE" "$STDERR_FILE"
 
 # Verify result JSON indicates crash
 assert_match "Result contains issue number" '"issue":40' "$RESULT"
-assert_match "Result contains crash status" '"status":"crashed"' "$RESULT"
+assert_match "Result contains crash result" '"result":"crashed"' "$RESULT"
 
 # Verify log file has WORKER_CRASH event
 LOG_FILE="${CEKERNEL_IPC_DIR}/logs/worker-${ISSUE_NUMBER}.log"

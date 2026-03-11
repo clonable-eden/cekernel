@@ -134,9 +134,9 @@ scripts/
     task-file.sh           # Local task file extraction (session memory: page cache)
     worker-priority.sh     # Worker priority (nice value) management
     worker-state.sh        # Worker process state management
-  worker/
-    check-signal.sh        # Check for pending signal (Worker-side)
-    notify-complete.sh     # Worker → Orchestrator completion notification
+  process/
+    check-signal.sh        # Check for pending signal (Worker/Reviewer-side)
+    notify-complete.sh     # Process → Orchestrator completion notification
 skills/
   at/
     SKILL.md               # /at skill — one-shot schedule management
@@ -161,7 +161,7 @@ tests/
   run-tests.sh             # Test runner
   scheduler/test-*.sh      # Scheduler script tests
   shared/test-*.sh         # Shared helper tests
-  worker/test-*.sh         # Worker script tests
+  process/test-*.sh        # Process script tests
 ```
 
 ## Dependencies

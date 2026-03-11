@@ -52,14 +52,14 @@ mkfifo "$FIFO"
 READER_PID=$!
 
 # Run notify-complete.sh
-bash "${CEKERNEL_DIR}/scripts/worker/notify-complete.sh" "$ISSUE_NUMBER" merged 99
+bash "${CEKERNEL_DIR}/scripts/process/notify-complete.sh" "$ISSUE_NUMBER" merged 99
 
 wait "$READER_PID" || true
 
 COMPLETE_LINE=$(tail -1 "$LOG_FILE")
 assert_match "COMPLETE has ISO8601 timestamp" '^\[[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\]' "$COMPLETE_LINE"
 assert_match "COMPLETE has event type" 'COMPLETE' "$COMPLETE_LINE"
-assert_match "COMPLETE has status" 'status=merged' "$COMPLETE_LINE"
+assert_match "COMPLETE has result" 'result=merged' "$COMPLETE_LINE"
 assert_match "COMPLETE has detail" 'detail=99' "$COMPLETE_LINE"
 
 # ── Test 4: FAILED event recording ──
@@ -74,13 +74,13 @@ mkfifo "$FIFO_FAIL"
 (cat "$FIFO_FAIL" > /dev/null) &
 READER_PID=$!
 
-bash "${CEKERNEL_DIR}/scripts/worker/notify-complete.sh" "$ISSUE_FAIL" failed "CI failed 3 times"
+bash "${CEKERNEL_DIR}/scripts/process/notify-complete.sh" "$ISSUE_FAIL" failed "CI failed 3 times"
 
 wait "$READER_PID" || true
 
 FAILED_LINE=$(tail -1 "$LOG_FILE_FAIL")
 assert_match "FAILED event recorded" 'FAILED' "$FAILED_LINE"
-assert_match "FAILED has status" 'status=failed' "$FAILED_LINE"
+assert_match "FAILED has result" 'result=failed' "$FAILED_LINE"
 assert_match "FAILED has detail" 'detail=CI failed 3 times' "$FAILED_LINE"
 
 # ── Test 5: watch-logs.sh returns error with nonexistent log directory ──

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# check-signal.sh — Check for pending signal (Worker-side)
+# check-signal.sh — Check for pending signal (process-side)
 #
 # Usage: check-signal.sh <issue-number>
 #

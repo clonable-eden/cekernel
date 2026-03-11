@@ -91,8 +91,8 @@ RESULT=$(cat "$RESULT_FILE")
 # Key assertion: result should NOT be "crashed"
 # If load-env.sh is not sourced, watch.sh falls back to wezterm backend
 # and the live PID is not found as a wezterm pane -> false crash detection
-RESULT_STATUS=$(echo "$RESULT" | jq -r '.status')
-assert_eq "No false crash (env profile backend resolved)" "merged:#999" "$RESULT_STATUS"
+RESULT_VALUE=$(echo "$RESULT" | jq -r '.result')
+assert_eq "No false crash (env profile backend resolved)" "merged:#999" "$RESULT_VALUE"
 
 # Verify the status is detected via state fallback (not crash)
 assert_match "Detected via state fallback" "detected-via-state-fallback" "$RESULT"

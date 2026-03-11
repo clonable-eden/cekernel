@@ -140,8 +140,8 @@ tests/
 ├── orchestrator/
 │   ├── test-concurrency-guard.sh
 │   └── test-{feature}.sh   # Orchestrator script tests
-├── worker/
-│   └── test-{feature}.sh   # Worker script tests
+├── process/
+│   └── test-{feature}.sh   # Process script tests
 ├── shared/
 │   ├── test-session-id.sh   # session-id.sh tests
 │   └── test-{feature}.sh   # Shared helper tests
