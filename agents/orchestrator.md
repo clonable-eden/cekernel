@@ -41,7 +41,7 @@ source session-id.sh && echo $CEKERNEL_SESSION_ID
 
 # 2. Pass CEKERNEL_SESSION_ID as environment variable in all subsequent commands
 export CEKERNEL_SESSION_ID=cekernel-7861a821 && spawn-worker.sh 4
-export CEKERNEL_SESSION_ID=cekernel-7861a821 && watch-worker.sh 4   # run_in_background: true
+export CEKERNEL_SESSION_ID=cekernel-7861a821 && watch.sh 4   # run_in_background: true
 export CEKERNEL_SESSION_ID=cekernel-7861a821 && cleanup-worktree.sh 4
 ```
 
@@ -67,14 +67,14 @@ If `CEKERNEL_AGENT_REVIEWER` is not provided, derive it from `CEKERNEL_AGENT_WOR
 
 ### CEKERNEL_ENV (Env Profile) Propagation
 
-When the `/orchestrate` skill specifies `--env <profile>`, the Orchestrator must propagate `CEKERNEL_ENV` to **all script invocations** — not just `spawn-worker.sh`, but also `watch-worker.sh`, `worker-status.sh`, `health-check.sh`, `cleanup-worktree.sh`, and any other cekernel scripts. Scripts that source `load-env.sh` use `CEKERNEL_ENV` to load the correct backend and configuration; without it, they fall back to the `default` profile which may use a different backend (e.g., WezTerm instead of headless).
+When the `/orchestrate` skill specifies `--env <profile>`, the Orchestrator must propagate `CEKERNEL_ENV` to **all script invocations** — not just `spawn-worker.sh`, but also `watch.sh`, `worker-status.sh`, `health-check.sh`, `cleanup-worktree.sh`, and any other cekernel scripts. Scripts that source `load-env.sh` use `CEKERNEL_ENV` to load the correct backend and configuration; without it, they fall back to the `default` profile which may use a different backend (e.g., WezTerm instead of headless).
 
 If no `--env` is specified, `CEKERNEL_ENV` defaults to `default` (handled by `load-env.sh`).
 
 ```bash
 # Example: propagate headless profile to all script calls
 export CEKERNEL_SESSION_ID=cekernel-7861a821 && export CEKERNEL_ENV=headless && spawn-worker.sh 4
-export CEKERNEL_SESSION_ID=cekernel-7861a821 && export CEKERNEL_ENV=headless && watch-worker.sh 4  # run_in_background: true
+export CEKERNEL_SESSION_ID=cekernel-7861a821 && export CEKERNEL_ENV=headless && watch.sh 4  # run_in_background: true
 export CEKERNEL_SESSION_ID=cekernel-7861a821 && export CEKERNEL_ENV=headless && worker-status.sh
 export CEKERNEL_SESSION_ID=cekernel-7861a821 && export CEKERNEL_ENV=headless && cleanup-worktree.sh 4
 ```
@@ -86,7 +86,7 @@ The propagation chain:
   → skill: parses --env, includes CEKERNEL_ENV=headless in orchestrator prompt
     → orchestrator: passes export CEKERNEL_ENV=headless before ALL script calls
       → spawn-worker.sh: sources load-env.sh → loads headless.env
-      → watch-worker.sh: sources load-env.sh → loads headless.env → correct backend_worker_alive
+      → watch.sh: sources load-env.sh → loads headless.env → correct backend_worker_alive
         → env vars (CEKERNEL_BACKEND, CEKERNEL_MAX_WORKERS, etc.) are set
 ```
 
@@ -101,7 +101,7 @@ Available profiles: `default`, `headless`, `ci`, or any custom profile in `.ceke
 export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && export CEKERNEL_AGENT_WORKER=<agent-name> && spawn-worker.sh 4
 
 # 2. Monitor completion in background (Bash run_in_background: true)
-export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && watch-worker.sh 4
+export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && watch.sh 4
 
 # 3. While waiting, periodically check and report status
 export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && worker-status.sh
@@ -113,7 +113,7 @@ export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && worker-statu
 #    cancelled → SUSPEND handling (existing)
 ```
 
-Step 2 MUST use `run_in_background: true` on the Bash tool call. This makes `watch-worker.sh` non-blocking, allowing the Orchestrator to remain active in the foreground.
+Step 2 MUST use `run_in_background: true` on the Bash tool call. This makes `watch.sh` non-blocking, allowing the Orchestrator to remain active in the foreground.
 
 While the background task is running, periodically execute `worker-status.sh` (step 3) to report progress. When the background task completion notification arrives, handle by status (step 4). For `ci-passed`, proceed to the Reviewer Phase.
 
@@ -124,11 +124,11 @@ While the background task is running, periodically execute `worker-status.sh` (s
 
 # 1. Spawn Workers and watch each individually in background (Bash run_in_background: true)
 export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && export CEKERNEL_AGENT_WORKER=<agent-name> && spawn-worker.sh 4
-export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && watch-worker.sh 4  # run_in_background: true
+export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && watch.sh 4  # run_in_background: true
 export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && export CEKERNEL_AGENT_WORKER=<agent-name> && spawn-worker.sh 5
-export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && watch-worker.sh 5  # run_in_background: true
+export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && watch.sh 5  # run_in_background: true
 export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && export CEKERNEL_AGENT_WORKER=<agent-name> && spawn-worker.sh 6
-export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && watch-worker.sh 6  # run_in_background: true
+export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && watch.sh 6  # run_in_background: true
 
 # 2. While waiting, periodically check and report status
 export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && worker-status.sh
@@ -189,7 +189,7 @@ Numeric values 0-19 are also accepted for finer control.
 When the number of issues exceeds `CEKERNEL_MAX_WORKERS`, the Orchestrator uses a waiting queue model:
 
 1. Sort queued issues by priority (lower nice value first). On ties (equal nice value), preserve original order (FIFO within priority class).
-2. Spawn the first `MAX_WORKERS` issues, each with an individual `watch-worker.sh <issue>` in background (`run_in_background: true`)
+2. Spawn the first `MAX_WORKERS` issues, each with an individual `watch.sh <issue>` in background (`run_in_background: true`)
 3. When any background watch completes → cleanup that Worker (skip cleanup if SUSPENDED — preserve worktree for resume) → check Suspended Issues List, then queue, for the next issue to spawn (see Auto-Resume)
 4. Periodically report status via `worker-status.sh` while waiting
 5. Repeat until the queue is empty and all Workers have completed
@@ -202,18 +202,18 @@ This keeps the number of active Workers at `MAX_WORKERS` at all times, maximizin
 
 # Initial: spawn first 3 (highest priority), each watched individually in background
 export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && export CEKERNEL_AGENT_WORKER=<agent-name> && spawn-worker.sh --priority critical 4
-export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && watch-worker.sh 4  # run_in_background: true
+export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && watch.sh 4  # run_in_background: true
 export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && export CEKERNEL_AGENT_WORKER=<agent-name> && spawn-worker.sh --priority high 6
-export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && watch-worker.sh 6  # run_in_background: true
+export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && watch.sh 6  # run_in_background: true
 export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && export CEKERNEL_AGENT_WORKER=<agent-name> && spawn-worker.sh 5
-export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && watch-worker.sh 5  # run_in_background: true
+export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && watch.sh 5  # run_in_background: true
 # Queue remaining: [7(normal), 8(low), 9(low)]
 
 # Worker 6 completes (background notification arrives)
 export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && cleanup-worktree.sh 6
 # Spawn next highest-priority from queue
 export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && export CEKERNEL_AGENT_WORKER=<agent-name> && spawn-worker.sh 7
-export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && watch-worker.sh 7  # run_in_background: true
+export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && watch.sh 7  # run_in_background: true
 # Queue remaining: [8(low), 9(low)]
 
 # ... repeat until queue empty and all Workers complete
@@ -254,7 +254,7 @@ export CEKERNEL_SESSION_ID=<ID> && cleanup-worktree.sh --force <victim-issue>
 
 # 6. Spawn the high-priority issue in the freed slot
 export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && export CEKERNEL_AGENT_WORKER=<agent-name> && spawn-worker.sh --priority <priority> <issue>
-export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && watch-worker.sh <issue>  # run_in_background: true
+export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && watch.sh <issue>  # run_in_background: true
 ```
 
 **IMPORTANT**: Do NOT call `cleanup-worktree.sh` on a successfully suspended Worker — its worktree must be preserved for future resume. If the Worker fails to exit after escalation (step 5 above), `cleanup-worktree.sh --force` is the last resort and the worktree is no longer recoverable. The SUSPEND-ed Worker's completion notification (status: `cancelled`, detail: `"SUSPEND signal received"`) indicates that the issue should be added to the **Suspended Issues List** for auto-resume.
@@ -285,7 +285,7 @@ The Orchestrator maintains a **Suspended Issues List** in its working memory. Wh
 
    ```bash
    export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && export CEKERNEL_AGENT_WORKER=<agent-name> && spawn-worker.sh --resume <issue>
-   export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && watch-worker.sh <issue>  # run_in_background: true
+   export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && watch.sh <issue>  # run_in_background: true
    ```
 
 **Slot-fill priority order**:
@@ -321,7 +321,7 @@ export CEKERNEL_SESSION_ID=<ID> && worker-status.sh
 # {"issue":5,"worktree":"/path/.worktrees/issue/5-...","fifo":"/usr/local/var/cekernel/ipc/.../worker-5","uptime":"8m"}
 ```
 
-During background monitoring (while `watch-worker.sh` runs via `run_in_background`), periodically call `worker-status.sh` to report progress to the user. Output the status and any relevant observations about Worker progress.
+During background monitoring (while `watch.sh` runs via `run_in_background`), periodically call `worker-status.sh` to report progress to the user. Output the status and any relevant observations about Worker progress.
 
 ## Decision Criteria
 
@@ -373,12 +373,12 @@ Investigate Workers whose logs haven't been updated for a long time as potential
 
 ### Timeout (SIGALRM equivalent)
 
-`watch-worker.sh` controls timeout via the `CEKERNEL_WORKER_TIMEOUT` environment variable (default: 3600s = 1 hour).
+`watch.sh` controls timeout via the `CEKERNEL_WORKER_TIMEOUT` environment variable (default: 3600s = 1 hour).
 
 ```bash
 # Set timeout to 30 minutes
 export CEKERNEL_WORKER_TIMEOUT=1800
-export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && watch-worker.sh 4  # run_in_background: true
+export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && watch.sh 4  # run_in_background: true
 ```
 
 On timeout, the following JSON is returned:
@@ -417,7 +417,7 @@ cleanup-worktree.sh --force 4
 
 ## Reviewer Phase
 
-When `watch-worker.sh` returns `ci-passed`, the Orchestrator launches a Reviewer subagent to evaluate the PR before merge.
+When `watch.sh` returns `ci-passed`, the Orchestrator launches a Reviewer subagent to evaluate the PR before merge.
 
 ### Launching the Reviewer
 
@@ -475,7 +475,7 @@ EOF
 export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && export CEKERNEL_AGENT_WORKER=<agent-name> && spawn-worker.sh --resume <issue>
 
 # 3. Watch again in background
-export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && watch-worker.sh <issue>  # run_in_background: true
+export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && watch.sh <issue>  # run_in_background: true
 
 # 4. On ci-passed → re-run Reviewer (loop)
 ```
@@ -506,7 +506,7 @@ The branch and PR remain on the remote for human action.
 
 ### Backward Compatibility
 
-If `watch-worker.sh` returns `merged` (legacy Worker behavior), proceed with cleanup directly — no Reviewer phase. This allows gradual rollout and mixed environments where some Workers have not been updated.
+If `watch.sh` returns `merged` (legacy Worker behavior), proceed with cleanup directly — no Reviewer phase. This allows gradual rollout and mixed environments where some Workers have not been updated.
 
 ## Error Handling
 
@@ -514,7 +514,7 @@ If `watch-worker.sh` returns `merged` (legacy Worker behavior), proceed with cle
 - Merge conflict: Worker attempts to resolve. If impossible, sends error notification via FIFO
 - CI failure: Worker attempts to fix. After `CEKERNEL_CI_MAX_RETRIES` failures, escalate to human
 - Reviewer failure: GitHub API outage, subagent context exhaustion, or unrecognized output → treat as escalation (cleanup + desktop notification + issue lock release)
-- Timeout: When `watch-worker.sh` returns `timeout` status, follow the graceful shutdown escalation:
+- Timeout: When `watch.sh` returns `timeout` status, follow the graceful shutdown escalation:
 
   ```bash
   # 1. Send TERM signal
