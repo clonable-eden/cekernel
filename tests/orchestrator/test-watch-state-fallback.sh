@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-watch-worker-state-fallback.sh — watch-worker.sh detects completion via state file when FIFO is absent
+# test-watch-state-fallback.sh — watch.sh detects completion via state file when FIFO is absent
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -7,7 +7,7 @@ source "${SCRIPT_DIR}/../helpers.sh"
 
 CEKERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-echo "test: watch-worker (state file fallback — no FIFO)"
+echo "test: watch (state file fallback — no FIFO)"
 
 export CEKERNEL_SESSION_ID="test-watch-fallback-00000001"
 source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
@@ -27,7 +27,7 @@ mkdir -p "$CEKERNEL_IPC_DIR/logs"
 # Pre-write TERMINATED state (simulates Worker that completed but FIFO was missing)
 worker_state_write "$ISSUE_NUMBER" TERMINATED "merged"
 
-# ── Test: watch-worker.sh detects completion via state file fallback ──
+# ── Test: watch.sh detects completion via state file fallback ──
 RESULT_FILE=$(mktemp)
 STDERR_FILE=$(mktemp)
 
@@ -35,10 +35,10 @@ STDERR_FILE=$(mktemp)
 export CEKERNEL_POLL_INTERVAL=1
 export CEKERNEL_WORKER_TIMEOUT=10
 
-bash "${CEKERNEL_DIR}/scripts/orchestrator/watch-worker.sh" "$ISSUE_NUMBER" > "$RESULT_FILE" 2>"$STDERR_FILE" &
+bash "${CEKERNEL_DIR}/scripts/orchestrator/watch.sh" "$ISSUE_NUMBER" > "$RESULT_FILE" 2>"$STDERR_FILE" &
 WATCH_PID=$!
 
-# Poll for watch-worker completion (up to 15 seconds)
+# Poll for watch completion (up to 15 seconds)
 WATCH_DONE=0
 for _ in $(seq 1 150); do
   if ! kill -0 "$WATCH_PID" 2>/dev/null; then
@@ -52,7 +52,7 @@ if [[ "$WATCH_DONE" -eq 0 ]]; then
   kill "$WATCH_PID" 2>/dev/null || true
   wait "$WATCH_PID" 2>/dev/null || true
   rm -f "$RESULT_FILE" "$STDERR_FILE"
-  echo "  FAIL: watch-worker timed out — state fallback not working"
+  echo "  FAIL: watch timed out — state fallback not working"
   TESTS_FAILED=$((TESTS_FAILED + 1))
   report_results
   exit "$TESTS_FAILED"

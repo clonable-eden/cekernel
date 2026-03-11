@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# watch-worker.sh — Monitor Worker completion via FIFO + state file fallback
+# watch.sh — Monitor process completion via FIFO + state file fallback
 #
-# Usage: watch-worker.sh <issue-number> [issue-number...]
+# Usage: watch.sh <issue-number> [issue-number...]
 #
 # Environment:
-#   CEKERNEL_WORKER_TIMEOUT — Worker timeout in seconds (default: 3600)
+#   CEKERNEL_WORKER_TIMEOUT — Process timeout in seconds (default: 3600)
 #   CEKERNEL_POLL_INTERVAL  — State file poll interval in seconds (default: 30)
 #
-# Monitors each Worker via triple-path detection:
+# Monitors each process via triple-path detection:
 #   1. FIFO (primary, sub-second latency)
 #   2. State file polling (fallback, up to POLL_INTERVAL latency)
 #   3. Process crash detection (backend_worker_alive check)
@@ -21,7 +21,7 @@ source "${SCRIPT_DIR}/../shared/worker-state.sh"
 source "${SCRIPT_DIR}/../shared/backend-adapter.sh"
 
 ISSUE_NUMBERS=("$@")
-[[ ${#ISSUE_NUMBERS[@]} -gt 0 ]] || { echo "Usage: watch-worker.sh <issue-number> [...]" >&2; exit 1; }
+[[ ${#ISSUE_NUMBERS[@]} -gt 0 ]] || { echo "Usage: watch.sh <issue-number> [...]" >&2; exit 1; }
 
 FIFO_DIR="$CEKERNEL_IPC_DIR"
 RESULT_DIR=$(mktemp -d)

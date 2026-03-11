@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# test-watch-worker-env-backend.sh — watch-worker.sh resolves backend from env profile
+# test-watch-env-backend.sh — watch.sh resolves backend from env profile
 #
-# Regression test for #182: watch-worker.sh must source load-env.sh so that
+# Regression test for #182: watch.sh must source load-env.sh so that
 # CEKERNEL_BACKEND is resolved from the env profile (e.g., headless.env).
 # Without load-env.sh, it falls back to wezterm and causes false crash detection.
 set -euo pipefail
@@ -11,7 +11,7 @@ source "${SCRIPT_DIR}/../helpers.sh"
 
 CEKERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-echo "test: watch-worker env backend resolution (issue #182)"
+echo "test: watch env backend resolution (issue #182)"
 
 export CEKERNEL_SESSION_ID="test-watch-env-backend-0001"
 source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
@@ -57,15 +57,15 @@ unset CEKERNEL_BACKEND 2>/dev/null || true
 export CEKERNEL_POLL_INTERVAL=1
 export CEKERNEL_WORKER_TIMEOUT=10
 
-# Start watch-worker in background
-bash "${CEKERNEL_DIR}/scripts/orchestrator/watch-worker.sh" "$ISSUE_NUMBER" > "$RESULT_FILE" 2>"$STDERR_FILE" &
+# Start watch in background
+bash "${CEKERNEL_DIR}/scripts/orchestrator/watch.sh" "$ISSUE_NUMBER" > "$RESULT_FILE" 2>"$STDERR_FILE" &
 WATCH_PID=$!
 
-# After 2 seconds, write TERMINATED state to let watch-worker complete via state fallback
+# After 2 seconds, write TERMINATED state to let watch complete via state fallback
 sleep 2
 worker_state_write "$ISSUE_NUMBER" TERMINATED "merged:#999"
 
-# Wait for watch-worker to complete (up to 15 seconds)
+# Wait for watch to complete (up to 15 seconds)
 WATCH_DONE=0
 for _ in $(seq 1 150); do
   if ! kill -0 "$WATCH_PID" 2>/dev/null; then
@@ -78,7 +78,7 @@ done
 if [[ "$WATCH_DONE" -eq 0 ]]; then
   kill "$WATCH_PID" 2>/dev/null || true
   wait "$WATCH_PID" 2>/dev/null || true
-  echo "  FAIL: watch-worker timed out"
+  echo "  FAIL: watch timed out"
   TESTS_FAILED=$((TESTS_FAILED + 1))
   report_results
   exit "$TESTS_FAILED"
@@ -89,7 +89,7 @@ wait "$WATCH_PID" 2>/dev/null || true
 RESULT=$(cat "$RESULT_FILE")
 
 # Key assertion: result should NOT be "crashed"
-# If load-env.sh is not sourced, watch-worker.sh falls back to wezterm backend
+# If load-env.sh is not sourced, watch.sh falls back to wezterm backend
 # and the live PID is not found as a wezterm pane -> false crash detection
 RESULT_STATUS=$(echo "$RESULT" | jq -r '.status')
 assert_eq "No false crash (env profile backend resolved)" "merged:#999" "$RESULT_STATUS"
