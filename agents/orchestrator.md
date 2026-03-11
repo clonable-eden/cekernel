@@ -433,7 +433,7 @@ Use `spawn-reviewer.sh` (Bash) to spawn the Reviewer as an independent process:
 
 ```bash
 # 1. Spawn Reviewer (CEKERNEL_ENV and CEKERNEL_AGENT_REVIEWER propagated)
-export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && export CEKERNEL_AGENT_REVIEWER=<agent-name> && spawn-reviewer.sh --resume <issue>
+export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && export CEKERNEL_AGENT_REVIEWER=<agent-name> && spawn-reviewer.sh <issue>
 
 # 2. Monitor Reviewer completion in background (Bash run_in_background: true)
 export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && watch.sh <issue>
