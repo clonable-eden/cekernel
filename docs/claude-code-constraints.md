@@ -91,6 +91,22 @@ Known characteristics:
 - Task-based delegation is fire-and-forget from the parent's perspective
 - Status updates from subagents require external side-channels (files, issues)
 
+### Subagent Nesting Limitation
+
+**Confidence: Stable**
+
+Claude Code does not support deeply nested subagent hierarchies reliably.
+When a skill spawns an agent (level 1), and that agent spawns a further
+subagent (level 2), reliability degrades. Context exhaustion, communication
+failures, and unexpected behavior become common at nesting depth ≥ 2.
+
+**Implications for cekernel**:
+- The `/orchestrate` skill already uses the Orchestrator as a subagent (level 1).
+  Spawning the Reviewer as a further nested subagent (level 2) is unreliable
+- The spawn + FIFO pattern avoids nesting entirely: the Reviewer runs as an
+  independent process, communicating via FIFO instead of subagent return values
+- Design preference: independent processes with FIFO IPC over nested subagents
+
 ### Context Window Limits
 
 **Confidence: Stable**

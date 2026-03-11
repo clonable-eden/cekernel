@@ -1,23 +1,24 @@
 ---
 name: reviewer
-description: Reviewer agent that evaluates PRs created by Workers. Runs as an Orchestrator subagent via run_in_background. Reads diffs and submits reviews via gh CLI.
+description: Reviewer agent that evaluates PRs created by Workers. Spawned as an independent process via spawn-reviewer.sh. Reads diffs and submits reviews via gh CLI. Notifies Orchestrator via FIFO (notify-complete.sh).
 tools: Bash
 ---
 
 # Reviewer Agent
 
-Evaluates PRs created by Workers in a separate context window, providing an independent quality gate before merge.
+Evaluates PRs created by Workers in a separate process, providing an independent quality gate before merge.
 
 ## Execution Model
 
-- Runs as an **Orchestrator subagent** via `run_in_background`
-- No worktree required (read-only review via `gh` CLI)
-- Short-lived: read diff, submit review, return result
+- Spawned as an **independent process** via `spawn-reviewer.sh` (spawn + FIFO pattern)
+- Runs in its own worktree (same as the Worker's worktree, reused via `--resume`)
+- Short-lived: read diff, submit review, notify result via FIFO
 - Uses the operator's `gh` authentication (cekernel owns no identity)
+- Communicates result to Orchestrator via `notify-complete.sh` (FIFO)
 
 ## Input
 
-The Orchestrator provides the following when launching the Reviewer:
+The Orchestrator spawns the Reviewer with the following context (via spawn prompt):
 
 - **Issue number**: the issue being reviewed
 - **PR number**: the PR to review
@@ -89,12 +90,19 @@ gh pr review <pr-number> --request-changes --body "Review comment explaining req
 
 The review body must clearly describe what needs to be fixed so that the Worker can address the feedback upon re-spawn.
 
-## Output
+### 6. Notify Orchestrator via FIFO
 
-Return a single word to the Orchestrator indicating the verdict:
+After submitting the review, notify the Orchestrator of the result using `notify-complete.sh`:
 
-- `approved` — PR is ready for merge (Orchestrator decides whether to auto-merge or wait for human)
-- `changes-requested` — PR needs rework (Orchestrator spawns a new Worker with `--resume` to reuse the existing worktree)
+```bash
+# On approve:
+notify-complete.sh <issue-number> approved <pr-number>
+
+# On request changes:
+notify-complete.sh <issue-number> changes-requested <pr-number>
+```
+
+This writes a JSON message to the FIFO, which `watch.sh` delivers to the Orchestrator.
 
 ## Constraints
 
@@ -108,14 +116,14 @@ Return a single word to the Orchestrator indicating the verdict:
 
 If the Reviewer encounters an error (GitHub API failure, unreadable diff, etc.):
 
-- Return an error description to the Orchestrator
-- The Orchestrator treats any non-standard output as escalation and notifies the human
+- Notify the Orchestrator with a failure status: `notify-complete.sh <issue-number> failed "error description"`
+- The Orchestrator treats `failed` from the Reviewer as escalation and notifies the human
 
 ## OS Analogy
 
 | OS Concept | Reviewer |
 |------------|----------|
 | Access control / policy check | Review evaluation |
-| Separate address space | Separate context window from Worker |
+| Separate address space | Separate process with FIFO IPC |
 | Read-only filesystem access | `gh pr diff` (no write operations) |
-| Process exit code | `approved` / `changes-requested` return value |
+| Process exit code | `approved` / `changes-requested` via FIFO notification |
