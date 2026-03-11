@@ -59,6 +59,28 @@ assert_match "ls output contains state RUNNING" '"state":"RUNNING"' "$OUTPUT"
 # ── Test 7: ls output contains priority ──
 assert_match "ls output contains priority" '"priority":10' "$OUTPUT"
 
+# ── Test 7b: ls output contains type from .type file ──
+echo "worker" > "${IPC_A}/worker-10.type"
+OUTPUT=$(bash "$ORCHCTRL" ls 2>/dev/null | grep '"issue":10')
+assert_match "ls output contains type worker" '"type":"worker"' "$OUTPUT"
+
+# ── Test 7c: ls output with reviewer type ──
+mkfifo "${IPC_A}/worker-11"
+echo "RUNNING:2026-02-28T10:00:00Z:reviewing" > "${IPC_A}/worker-11.state"
+echo "10" > "${IPC_A}/worker-11.priority"
+echo "reviewer" > "${IPC_A}/worker-11.type"
+OUTPUT_11=$(bash "$ORCHCTRL" ls 2>/dev/null | grep '"issue":11')
+assert_match "ls output contains type reviewer" '"type":"reviewer"' "$OUTPUT_11"
+# Cleanup test worker-11
+rm -f "${IPC_A}/worker-11" "${IPC_A}/worker-11.state" "${IPC_A}/worker-11.priority" "${IPC_A}/worker-11.type"
+
+# ── Test 7d: ls output missing type file defaults to unknown ──
+rm -f "${IPC_A}/worker-10.type"
+OUTPUT=$(bash "$ORCHCTRL" ls 2>/dev/null | grep '"issue":10')
+assert_match "ls output missing type shows unknown" '"type":"unknown"' "$OUTPUT"
+# Restore type file for subsequent tests
+echo "worker" > "${IPC_A}/worker-10.type"
+
 # ── Test 8: ls across multiple sessions ──
 mkdir -p "$IPC_B"
 mkfifo "${IPC_B}/worker-20"
@@ -219,7 +241,12 @@ assert_match "inspect contains state" '"state":"RUNNING"' "$OUTPUT"
 assert_match "inspect contains priority" '"priority":5' "$OUTPUT"
 assert_match "inspect contains session" "$SESSION_A" "$OUTPUT"
 
-# ── Test 27b: inspect output contains detail and timestamp ──
+# ── Test 27b: inspect output contains type ──
+echo "worker" > "${IPC_A}/worker-10.type"
+OUTPUT=$(bash "$ORCHCTRL" inspect 10 --session "$SESSION_A" 2>/dev/null)
+assert_match "inspect contains type" '"type":"worker"' "$OUTPUT"
+
+# ── Test 27c: inspect output contains detail and timestamp ──
 echo "RUNNING:2026-02-28T10:00:00Z:phase1:implement" > "${IPC_A}/worker-10.state"
 OUTPUT=$(bash "$ORCHCTRL" inspect 10 --session "$SESSION_A" 2>/dev/null)
 assert_match "inspect contains detail" '"detail":"phase1:implement"' "$OUTPUT"

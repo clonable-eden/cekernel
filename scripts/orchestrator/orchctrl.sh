@@ -220,6 +220,13 @@ cmd_ls() {
       # Set context for shared helpers
       export CEKERNEL_IPC_DIR="$session_dir"
 
+      # Type
+      local process_type="unknown"
+      local type_file="${session_dir}worker-${issue}.type"
+      if [[ -f "$type_file" ]]; then
+        process_type=$(tr -d '[:space:]' < "$type_file")
+      fi
+
       # State
       local state_json state detail
       state_json=$(worker_state_read "$issue")
@@ -248,6 +255,7 @@ cmd_ls() {
         --arg session "$sid" \
         --arg repo "$sid_repo" \
         --argjson issue "$issue" \
+        --arg type "$process_type" \
         --arg state "$state" \
         --arg detail "$detail" \
         --argjson priority "$priority" \
@@ -255,7 +263,7 @@ cmd_ls() {
         --arg elapsed "${elapsed:-}" \
         --arg backend "$backend" \
         --arg log "${log_path:-}" \
-        '{session: $session, repo: $repo, issue: $issue, state: $state, detail: $detail, priority: $priority, priority_name: $priority_name, elapsed: $elapsed, backend: $backend, log: $log}'
+        '{session: $session, repo: $repo, issue: $issue, type: $type, state: $state, detail: $detail, priority: $priority, priority_name: $priority_name, elapsed: $elapsed, backend: $backend, log: $log}'
     done
   done
 
@@ -288,6 +296,13 @@ cmd_inspect() {
   set_ipc_context
 
   local fifo="${CEKERNEL_IPC_DIR}/worker-${RESOLVED_ISSUE}"
+
+  # Type
+  local process_type="unknown"
+  local type_file="${CEKERNEL_IPC_DIR}/worker-${RESOLVED_ISSUE}.type"
+  if [[ -f "$type_file" ]]; then
+    process_type=$(tr -d '[:space:]' < "$type_file")
+  fi
 
   # State
   local state_json
@@ -345,6 +360,7 @@ cmd_inspect() {
   jq -cn \
     --arg session "$RESOLVED_SESSION" \
     --argjson issue "$RESOLVED_ISSUE" \
+    --arg type "$process_type" \
     --arg state "$state" \
     --arg detail "$detail" \
     --arg timestamp "$timestamp" \
@@ -354,7 +370,7 @@ cmd_inspect() {
     --arg worktree "${worktree:-}" \
     --argjson checkpoint "$checkpoint_json" \
     --argjson logs "$log_files" \
-    '{session: $session, issue: $issue, state: $state, detail: $detail, timestamp: $timestamp, priority: $priority, elapsed: $elapsed, backend: $backend, worktree: $worktree, checkpoint: $checkpoint, logs: $logs}'
+    '{session: $session, issue: $issue, type: $type, state: $state, detail: $detail, timestamp: $timestamp, priority: $priority, elapsed: $elapsed, backend: $backend, worktree: $worktree, checkpoint: $checkpoint, logs: $logs}'
 }
 
 # ── suspend: Send SUSPEND signal ──

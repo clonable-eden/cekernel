@@ -45,13 +45,13 @@ The `CEKERNEL_MAX_PROCESSES` environment variable limits concurrent processes (d
 The Orchestrator uses this exit code to perform queuing.
 `CEKERNEL_MAX_WORKERS` is deprecated but still supported (takes priority if set; emits a warning).
 
-### Worker Status
+### Process Status
 
-Use `worker-status.sh` to check active Workers in the session in JSON Lines format:
+Use `process-status.sh` to check active processes (Workers and Reviewers) in the session in JSON Lines format:
 
 ```bash
-scripts/orchestrator/worker-status.sh
-# {"issue":4,"worktree":"/path/.worktrees/issue/4-...","fifo":"/usr/local/var/cekernel/ipc/.../worker-4","uptime":"12m"}
+scripts/orchestrator/process-status.sh
+# {"issue":4,"type":"worker","worktree":"/path/.worktrees/issue/4-...","fifo":"/usr/local/var/cekernel/ipc/.../worker-4","uptime":"12m"}
 ```
 
 ## IPC: Named Pipe

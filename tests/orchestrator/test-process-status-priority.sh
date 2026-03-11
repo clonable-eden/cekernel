@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# test-worker-status-priority.sh — Tests for worker-status.sh priority field integration
+# test-process-status-priority.sh — Tests for process-status.sh priority field integration
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../helpers.sh"
 
 CEKERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-STATUS_SCRIPT="${CEKERNEL_DIR}/scripts/orchestrator/worker-status.sh"
+STATUS_SCRIPT="${CEKERNEL_DIR}/scripts/orchestrator/process-status.sh"
 
-echo "test: worker-status priority integration"
+echo "test: process-status priority integration"
 
-export CEKERNEL_SESSION_ID="test-wstatus-prio-00000001"
+export CEKERNEL_SESSION_ID="test-pstatus-prio-00000001"
 source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
 source "${CEKERNEL_DIR}/scripts/shared/worker-priority.sh"
 

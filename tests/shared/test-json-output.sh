@@ -90,21 +90,21 @@ else
 fi
 rm -f "$FIFO"
 
-# ── Test 4: worker-status.sh — JSON Lines output is valid ──
+# ── Test 4: process-status.sh — JSON Lines output is valid ──
 FIFO="${CEKERNEL_IPC_DIR}/worker-904"
 mkfifo "$FIFO"
-RESULT=$(bash "${CEKERNEL_DIR}/scripts/orchestrator/worker-status.sh" 2>/dev/null)
+RESULT=$(bash "${CEKERNEL_DIR}/scripts/orchestrator/process-status.sh" 2>/dev/null)
 if [[ -n "$RESULT" ]]; then
   if echo "$RESULT" | head -1 | jq . >/dev/null 2>&1; then
-    echo "  PASS: worker-status produces valid JSON"
+    echo "  PASS: process-status produces valid JSON"
     ((TESTS_PASSED++)) || true
   else
-    echo "  FAIL: worker-status produces invalid JSON"
+    echo "  FAIL: process-status produces invalid JSON"
     echo "    output: $RESULT"
     ((TESTS_FAILED++)) || true
   fi
 else
-  echo "  FAIL: worker-status produced no output"
+  echo "  FAIL: process-status produced no output"
   ((TESTS_FAILED++)) || true
 fi
 rm -f "$FIFO"

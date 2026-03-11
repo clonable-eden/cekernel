@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# test-worker-status.sh — Tests for worker-status.sh
+# test-process-status.sh — Tests for process-status.sh
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../helpers.sh"
 
 CEKERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-STATUS_SCRIPT="${CEKERNEL_DIR}/scripts/orchestrator/worker-status.sh"
+STATUS_SCRIPT="${CEKERNEL_DIR}/scripts/orchestrator/process-status.sh"
 
-echo "test: worker-status"
+echo "test: process-status"
 
 # Test session
-export CEKERNEL_SESSION_ID="test-wstatus-00000001"
+export CEKERNEL_SESSION_ID="test-pstatus-00000001"
 source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
 
 # ── Setup ──
@@ -46,15 +46,34 @@ assert_match "Output contains uptime field" '"uptime":' "$OUTPUT"
 
 # ── Test 7: Exit 1 when session directory does not exist ──
 rm -rf "$CEKERNEL_IPC_DIR"
-export CEKERNEL_SESSION_ID="test-wstatus-nonexistent"
+export CEKERNEL_SESSION_ID="test-pstatus-nonexistent"
 export CEKERNEL_IPC_DIR="${CEKERNEL_VAR_DIR:-/usr/local/var/cekernel}/ipc/${CEKERNEL_SESSION_ID}"
 EXIT_CODE=0
 bash "$STATUS_SCRIPT" 2>/dev/null || EXIT_CODE=$?
 assert_eq "Missing session dir: exit 1" "1" "$EXIT_CODE"
 
+# ── Test 8: Type field from .type file ──
+export CEKERNEL_SESSION_ID="test-pstatus-00000001"
+source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
+rm -rf "$CEKERNEL_IPC_DIR"
+mkdir -p "$CEKERNEL_IPC_DIR"
+mkfifo "${CEKERNEL_IPC_DIR}/worker-50"
+echo "worker" > "${CEKERNEL_IPC_DIR}/worker-50.type"
+OUTPUT=$(bash "$STATUS_SCRIPT" | grep '"issue":50')
+assert_match "Type field shows worker" '"type":"worker"' "$OUTPUT"
+
+# ── Test 9: Type field shows reviewer ──
+mkfifo "${CEKERNEL_IPC_DIR}/worker-51"
+echo "reviewer" > "${CEKERNEL_IPC_DIR}/worker-51.type"
+OUTPUT=$(bash "$STATUS_SCRIPT" | grep '"issue":51')
+assert_match "Type field shows reviewer" '"type":"reviewer"' "$OUTPUT"
+
+# ── Test 10: Missing type file defaults to unknown ──
+mkfifo "${CEKERNEL_IPC_DIR}/worker-52"
+OUTPUT=$(bash "$STATUS_SCRIPT" | grep '"issue":52')
+assert_match "Missing type file shows unknown" '"type":"unknown"' "$OUTPUT"
+
 # ── Cleanup ──
-export CEKERNEL_SESSION_ID="test-wstatus-00000001"
-export CEKERNEL_IPC_DIR="${CEKERNEL_VAR_DIR:-/usr/local/var/cekernel}/ipc/${CEKERNEL_SESSION_ID}"
 rm -rf "$CEKERNEL_IPC_DIR"
 
 report_results
