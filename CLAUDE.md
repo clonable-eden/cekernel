@@ -9,6 +9,15 @@ See [README.md](./README.md) for architecture details.
 - When uncertain about Claude Code specifications or behavior, always consult primary sources (official documentation, GitHub issues) before answering. Do not guess.
 - Links in CLAUDE.md are not references — they are part of the instructions. You MUST read linked documents and follow them.
 
+## Design Decisions
+
+When implementing something, always check existing patterns first.
+
+- **Feasibility check before implementation**: When adopting an approach different from existing patterns, verify technical constraints first (e.g., tool availability, API limitations, call depth restrictions). Do not start implementation without confirming feasibility.
+- **Document deviations in ADR**: When choosing not to use an existing pattern, record the reason in an ADR. See the [ADRs](#adrs) section for how to create one.
+
+> **Background**: When designing the Reviewer, an existing spawn pattern was overlooked and a subagent-based approach was implemented instead, requiring a rework. The technical constraint (skill → agent → agent is not allowed) could have been discovered with prior investigation.
+
 ## Philosophy
 
 cekernel's design is rooted in UNIX philosophy and TDD.
