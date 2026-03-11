@@ -48,7 +48,7 @@ assert_eq "watch exited within timeout" "1" "$WATCH_DONE"
 RESULT=$(cat "$RESULT_FILE")
 rm -f "$RESULT_FILE"
 
-assert_match "Timeout status in result" '"status":"timeout"' "$RESULT"
+assert_match "Timeout result in result" '"result":"timeout"' "$RESULT"
 assert_match "Issue number in result" '"issue":99' "$RESULT"
 assert_match "Timeout detail in result" 'No response within' "$RESULT"
 
@@ -66,7 +66,7 @@ WATCH_PID=$!
 sleep 0.5
 
 # Write immediately
-echo '{"issue":99,"status":"merged","detail":"PR-99"}' > "${CEKERNEL_IPC_DIR}/worker-${ISSUE}" &
+echo '{"issue":99,"result":"merged","detail":"PR-99"}' > "${CEKERNEL_IPC_DIR}/worker-${ISSUE}" &
 WRITER_PID=$!
 
 # Poll for completion (should complete within 3 seconds)
@@ -89,6 +89,6 @@ assert_eq "Completed before timeout" "1" "$WATCH_DONE"
 RESULT=$(cat "$RESULT_FILE")
 rm -f "$RESULT_FILE"
 
-assert_match "Normal result contains merged" '"status":"merged"' "$RESULT"
+assert_match "Normal result contains merged" '"result":"merged"' "$RESULT"
 
 report_results

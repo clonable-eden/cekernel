@@ -27,8 +27,8 @@ RESULT_FILE=$(mktemp)
 (cat "$FIFO" > "$RESULT_FILE") &
 READER_PID=$!
 
-# Write via notify-complete.sh
-bash "${CEKERNEL_DIR}/scripts/worker/notify-complete.sh" "$ISSUE_NUMBER" merged 99
+# Write via notify-complete.sh (now uses "result" argument name)
+bash "${CEKERNEL_DIR}/scripts/process/notify-complete.sh" "$ISSUE_NUMBER" merged 99
 
 # Wait for read to complete
 wait "$READER_PID" || true
@@ -38,7 +38,7 @@ RESULT=$(cat "$RESULT_FILE")
 rm -f "$RESULT_FILE"
 
 assert_match "Result contains issue number" '"issue":42' "$RESULT"
-assert_match "Result contains status" '"status":"merged"' "$RESULT"
+assert_match "Result contains result" '"result":"merged"' "$RESULT"
 assert_match "Result contains detail" '"detail":"99"' "$RESULT"
 assert_match "Result contains timestamp" '"timestamp":"[0-9]{4}-[0-9]{2}-[0-9]{2}T' "$RESULT"
 

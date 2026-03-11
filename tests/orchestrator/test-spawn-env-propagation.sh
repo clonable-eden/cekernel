@@ -67,7 +67,7 @@ else
 fi
 
 # ── Test 6: Worker script directories are computed from SCRIPT_DIR ──
-if [[ "$SCRIPT_CONTENT" == *'CEKERNEL_WORKER_SCRIPTS="$(cd "${SCRIPT_DIR}/../worker" && pwd)"'* ]]; then
+if [[ "$SCRIPT_CONTENT" == *'CEKERNEL_WORKER_SCRIPTS="$(cd "${SCRIPT_DIR}/../process" && pwd)"'* ]]; then
   echo "  PASS: CEKERNEL_WORKER_SCRIPTS computed from SCRIPT_DIR"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
@@ -85,9 +85,9 @@ else
 fi
 
 # ── Test 8: Script directories actually exist ──
-WORKER_SCRIPTS_DIR="${CEKERNEL_DIR}/scripts/worker"
+WORKER_SCRIPTS_DIR="${CEKERNEL_DIR}/scripts/process"
 SHARED_SCRIPTS_DIR="${CEKERNEL_DIR}/scripts/shared"
-assert_dir_exists "scripts/worker directory exists" "$WORKER_SCRIPTS_DIR"
+assert_dir_exists "scripts/process directory exists" "$WORKER_SCRIPTS_DIR"
 assert_dir_exists "scripts/shared directory exists" "$SHARED_SCRIPTS_DIR"
 
 # ── Test 9: .cekernel-env is written for both normal and resume modes ──

@@ -221,7 +221,7 @@ echo "worktree: $WORKTREE" >&2
 echo "branch:   $BRANCH" >&2
 
 # ── Compute cekernel script paths for process PATH ──
-CEKERNEL_WORKER_SCRIPTS="$(cd "${SCRIPT_DIR}/../worker" && pwd)"
+CEKERNEL_WORKER_SCRIPTS="$(cd "${SCRIPT_DIR}/../process" && pwd)"
 CEKERNEL_SHARED_SCRIPTS="$(cd "${SCRIPT_DIR}/../shared" && pwd)"
 
 # ── Write .cekernel-env to worktree ──

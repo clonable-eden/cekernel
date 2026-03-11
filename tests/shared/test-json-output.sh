@@ -34,7 +34,7 @@ RESULT_FILE=$(mktemp)
 READER_PID=$!
 sleep 0.1
 
-bash "${CEKERNEL_DIR}/scripts/worker/notify-complete.sh" 901 failed 'CI failed "3 times"' 2>/dev/null
+bash "${CEKERNEL_DIR}/scripts/process/notify-complete.sh" 901 failed 'CI failed "3 times"' 2>/dev/null
 wait "$READER_PID" 2>/dev/null || true
 
 RESULT=$(cat "$RESULT_FILE")
@@ -60,7 +60,7 @@ RESULT_FILE=$(mktemp)
 READER_PID=$!
 sleep 0.1
 
-bash "${CEKERNEL_DIR}/scripts/worker/notify-complete.sh" 902 failed 'path\to\file' 2>/dev/null
+bash "${CEKERNEL_DIR}/scripts/process/notify-complete.sh" 902 failed 'path\to\file' 2>/dev/null
 wait "$READER_PID" 2>/dev/null || true
 
 RESULT=$(cat "$RESULT_FILE")

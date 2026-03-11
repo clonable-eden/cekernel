@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-check-signal.sh — Tests for check-signal.sh (Worker-side signal detection)
+# test-check-signal.sh — Tests for check-signal.sh (process-side signal detection)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -17,7 +17,7 @@ source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
 rm -rf "$CEKERNEL_IPC_DIR"
 mkdir -p "$CEKERNEL_IPC_DIR"
 
-CHECK_SIGNAL="${CEKERNEL_DIR}/scripts/worker/check-signal.sh"
+CHECK_SIGNAL="${CEKERNEL_DIR}/scripts/process/check-signal.sh"
 
 # ── Test 1: No signal file → exit 1 (no signal) ──
 EXIT_CODE=0

@@ -21,7 +21,7 @@ mkdir -p "$CEKERNEL_IPC_DIR/logs"
 
 # ── Test 1: notify-complete.sh exits 0 (not 1) when FIFO is missing ──
 EXIT_CODE=0
-STDERR_OUTPUT=$(bash "${CEKERNEL_DIR}/scripts/worker/notify-complete.sh" "$ISSUE_NUMBER" merged 99 2>&1) || EXIT_CODE=$?
+STDERR_OUTPUT=$(bash "${CEKERNEL_DIR}/scripts/process/notify-complete.sh" "$ISSUE_NUMBER" merged 99 2>&1) || EXIT_CODE=$?
 
 assert_eq "notify-complete.sh exits 0 when FIFO missing" "0" "$EXIT_CODE"
 

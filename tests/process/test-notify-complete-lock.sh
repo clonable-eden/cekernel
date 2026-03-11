@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-notify-complete-lock.sh — ci-passed retains issue lock; other statuses release it
+# test-notify-complete-lock.sh — ci-passed retains issue lock; other results release it
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -7,7 +7,7 @@ source "${SCRIPT_DIR}/../helpers.sh"
 
 CEKERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-echo "test: notify-complete issue lock control by status"
+echo "test: notify-complete issue lock control by result"
 
 # Test session
 export CEKERNEL_SESSION_ID="test-notify-lock-00000001"
@@ -31,7 +31,7 @@ setup_fifo() {
 }
 
 # ── Table-driven tests ──
-# Format: status:detail:expect_locked (1=lock retained, 0=lock released)
+# Format: result:detail:expect_locked (1=lock retained, 0=lock released)
 TEST_CASES=(
   "ci-passed:42:1"
   "merged:99:0"
@@ -41,22 +41,22 @@ TEST_CASES=(
 
 ISSUE_BASE=70
 for test_case in "${TEST_CASES[@]}"; do
-  IFS=: read -r STATUS DETAIL EXPECT_LOCKED <<< "$test_case"
+  IFS=: read -r RESULT DETAIL EXPECT_LOCKED <<< "$test_case"
   ISSUE=$ISSUE_BASE
   ISSUE_BASE=$((ISSUE_BASE + 1))
 
   issue_lock_acquire "$TEMP_REPO" "$ISSUE"
   setup_fifo "$ISSUE"
-  bash -c "cd '$TEMP_REPO' && bash '${CEKERNEL_DIR}/scripts/worker/notify-complete.sh' '$ISSUE' '$STATUS' '$DETAIL'" 2>/dev/null || true
+  bash -c "cd '$TEMP_REPO' && bash '${CEKERNEL_DIR}/scripts/process/notify-complete.sh' '$ISSUE' '$RESULT' '$DETAIL'" 2>/dev/null || true
 
   LOCK_CHECK=0
   issue_lock_check "$TEMP_REPO" "$ISSUE" || LOCK_CHECK=$?
 
   if [[ "$EXPECT_LOCKED" -eq 1 ]]; then
-    assert_eq "${STATUS} retains lock" "0" "$LOCK_CHECK"
+    assert_eq "${RESULT} retains lock" "0" "$LOCK_CHECK"
     issue_lock_release "$TEMP_REPO" "$ISSUE"
   else
-    assert_eq "${STATUS} releases lock" "1" "$LOCK_CHECK"
+    assert_eq "${RESULT} releases lock" "1" "$LOCK_CHECK"
   fi
 done
 
