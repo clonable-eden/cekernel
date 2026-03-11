@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # backends/tmux.sh — tmux backend (ADR-0005 API)
 #
-# Implements 4 external API functions using tmux.
+# Implements 5 external API functions using tmux.
 # Sourced by backend-adapter.sh when CEKERNEL_BACKEND=tmux.
 #
 # Handle file: ${CEKERNEL_IPC_DIR}/handle-{issue}.{type} contains tmux pane target
@@ -53,6 +53,29 @@ backend_spawn_worker() {
 
   # Save handle (pane target)
   echo "$main_pane" > "${CEKERNEL_IPC_DIR}/handle-${issue}.${type}"
+}
+
+# backend_get_pid <issue> [type]
+# Returns the PID of the process running in the tmux pane.
+backend_get_pid() {
+  local issue="$1"
+  local type="${2:-}"
+
+  local handle_file
+  if [[ -n "$type" ]]; then
+    handle_file="${CEKERNEL_IPC_DIR}/handle-${issue}.${type}"
+  else
+    handle_file=$(ls "${CEKERNEL_IPC_DIR}"/handle-"${issue}".* 2>/dev/null | head -1)
+  fi
+
+  if [[ -z "$handle_file" || ! -f "$handle_file" ]]; then
+    echo "Error: no handle file for issue #${issue}" >&2
+    return 1
+  fi
+
+  local pane_target
+  pane_target=$(cat "$handle_file")
+  tmux list-panes -t "$pane_target" -F '#{pane_pid}' 2>/dev/null | head -1
 }
 
 # backend_worker_alive <issue> [type]

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # backends/headless.sh — Headless backend (ADR-0005)
 #
-# Implements 4 external API functions using background processes.
+# Implements 5 external API functions using background processes.
 # No terminal multiplexer required — Workers run as background processes
 # with stdout/stderr redirected to log files.
 #
@@ -48,6 +48,29 @@ backend_spawn_worker() {
 
   # Save handle (PID)
   echo "$pid" > "${CEKERNEL_IPC_DIR}/handle-${issue}.${type}"
+}
+
+# backend_get_pid <issue> [type]
+# Returns the Worker process PID.
+# For headless backend, the handle IS the PID.
+backend_get_pid() {
+  local issue="$1"
+  local type="${2:-}"
+
+  local handle_file
+  if [[ -n "$type" ]]; then
+    handle_file="${CEKERNEL_IPC_DIR}/handle-${issue}.${type}"
+  else
+    # Find any handle file for this issue
+    handle_file=$(ls "${CEKERNEL_IPC_DIR}"/handle-"${issue}".* 2>/dev/null | head -1)
+  fi
+
+  if [[ -z "$handle_file" || ! -f "$handle_file" ]]; then
+    echo "Error: no handle file for issue #${issue}" >&2
+    return 1
+  fi
+
+  cat "$handle_file"
 }
 
 # backend_worker_alive <issue> [type]

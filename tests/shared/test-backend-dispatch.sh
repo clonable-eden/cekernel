@@ -41,10 +41,11 @@ else
   TESTS_PASSED=$((TESTS_PASSED + 1))
 fi
 
-# ── Test 6: wezterm backend defines all 4 external API functions ──
+# ── Test 6: wezterm backend defines all 5 external API functions ──
 REQUIRED_FUNCTIONS=(
   backend_available
   backend_spawn_worker
+  backend_get_pid
   backend_worker_alive
   backend_kill_worker
 )
@@ -54,30 +55,30 @@ for fn in "${REQUIRED_FUNCTIONS[@]}"; do
 done
 MISSING=$(CEKERNEL_BACKEND=wezterm bash -c "source '${CEKERNEL_DIR}/scripts/shared/backend-adapter.sh'; ${FUNC_CHECK}" 2>/dev/null)
 if [[ -z "$MISSING" ]]; then
-  echo "  PASS: wezterm backend defines all 4 external API functions"
+  echo "  PASS: wezterm backend defines all 5 external API functions"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
-  echo "  FAIL: wezterm backend missing functions: ${MISSING}"
+  echo "  FAIL: wezterm backend missing functions (expected 5): ${MISSING}"
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-# ── Test 7: tmux backend defines all 4 external API functions ──
+# ── Test 7: tmux backend defines all 5 external API functions ──
 MISSING=$(CEKERNEL_BACKEND=tmux bash -c "source '${CEKERNEL_DIR}/scripts/shared/backend-adapter.sh'; ${FUNC_CHECK}" 2>/dev/null)
 if [[ -z "$MISSING" ]]; then
-  echo "  PASS: tmux backend defines all 4 external API functions"
+  echo "  PASS: tmux backend defines all 5 external API functions"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
-  echo "  FAIL: tmux backend missing functions: ${MISSING}"
+  echo "  FAIL: tmux backend missing functions (expected 5): ${MISSING}"
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-# ── Test 8: headless backend defines all 4 external API functions ──
+# ── Test 8: headless backend defines all 5 external API functions ──
 MISSING=$(CEKERNEL_BACKEND=headless bash -c "source '${CEKERNEL_DIR}/scripts/shared/backend-adapter.sh'; ${FUNC_CHECK}" 2>/dev/null)
 if [[ -z "$MISSING" ]]; then
-  echo "  PASS: headless backend defines all 4 external API functions"
+  echo "  PASS: headless backend defines all 5 external API functions"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
-  echo "  FAIL: headless backend missing functions: ${MISSING}"
+  echo "  FAIL: headless backend missing functions (expected 5): ${MISSING}"
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
