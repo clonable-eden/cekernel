@@ -109,7 +109,7 @@ The Reviewer is architecturally distinct from the Worker:
 | Aspect | Worker | Reviewer |
 |--------|--------|----------|
 | Execution model | Separate terminal session (backend) | Independent process via `spawn-reviewer.sh` (spawn + FIFO) |
-| Address space | git worktree (isolated copy) | Reuses Worker's worktree (read-only review) |
+| Address space | git worktree (isolated copy) | Reuses Worker's worktree via `--resume` (read-only review) |
 | Duration | Long (implementation) | Short (review only) |
 | Identity | Operator's GitHub credentials | Operator's GitHub credentials |
 | Tools | Read, Edit, Write, Bash | Bash only (`gh` for review operations) |

@@ -11,7 +11,7 @@ Evaluates PRs created by Workers in a separate process, providing an independent
 ## Execution Model
 
 - Spawned as an **independent process** via `spawn-reviewer.sh` (spawn + FIFO pattern)
-- Runs in its own worktree (same as the Worker's worktree, reused via `--resume`)
+- Reuses the Worker's worktree via `--resume` (read-only review)
 - Short-lived: read diff, submit review, notify result via FIFO
 - Uses the operator's `gh` authentication (cekernel owns no identity)
 - Communicates result to Orchestrator via `notify-complete.sh` (FIFO)
