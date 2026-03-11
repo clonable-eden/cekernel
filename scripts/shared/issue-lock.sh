@@ -7,6 +7,7 @@
 #   issue_lock_acquire <repo-path> <issue-number>  — Acquire lock (mkdir-based, PID written, stale detection)
 #   issue_lock_release <repo-path> <issue-number>  — Release lock
 #   issue_lock_check <repo-path> <issue-number>    — Check lock state (0=locked, 1=unlocked)
+#   issue_lock_update_pid <repo-path> <issue-number> <new-pid> — Update PID in existing lock
 #   issue_lock_repo_hash <repo-path>               — Return short hash for repo path
 #
 # Lock path: ${CEKERNEL_VAR_DIR}/locks/<repo-hash>/<issue-number>.lock/
@@ -70,6 +71,23 @@ issue_lock_release() {
 
   rm -f "${lock_dir}/pid"
   rmdir "$lock_dir" 2>/dev/null || true
+}
+
+issue_lock_update_pid() {
+  local repo_path="${1:?Usage: issue_lock_update_pid <repo-path> <issue-number> <new-pid>}"
+  local issue_number="${2:?Usage: issue_lock_update_pid <repo-path> <issue-number> <new-pid>}"
+  local new_pid="${3:?Usage: issue_lock_update_pid <repo-path> <issue-number> <new-pid>}"
+
+  local hash
+  hash=$(issue_lock_repo_hash "$repo_path")
+  local lock_dir="${CEKERNEL_VAR_DIR}/locks/${hash}/${issue_number}.lock"
+
+  if [[ ! -d "$lock_dir" ]]; then
+    echo "Error: no lock exists for issue #${issue_number} (repo: ${repo_path})" >&2
+    return 1
+  fi
+
+  echo "$new_pid" > "${lock_dir}/pid"
 }
 
 issue_lock_check() {

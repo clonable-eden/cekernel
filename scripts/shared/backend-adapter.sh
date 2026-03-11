@@ -9,9 +9,10 @@
 # Environment:
 #   CEKERNEL_BACKEND — Backend to use (default: wezterm)
 #
-# External API (4 functions, provided by backends):
+# External API (5 functions, provided by backends):
 #   backend_available       — Check if backend is usable
 #   backend_spawn_worker    — Start a Worker process (issue, worktree, prompt)
+#   backend_get_pid         — Get Worker process PID (issue)
 #   backend_worker_alive    — Check if Worker is alive (issue)
 #   backend_kill_worker     — Terminate a Worker (issue)
 #

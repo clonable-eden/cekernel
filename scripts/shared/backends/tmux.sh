@@ -55,6 +55,29 @@ backend_spawn_worker() {
   echo "$main_pane" > "${CEKERNEL_IPC_DIR}/handle-${issue}.${type}"
 }
 
+# backend_get_pid <issue> [type]
+# Returns the PID of the process running in the tmux pane.
+backend_get_pid() {
+  local issue="$1"
+  local type="${2:-}"
+
+  local handle_file
+  if [[ -n "$type" ]]; then
+    handle_file="${CEKERNEL_IPC_DIR}/handle-${issue}.${type}"
+  else
+    handle_file=$(ls "${CEKERNEL_IPC_DIR}"/handle-"${issue}".* 2>/dev/null | head -1)
+  fi
+
+  if [[ -z "$handle_file" || ! -f "$handle_file" ]]; then
+    echo "Error: no handle file for issue #${issue}" >&2
+    return 1
+  fi
+
+  local pane_target
+  pane_target=$(cat "$handle_file")
+  tmux list-panes -t "$pane_target" -F '#{pane_pid}' 2>/dev/null | head -1
+}
+
 # backend_worker_alive <issue> [type]
 # exit 0 if alive, exit 1 if dead or no handle
 # If type is omitted, checks any handle-{issue}.* file.

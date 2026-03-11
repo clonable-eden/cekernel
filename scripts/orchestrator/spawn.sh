@@ -254,6 +254,15 @@ fi
 # Callers pass (issue, type, worktree, prompt) — the backend decides how to launch.
 backend_spawn_worker "$ISSUE_NUMBER" "$AGENT_TYPE" "$WORKTREE" "$PROMPT"
 
+# ── Update lock PID with Worker's real process PID ──
+# spawn.sh ($$) is short-lived and exits after launching the Worker.
+# Without this update, stale detection (kill -0) would always see a dead PID,
+# causing false stale-lock recovery and potential duplicate Worker spawns.
+WORKER_PID=$(backend_get_pid "$ISSUE_NUMBER" "$AGENT_TYPE" 2>/dev/null) || true
+if [[ -n "$WORKER_PID" ]]; then
+  issue_lock_update_pid "$REPO_ROOT" "$ISSUE_NUMBER" "$WORKER_PID"
+fi
+
 # ── State: READY (Worktree ready, Claude agent starting) ──
 worker_state_write "$ISSUE_NUMBER" READY "agent-starting"
 
