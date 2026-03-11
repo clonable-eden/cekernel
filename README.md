@@ -38,7 +38,7 @@ Orchestrator (agent1)             Worker (agent2, 3, 4, ...)
 | SIGSTOP / SIGCONT | `send-signal.sh SUSPEND` / `spawn-worker.sh --resume` |
 | SIGKILL | `cleanup-worktree.sh --force` |
 | SIGALRM / watchdog | `CEKERNEL_WORKER_TIMEOUT` + escalation (TERM → grace → force-kill) |
-| `waitpid` | `watch-worker.sh` (triple-path: FIFO + state file + crash detection) |
+| `waitpid` | `watch.sh` (triple-path: FIFO + state file + crash detection) |
 | zombie reaping | `health-check.sh` + `cleanup-worktree.sh` |
 | core dump / checkpoint | `.cekernel-checkpoint.md` (suspend/resume) |
 | `systemctl` | `orchctrl.sh` / `/orchctrl` skill |
@@ -88,7 +88,7 @@ docs/
   unix-philosophy.md       # UNIX philosophy reference
 envs/
   ci.env                   # CI profile (headless, 1800s timeout)
-  default.env              # Default profile (wezterm, 3 workers)
+  default.env              # Default profile (wezterm, 3 processes)
   headless.env             # Headless profile (headless, 5 workers)
   README.md                # Environment variable catalog
 Makefile                   # Runtime directory setup (make install)
@@ -101,8 +101,9 @@ scripts/
     send-signal.sh         # Send signal (TERM/SUSPEND) to a running Worker
     spawn.sh               # Common process spawning logic (concurrency guard, FIFO, state, backend, Type)
     spawn-worker.sh        # Spawn Worker (thin wrapper for spawn.sh --agent worker)
+    spawn-reviewer.sh      # Spawn Reviewer (wrapper for spawn.sh --agent reviewer)
     watch-logs.sh          # Real-time Worker log monitoring
-    watch-worker.sh        # Monitor Worker completion (FIFO + state file + crash detection)
+    watch.sh               # Monitor process completion (FIFO + state file + crash detection)
     process-status.sh       # List active processes (Workers and Reviewers)
   scheduler/
     at-backend.sh          # At backend adapter (launchd/atd)
