@@ -32,7 +32,7 @@ worker_state_write "$ISSUE_NUMBER" RUNNING "phase1:implement"
 
 # Create a handle file pointing to a dead PID (PID 99999 is almost certainly not running)
 # Use headless backend so backend_worker_alive checks kill -0 $PID
-echo "99999" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE_NUMBER}"
+echo "99999" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE_NUMBER}.worker"
 
 RESULT_FILE=$(mktemp)
 STDERR_FILE=$(mktemp)

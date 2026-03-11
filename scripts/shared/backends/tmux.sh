@@ -4,7 +4,7 @@
 # Implements 4 external API functions using tmux.
 # Sourced by backend-adapter.sh when CEKERNEL_BACKEND=tmux.
 #
-# Handle file: ${CEKERNEL_IPC_DIR}/handle-{issue} contains tmux pane target
+# Handle file: ${CEKERNEL_IPC_DIR}/handle-{issue}.{type} contains tmux pane target
 # (e.g., "session:window.pane").
 
 # ── External API ──
@@ -15,13 +15,14 @@ backend_available() {
   tmux list-sessions >/dev/null 2>&1
 }
 
-# backend_spawn_worker <issue> <worktree> <prompt>
+# backend_spawn_worker <issue> <type> <worktree> <prompt>
 # Spawns a Worker in a tmux 3-pane layout.
 # Saves pane target to handle file internally.
 backend_spawn_worker() {
   local issue="$1"
-  local worktree="$2"
-  local prompt="$3"
+  local type="$2"
+  local worktree="$3"
+  local prompt="$4"
 
   # Resolve session (tmux-specific)
   local session=""
@@ -51,33 +52,59 @@ backend_spawn_worker() {
   _backend_run_command "$main_pane" "$claude_cmd"
 
   # Save handle (pane target)
-  echo "$main_pane" > "${CEKERNEL_IPC_DIR}/handle-${issue}"
+  echo "$main_pane" > "${CEKERNEL_IPC_DIR}/handle-${issue}.${type}"
 }
 
-# backend_worker_alive <issue>
+# backend_worker_alive <issue> [type]
 # exit 0 if alive, exit 1 if dead or no handle
+# If type is omitted, checks any handle-{issue}.* file.
 backend_worker_alive() {
   local issue="$1"
-  local handle_file="${CEKERNEL_IPC_DIR}/handle-${issue}"
+  local type="${2:-}"
 
-  [[ -f "$handle_file" ]] || return 1
-
-  local pane_target
-  pane_target=$(cat "$handle_file")
-  _backend_pane_alive "$pane_target"
+  if [[ -n "$type" ]]; then
+    local handle_file="${CEKERNEL_IPC_DIR}/handle-${issue}.${type}"
+    [[ -f "$handle_file" ]] || return 1
+    local pane_target
+    pane_target=$(cat "$handle_file")
+    _backend_pane_alive "$pane_target"
+  else
+    local found=0
+    for handle_file in "${CEKERNEL_IPC_DIR}"/handle-"${issue}".*; do
+      [[ -f "$handle_file" ]] || continue
+      found=1
+      local pane_target
+      pane_target=$(cat "$handle_file")
+      if _backend_pane_alive "$pane_target"; then
+        return 0
+      fi
+    done
+    [[ "$found" -eq 1 ]] || return 1
+    return 1
+  fi
 }
 
-# backend_kill_worker <issue>
+# backend_kill_worker <issue> [type]
 # Kills the entire window. No error if handle missing.
+# If type is omitted, kills all handle-{issue}.* handles.
 backend_kill_worker() {
   local issue="$1"
-  local handle_file="${CEKERNEL_IPC_DIR}/handle-${issue}"
+  local type="${2:-}"
 
-  [[ -f "$handle_file" ]] || return 0
-
-  local pane_target
-  pane_target=$(cat "$handle_file")
-  _backend_kill_window "$pane_target"
+  if [[ -n "$type" ]]; then
+    local handle_file="${CEKERNEL_IPC_DIR}/handle-${issue}.${type}"
+    [[ -f "$handle_file" ]] || return 0
+    local pane_target
+    pane_target=$(cat "$handle_file")
+    _backend_kill_window "$pane_target"
+  else
+    for handle_file in "${CEKERNEL_IPC_DIR}"/handle-"${issue}".*; do
+      [[ -f "$handle_file" ]] || continue
+      local pane_target
+      pane_target=$(cat "$handle_file")
+      _backend_kill_window "$pane_target"
+    done
+  fi
 }
 
 # ── Private API (internal to tmux backend) ──

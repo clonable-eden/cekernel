@@ -70,9 +70,9 @@ export -f tmux
 
 ISSUE="400"
 WORKTREE="/tmp/test-worktree"
-backend_spawn_worker "$ISSUE" "$WORKTREE" "test prompt"
+backend_spawn_worker "$ISSUE" "worker" "$WORKTREE" "test prompt"
 
-HANDLE_FILE="${CEKERNEL_IPC_DIR}/handle-${ISSUE}"
+HANDLE_FILE="${CEKERNEL_IPC_DIR}/handle-${ISSUE}.worker"
 assert_file_exists "Handle file created after spawn" "$HANDLE_FILE"
 
 HANDLE=$(cat "$HANDLE_FILE")
@@ -155,7 +155,7 @@ tmux() {
   fi
 }
 export -f tmux
-backend_spawn_worker "410" "$WORKTREE" "Read the target repository's CLAUDE.md"
+backend_spawn_worker "410" "worker" "$WORKTREE" "Read the target repository's CLAUDE.md"
 LOGGED=$(cat "$MOCK_LOG")
 # The send-keys line for the claude command must not have an unescaped single quote
 # that would break the shell. Check that repository's is intact and properly quoted.
@@ -201,7 +201,7 @@ tmux() {
   fi
 }
 export -f tmux
-backend_spawn_worker "411" "$WORKTREE" "test prompt"
+backend_spawn_worker "411" "worker" "$WORKTREE" "test prompt"
 LOGGED=$(cat "$MOCK_LOG")
 CLAUDE_LINE=$(echo "$LOGGED" | grep "send-keys" | grep "claude")
 assert_match "unset CLAUDECODE in claude command" "unset CLAUDECODE" "$CLAUDE_LINE"

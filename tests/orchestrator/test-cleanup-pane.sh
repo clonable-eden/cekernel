@@ -67,7 +67,7 @@ WORKTREE=$(setup_worktree "$ISSUE" "$FAKE_REPO")
 mkdir -p "$CEKERNEL_IPC_DIR"
 mkfifo "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
 # Use handle-{issue} (ADR-0005 format)
-echo "42" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE}"
+echo "42" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE}.worker"
 
 cd "$FAKE_REPO"
 CEKERNEL_BACKEND=wezterm bash "${CEKERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
@@ -82,7 +82,7 @@ else
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-assert_not_exists "Handle file removed after cleanup" "${CEKERNEL_IPC_DIR}/handle-${ISSUE}"
+assert_not_exists "Handle file removed after cleanup" "${CEKERNEL_IPC_DIR}/handle-${ISSUE}.worker"
 
 # ── Test 2: cleanup with --force → Worker is killed ──
 rm -rf "$CEKERNEL_IPC_DIR"
@@ -93,7 +93,7 @@ WORKTREE=$(setup_worktree "$ISSUE" "$FAKE_REPO")
 
 mkdir -p "$CEKERNEL_IPC_DIR"
 mkfifo "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
-echo "99" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE}"
+echo "99" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE}.worker"
 
 CEKERNEL_BACKEND=wezterm bash "${CEKERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" --force "$ISSUE" 2>/dev/null
 
@@ -106,7 +106,7 @@ else
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-assert_not_exists "Handle file removed after --force cleanup" "${CEKERNEL_IPC_DIR}/handle-${ISSUE}"
+assert_not_exists "Handle file removed after --force cleanup" "${CEKERNEL_IPC_DIR}/handle-${ISSUE}.worker"
 
 # ── Test 3: No handle file → skips without error ──
 rm -rf "$CEKERNEL_IPC_DIR"
@@ -172,7 +172,7 @@ WORKTREE=$(setup_worktree "$ISSUE" "$FAKE_REPO")
 
 mkdir -p "$CEKERNEL_IPC_DIR"
 mkfifo "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
-echo "42" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE}"
+echo "42" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE}.worker"
 
 cd "$FAKE_REPO"
 CEKERNEL_BACKEND=wezterm bash "${CEKERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
@@ -228,7 +228,7 @@ WORKTREE=$(setup_worktree "$ISSUE" "$FAKE_REPO")
 
 mkdir -p "$CEKERNEL_IPC_DIR"
 mkfifo "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
-echo "55" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE}"
+echo "55" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE}.worker"
 
 cd "$FAKE_REPO"
 CEKERNEL_BACKEND=wezterm bash "${CEKERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" "$ISSUE" 2>/dev/null

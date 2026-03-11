@@ -161,9 +161,14 @@ compute_elapsed() {
 # ── Helper: detect backend from handle file ──
 detect_backend() {
   local ipc_dir="$1" issue="$2"
-  local handle_file="${ipc_dir}/handle-${issue}"
 
-  if [[ ! -f "$handle_file" ]]; then
+  # Find the first handle-{issue}.{type} file
+  local handle_file=""
+  for hf in "${ipc_dir}"/handle-"${issue}".*; do
+    [[ -f "$hf" ]] && handle_file="$hf" && break
+  done
+
+  if [[ -z "$handle_file" ]]; then
     echo "unknown"
     return
   fi
@@ -430,9 +435,9 @@ cmd_kill() {
   resolve_target "$@" || return 1
   set_ipc_context
 
-  local handle_file="${CEKERNEL_IPC_DIR}/handle-${RESOLVED_ISSUE}"
-
-  if [[ -f "$handle_file" ]]; then
+  # Kill all handle files for this issue (Worker + Reviewer)
+  for handle_file in "${CEKERNEL_IPC_DIR}"/handle-"${RESOLVED_ISSUE}".*; do
+    [[ -f "$handle_file" ]] || continue
     local handle_content
     handle_content=$(tr -d '[:space:]' < "$handle_file")
 
@@ -448,7 +453,7 @@ cmd_kill() {
       # wezterm — handle is pane ID
       wezterm cli kill-pane --pane-id "$handle_content" 2>/dev/null || true
     fi
-  fi
+  done
 
   # Mark as terminated
   worker_state_write "$RESOLVED_ISSUE" TERMINATED "killed"

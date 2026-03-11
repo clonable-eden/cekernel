@@ -25,12 +25,12 @@ ISSUE_NUMBER="${1:?Usage: cleanup-worktree.sh [--force] <issue-number>}"
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 WORKTREE_DIR="${REPO_ROOT}/.worktrees"
 
-# ── Kill Worker via backend ──
-# Backend reads handle file internally and kills the worker.
+# ── Kill all processes via backend (Worker + Reviewer) ──
+# Backend reads handle files internally and kills the processes.
 if backend_available; then
   backend_kill_worker "$ISSUE_NUMBER" 2>/dev/null || true
 fi
-rm -f "${CEKERNEL_IPC_DIR}/handle-${ISSUE_NUMBER}"
+rm -f "${CEKERNEL_IPC_DIR}"/handle-"${ISSUE_NUMBER}".*
 
 # Find worktree matching issue number
 WORKTREE=$(git worktree list --porcelain \
@@ -68,7 +68,7 @@ rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.type"
 # Signal file cleanup
 rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.signal"
 # Handle file cleanup (in case not already removed)
-rm -f "${CEKERNEL_IPC_DIR}/handle-${ISSUE_NUMBER}"
+rm -f "${CEKERNEL_IPC_DIR}"/handle-"${ISSUE_NUMBER}".*
 # Payload file cleanup (wezterm backend: avoids send-text 1024-byte limit)
 rm -f "${CEKERNEL_IPC_DIR}/payload-${ISSUE_NUMBER}.b64"
 

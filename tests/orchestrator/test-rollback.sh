@@ -86,7 +86,8 @@ mkdir -p "$CEKERNEL_IPC_DIR"
   LOG_FILE="${LOG_DIR}/worker-${ISSUE_NUMBER}.log"
   echo "test log" > "$LOG_FILE"
 
-  echo "fake-pane-id" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE_NUMBER}"
+  AGENT_TYPE="worker"
+  echo "fake-pane-id" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE_NUMBER}.${AGENT_TYPE}"
 
   # Register trust
   register_trust "$WORKTREE"
@@ -97,7 +98,7 @@ mkdir -p "$CEKERNEL_IPC_DIR"
 
   # Verify
   assert_not_exists "FIFO removed after rollback" "$FIFO"
-  assert_not_exists "Handle file removed after rollback" "${CEKERNEL_IPC_DIR}/handle-${ISSUE_NUMBER}"
+  assert_not_exists "Handle file removed after rollback" "${CEKERNEL_IPC_DIR}/handle-${ISSUE_NUMBER}.${AGENT_TYPE}"
   assert_not_exists "Worktree removed after rollback" "$WORKTREE"
   assert_not_exists "Log file removed after rollback" "$LOG_FILE"
 
@@ -135,6 +136,7 @@ rm -f "$FAKE_CLAUDE_JSON"
 
   # Create only FIFO (worktree, handle not created)
   ISSUE_NUMBER="101"
+  AGENT_TYPE="worker"
   FIFO="${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}"
   mkfifo "$FIFO"
 
@@ -159,6 +161,7 @@ mkdir -p "$CEKERNEL_IPC_DIR"
   source "${CEKERNEL_DIR}/scripts/shared/backend-adapter.sh"
 
   ISSUE_NUMBER="102"
+  AGENT_TYPE="worker"
   # Create nothing
 
   source_rollback

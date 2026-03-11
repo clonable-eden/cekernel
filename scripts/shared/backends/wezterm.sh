@@ -4,7 +4,7 @@
 # Implements 4 external API functions using WezTerm CLI.
 # Sourced by backend-adapter.sh when CEKERNEL_BACKEND=wezterm.
 #
-# Handle file: ${CEKERNEL_IPC_DIR}/handle-{issue} contains WezTerm pane ID (numeric).
+# Handle file: ${CEKERNEL_IPC_DIR}/handle-{issue}.{type} contains WezTerm pane ID (numeric).
 
 # ── External API ──
 
@@ -12,13 +12,14 @@ backend_available() {
   command -v wezterm >/dev/null 2>&1
 }
 
-# backend_spawn_worker <issue> <worktree> <prompt>
+# backend_spawn_worker <issue> <type> <worktree> <prompt>
 # Spawns a Worker in a WezTerm 3-pane layout.
 # Saves pane ID to handle file internally.
 backend_spawn_worker() {
   local issue="$1"
-  local worktree="$2"
-  local prompt="$3"
+  local type="$2"
+  local worktree="$3"
+  local prompt="$4"
 
   # Resolve workspace (WezTerm-specific)
   local workspace=""
@@ -52,37 +53,63 @@ backend_spawn_worker() {
   wezterm cli send-text --pane-id "$pane_id" --no-paste $'\r'
 
   # Save handle (pane ID)
-  echo "$pane_id" > "${CEKERNEL_IPC_DIR}/handle-${issue}"
+  echo "$pane_id" > "${CEKERNEL_IPC_DIR}/handle-${issue}.${type}"
 }
 
-# backend_worker_alive <issue>
+# backend_worker_alive <issue> [type]
 # exit 0 if alive, exit 1 if dead or no handle
+# If type is omitted, checks any handle-{issue}.* file.
 backend_worker_alive() {
   local issue="$1"
-  local handle_file="${CEKERNEL_IPC_DIR}/handle-${issue}"
+  local type="${2:-}"
 
-  [[ -f "$handle_file" ]] || return 1
-
-  local pane_id
-  pane_id=$(cat "$handle_file")
-  _backend_pane_alive "$pane_id"
+  if [[ -n "$type" ]]; then
+    local handle_file="${CEKERNEL_IPC_DIR}/handle-${issue}.${type}"
+    [[ -f "$handle_file" ]] || return 1
+    local pane_id
+    pane_id=$(cat "$handle_file")
+    _backend_pane_alive "$pane_id"
+  else
+    local found=0
+    for handle_file in "${CEKERNEL_IPC_DIR}"/handle-"${issue}".*; do
+      [[ -f "$handle_file" ]] || continue
+      found=1
+      local pane_id
+      pane_id=$(cat "$handle_file")
+      if _backend_pane_alive "$pane_id"; then
+        return 0
+      fi
+    done
+    [[ "$found" -eq 1 ]] || return 1
+    return 1
+  fi
 }
 
-# backend_kill_worker <issue>
+# backend_kill_worker <issue> [type]
 # Kills all panes in the worker's window. No error if handle missing.
 # Also cleans up the payload file created by backend_spawn_worker.
+# If type is omitted, kills all handle-{issue}.* handles.
 backend_kill_worker() {
   local issue="$1"
-  local handle_file="${CEKERNEL_IPC_DIR}/handle-${issue}"
+  local type="${2:-}"
 
   # Clean up payload file (created by backend_spawn_worker to avoid send-text 1024-byte limit)
   rm -f "${CEKERNEL_IPC_DIR}/payload-${issue}.b64"
 
-  [[ -f "$handle_file" ]] || return 0
-
-  local pane_id
-  pane_id=$(cat "$handle_file")
-  _backend_kill_window "$pane_id"
+  if [[ -n "$type" ]]; then
+    local handle_file="${CEKERNEL_IPC_DIR}/handle-${issue}.${type}"
+    [[ -f "$handle_file" ]] || return 0
+    local pane_id
+    pane_id=$(cat "$handle_file")
+    _backend_kill_window "$pane_id"
+  else
+    for handle_file in "${CEKERNEL_IPC_DIR}"/handle-"${issue}".*; do
+      [[ -f "$handle_file" ]] || continue
+      local pane_id
+      pane_id=$(cat "$handle_file")
+      _backend_kill_window "$pane_id"
+    done
+  fi
 }
 
 # ── Private API (internal to WezTerm backend) ──

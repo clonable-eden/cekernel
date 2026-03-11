@@ -98,9 +98,13 @@ watch_one() {
       break
     fi
 
-    # Crash detection: if handle file exists but Worker process is dead, it crashed
+    # Crash detection: if any handle file exists but process is dead, it crashed
     # Only check when handle file is present (without it, we can't verify process status)
-    if [[ -f "${CEKERNEL_IPC_DIR}/handle-${issue}" ]] && ! backend_worker_alive "$issue" 2>/dev/null; then
+    local has_handle=0
+    for _hf in "${CEKERNEL_IPC_DIR}"/handle-"${issue}".*; do
+      [[ -f "$_hf" ]] && has_handle=1 && break
+    done
+    if [[ "$has_handle" -eq 1 ]] && ! backend_worker_alive "$issue" 2>/dev/null; then
       result="{\"issue\":${issue},\"result\":\"crashed\",\"detail\":\"Worker process died without completing\"}"
       echo "Error: issue #${issue} Worker process crashed (state: ${state})." >&2
       log_event "$issue" "WORKER_CRASH" "issue=#${issue} state=${state}"
