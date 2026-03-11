@@ -63,11 +63,11 @@ jobs:
 
       - name: Checkout plugins repository
         if: ${{ secrets.MARKETPLACE_PAT != '' }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: clonable-eden/plugins
           token: ${{ secrets.MARKETPLACE_PAT }}
-          path: /tmp/plugins
+          path: plugins-checkout
 
       - name: Update marketplace
         if: ${{ secrets.MARKETPLACE_PAT != '' }}
@@ -77,7 +77,7 @@ jobs:
           TAG="${{ steps.extract.outputs.tag }}"
           PLUGIN="${{ steps.extract.outputs.plugin }}"
 
-          cd /tmp/plugins
+          cd ${{ github.workspace }}/plugins-checkout
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
