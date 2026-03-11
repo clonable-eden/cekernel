@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-timeout.sh — watch-worker timeout mechanism tests
+# test-timeout.sh — watch timeout mechanism tests
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -26,9 +26,9 @@ mkfifo "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
 # ── Test 1: Timeout returns appropriate JSON ──
 RESULT_FILE=$(mktemp)
 
-# Launch watch-worker with 2s timeout (Writer does not write)
+# Launch watch with 2s timeout (Writer does not write)
 CEKERNEL_WORKER_TIMEOUT=2 \
-  bash "${CEKERNEL_DIR}/scripts/orchestrator/watch-worker.sh" "$ISSUE" > "$RESULT_FILE" 2>/dev/null &
+  bash "${CEKERNEL_DIR}/scripts/orchestrator/watch.sh" "$ISSUE" > "$RESULT_FILE" 2>/dev/null &
 WATCH_PID=$!
 
 # Poll for completion (up to 10 seconds)
@@ -43,7 +43,7 @@ done
 
 wait "$WATCH_PID" 2>/dev/null || true
 
-assert_eq "watch-worker exited within timeout" "1" "$WATCH_DONE"
+assert_eq "watch exited within timeout" "1" "$WATCH_DONE"
 
 RESULT=$(cat "$RESULT_FILE")
 rm -f "$RESULT_FILE"
@@ -59,10 +59,10 @@ mkfifo "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
 RESULT_FILE=$(mktemp)
 
 CEKERNEL_WORKER_TIMEOUT=10 \
-  bash "${CEKERNEL_DIR}/scripts/orchestrator/watch-worker.sh" "$ISSUE" > "$RESULT_FILE" 2>/dev/null &
+  bash "${CEKERNEL_DIR}/scripts/orchestrator/watch.sh" "$ISSUE" > "$RESULT_FILE" 2>/dev/null &
 WATCH_PID=$!
 
-# Wait for watch-worker to open FIFO
+# Wait for watch to open FIFO
 sleep 0.5
 
 # Write immediately

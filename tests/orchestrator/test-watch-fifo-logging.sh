@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-watch-worker-fifo-logging.sh — watch-worker.sh logs FIFO lifecycle events
+# test-watch-fifo-logging.sh — watch.sh logs FIFO lifecycle events
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -7,7 +7,7 @@ source "${SCRIPT_DIR}/../helpers.sh"
 
 CEKERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-echo "test: watch-worker (FIFO lifecycle logging)"
+echo "test: watch (FIFO lifecycle logging)"
 
 export CEKERNEL_SESSION_ID="test-watch-log-00000001"
 source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
@@ -30,18 +30,18 @@ STDERR_FILE=$(mktemp)
 export CEKERNEL_POLL_INTERVAL=1
 export CEKERNEL_WORKER_TIMEOUT=10
 
-# Launch watch-worker in background
-bash "${CEKERNEL_DIR}/scripts/orchestrator/watch-worker.sh" "$ISSUE_NUMBER" > "$RESULT_FILE" 2>"$STDERR_FILE" &
+# Launch watch in background
+bash "${CEKERNEL_DIR}/scripts/orchestrator/watch.sh" "$ISSUE_NUMBER" > "$RESULT_FILE" 2>"$STDERR_FILE" &
 WATCH_PID=$!
 
-# Wait for watch-worker to open FIFO
+# Wait for watch to open FIFO
 sleep 0.5
 
 # Write completion to FIFO
 echo '{"issue":31,"status":"merged","detail":"PR-31","timestamp":"2026-01-01T00:00:00Z"}' > "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}" &
 WRITER_PID=$!
 
-# Poll for watch-worker completion (up to 5 seconds)
+# Poll for watch completion (up to 5 seconds)
 WATCH_DONE=0
 for _ in $(seq 1 50); do
   if ! kill -0 "$WATCH_PID" 2>/dev/null; then
@@ -59,7 +59,7 @@ if [[ "$WATCH_DONE" -eq 0 ]]; then
   kill "$WATCH_PID" 2>/dev/null || true
   wait "$WATCH_PID" 2>/dev/null || true
   rm -f "$RESULT_FILE" "$STDERR_FILE"
-  echo "  FAIL: watch-worker timed out"
+  echo "  FAIL: watch timed out"
   TESTS_FAILED=$((TESTS_FAILED + 1))
   report_results
   exit "$TESTS_FAILED"

@@ -68,15 +68,15 @@ Launch the Orchestrator subagent via the Task tool:
 
 - `subagent_type`: Use `CEKERNEL_AGENT_ORCHESTRATOR` determined in Step 0
 - `run_in_background`: `true`
-- `prompt`: Include issue numbers, base branch (if specified), execution order (if determined in Step 1), `CEKERNEL_ENV` value, `CEKERNEL_AGENT_WORKER` value, and `CEKERNEL_AGENT_REVIEWER` value. Instruct the Orchestrator to pass `export CEKERNEL_ENV=<profile>` in **all script invocations** (not just `spawn-worker.sh`, but also `watch-worker.sh`, `worker-status.sh`, `cleanup-worktree.sh`, etc.), `export CEKERNEL_AGENT_WORKER=<agent-name>` in all `spawn-worker.sh` invocations, and use `CEKERNEL_AGENT_REVIEWER` as the `subagent_type` when launching the Reviewer.
+- `prompt`: Include issue numbers, base branch (if specified), execution order (if determined in Step 1), `CEKERNEL_ENV` value, `CEKERNEL_AGENT_WORKER` value, and `CEKERNEL_AGENT_REVIEWER` value. Instruct the Orchestrator to pass `export CEKERNEL_ENV=<profile>` in **all script invocations** (not just `spawn-worker.sh`, but also `watch.sh`, `worker-status.sh`, `cleanup-worktree.sh`, etc.), `export CEKERNEL_AGENT_WORKER=<agent-name>` in all `spawn-worker.sh` invocations, and use `CEKERNEL_AGENT_REVIEWER` as the `subagent_type` when launching the Reviewer.
 
 Example prompt fragment:
 
 ```
 Use CEKERNEL_ENV=headless, CEKERNEL_AGENT_WORKER=cekernel:worker, and CEKERNEL_AGENT_REVIEWER=cekernel:reviewer.
-Pass CEKERNEL_ENV to ALL script calls (spawn-worker.sh, watch-worker.sh, worker-status.sh, cleanup-worktree.sh, etc.):
+Pass CEKERNEL_ENV to ALL script calls (spawn-worker.sh, watch.sh, worker-status.sh, cleanup-worktree.sh, etc.):
 export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=headless && export CEKERNEL_AGENT_WORKER=cekernel:worker && spawn-worker.sh 108
-export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=headless && watch-worker.sh 108
+export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=headless && watch.sh 108
 When a Worker completes with ci-passed, launch the Reviewer with subagent_type=cekernel:reviewer.
 ```
 
