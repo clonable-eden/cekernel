@@ -82,6 +82,7 @@ assert_file_exists "gc preserves priority with FIFO" "${SESSION_DIR2}/worker-51.
 assert_file_exists "gc preserves type with FIFO" "${SESSION_DIR2}/worker-51.type"
 
 # ── Test 7: gc removes orphan priority/type/signal files ──
+mkdir -p "$SESSION_DIR"
 echo "5" > "${SESSION_DIR}/worker-50.priority"
 echo "worker" > "${SESSION_DIR}/worker-50.type"
 echo "TERM" > "${SESSION_DIR}/worker-50.signal"
@@ -108,16 +109,19 @@ assert_dir_exists "gc preserves non-empty session" "$SESSION_DIR2"
 # ══════════════════════════════════════════════
 
 # ── Test 10: gc removes orphan handle file ──
+mkdir -p "$SESSION_DIR"
 echo "12345" > "${SESSION_DIR}/handle-50.worker"
 bash "$ORCHCTRL" gc >/dev/null 2>&1
 assert_not_exists "gc removes orphan handle file" "${SESSION_DIR}/handle-50.worker"
 
 # ── Test 11: gc removes orphan payload file ──
+mkdir -p "$SESSION_DIR"
 echo "base64data" > "${SESSION_DIR}/payload-50.b64"
 bash "$ORCHCTRL" gc >/dev/null 2>&1
 assert_not_exists "gc removes orphan payload" "${SESSION_DIR}/payload-50.b64"
 
 # ── Test 12: gc removes orphan log files ──
+mkdir -p "$SESSION_DIR"
 mkdir -p "${SESSION_DIR}/logs"
 echo "log data" > "${SESSION_DIR}/logs/worker-50.log"
 echo "stdout data" > "${SESSION_DIR}/logs/worker-50.stdout.log"
@@ -158,6 +162,7 @@ assert_not_exists "gc removes empty repo-hash dir" "$EMPTY_HASH_DIR"
 LOCK_DIR_SUM="${CEKERNEL_VAR_DIR}/locks/testhash789/70.lock"
 mkdir -p "$LOCK_DIR_SUM"
 echo "99999999" > "${LOCK_DIR_SUM}/pid"
+mkdir -p "$SESSION_DIR"
 echo "TERMINATED:2026-02-28T10:00:00Z:done" > "${SESSION_DIR}/worker-70.state"
 OUTPUT=$(bash "$ORCHCTRL" gc 2>&1)
 assert_match "gc output includes cleaned count" "cleaned" "$OUTPUT"
