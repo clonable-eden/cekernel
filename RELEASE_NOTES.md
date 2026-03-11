@@ -1,3 +1,78 @@
+# cekernel-v1.5.0
+
+## Highlights
+- **Worker-Reviewer separation (ADR-0012)**: Workers now stop at CI pass; a separate Reviewer agent evaluates PRs before merge, providing an independent quality gate
+- **Generalized process infrastructure**: Worker-specific scripts (`spawn-worker.sh`, `watch-worker.sh`, `worker-status.sh`) refactored into generic process primitives (`spawn.sh`, `watch.sh`, `process-status.sh`) supporting multiple agent types
+- **Reviewer spawn + FIFO pattern**: Reviewer runs as an independent process using the same spawn + FIFO + watch infrastructure as Workers, enabling orchctrl observability
+- **Desktop notifications**: New `desktop-notify` shared helper provides OS-native notifications for process lifecycle events
+- **CODEOWNERS enforcement**: Added CODEOWNERS file with GitHub ruleset integration for required code owner reviews
+- **Design decision guardrails**: CLAUDE.md now requires feasibility checks and ADR documentation when deviating from existing patterns
+
+## New Features
+- Add Reviewer agent definition and Orchestrator Reviewer phase (ADR-0012)
+- Reduce Worker responsibility to CI pass; add `ci-passed` as valid notify-complete status
+- Skip issue lock release on `ci-passed` to retain lock through review phase
+- Extract `spawn.sh` common logic, wrap `spawn-worker.sh`, introduce `CEKERNEL_MAX_PROCESSES`
+- Generalize `watch-worker.sh` into `watch.sh` for any process type
+- Migrate `scripts/worker/` to `scripts/process/` and unify status→result
+- Rename `worker-status.sh` to `process-status.sh` and add type field
+- Add `--prompt` flag to `spawn.sh`; pass reviewer prompt from wrapper
+- Add `spawn-reviewer.sh` wrapper for `spawn.sh --agent reviewer`
+- Migrate Reviewer from subagent to spawn + FIFO pattern
+- Add `desktop-notify` shared helper
+- Add CODEOWNERS file for code owner review enforcement
+
+## Bug Fixes
+- Type-aware handle files to prevent Worker pane orphaning
+- Add Must Not rule to prevent Agent tool language in Orchestrator prompt
+- Restore `--resume` for `spawn-reviewer.sh` to reuse Worker worktree
+- Fix test counter not propagating from subshell pipe
+- Add Agent tool to Orchestrator for Reviewer subagent launch
+- Add missing reviewer agent symlink
+- Add git config for marketplace update in release workflow
+
+## Documentation
+- Add ADR-0012 worker-review-separation (draft through acceptance)
+- Add CEKERNEL_AUTO_MERGE and CEKERNEL_REVIEW_MAX_RETRIES to env catalog
+- Update README and internals to reflect Worker ci-passed lifecycle
+- Update README Structure section with missing entries
+- Fix remaining watch-worker.sh references and Structure section gaps
+- Add RELEASE_NOTES.md language convention to CLAUDE.md
+- Add Design Decisions guardrails to CLAUDE.md
+
+## Other Changes
+- Refactor: `spawn-reviewer.sh` always passes `--resume` internally
+- Refactor: remove `watch-worker.sh` and migrate callers to `watch.sh`
+- Refactor: migrate `wrapper.sh` notification to `desktop-notify` helper
+- Refactor: convert notify-complete lock tests to table-driven style
+- Test: add tests for spawn-reviewer, process-status, notify-complete lock, desktop-notify
+
+## What's Changed
+* docs: add ADR-0012 worker-review-separation by @clonable-eden in #245
+* docs: add CEKERNEL_AUTO_MERGE and CEKERNEL_REVIEW_MAX_RETRIES to env catalog (ADR-0012) by @clonable-eden in #257
+* feat: reduce Worker responsibility to CI pass (ADR-0012) by @clonable-eden in #253
+* feat: add Reviewer agent definition (ADR-0012) by @clonable-eden in #254
+* feat: skip issue lock release on ci-passed (ADR-0012) by @clonable-eden in #256
+* feat: desktop通知の共通ヘルパー化 (ADR-0012) by @clonable-eden in #258
+* feat: add CODEOWNERS and enable require_code_owner_review by @clonable-eden in #259
+* feat: add Reviewer phase to Orchestrator workflow (ADR-0012) by @clonable-eden in #262
+* fix: add missing reviewer agent symlink by @clonable-eden in #263
+* fix: add Agent tool to Orchestrator for Reviewer subagent launch by @clonable-eden in #266
+* docs: update README Structure section by @clonable-eden in #268
+* feat: generalize watch-worker.sh into watch.sh by @clonable-eden in #275
+* feat: spawn.sh 共通化 + spawn-worker.sh ラッパー化 + CEKERNEL_MAX_PROCESSES 導入 by @clonable-eden in #276
+* feat: migrate scripts/worker/ to scripts/process/ and unify status→result by @clonable-eden in #277
+* feat: rename worker-status.sh to process-status.sh and add type field by @clonable-eden in #278
+* feat: Reviewer を spawn + FIFO パターンで実装 by @clonable-eden in #279
+* fix: add Must Not rule to prevent Agent tool language in Orchestrator prompt by @clonable-eden in #283
+* docs: fix remaining watch-worker.sh references and Structure section gaps by @clonable-eden in #284
+* fix: type-aware handle files to prevent Worker pane orphaning by @clonable-eden in #286
+* docs: CLAUDE.md にデザイン判断のガードレールを追加する by @clonable-eden in #288
+
+**Full Changelog**: https://github.com/clonable-eden/cekernel/compare/cekernel-v1.4.0...cekernel-v1.5.0
+
+---
+
 # cekernel-v1.4.0
 
 ## Highlights
