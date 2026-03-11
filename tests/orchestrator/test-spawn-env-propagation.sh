@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-spawn-env-propagation.sh — Tests that spawn-worker.sh writes .cekernel-env
+# test-spawn-env-propagation.sh — Tests that spawn.sh writes .cekernel-env
 # and uses a short BASH_PREFIX ("source .cekernel-env")
 #
 # Verifies:
@@ -12,19 +12,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../helpers.sh"
 
 CEKERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-SPAWN_SCRIPT="${CEKERNEL_DIR}/scripts/orchestrator/spawn-worker.sh"
+SPAWN_SCRIPT="${CEKERNEL_DIR}/scripts/orchestrator/spawn.sh"
 
 echo "test: spawn-env-propagation"
 
 SCRIPT_CONTENT=$(cat "$SPAWN_SCRIPT")
 
-# ── Test 1: spawn-worker.sh writes .cekernel-env to worktree ──
+# ── Test 1: spawn.sh writes .cekernel-env to worktree ──
 # The script must contain a heredoc or cat that creates .cekernel-env
 if [[ "$SCRIPT_CONTENT" == *'.cekernel-env'* ]]; then
-  echo "  PASS: spawn-worker.sh references .cekernel-env"
+  echo "  PASS: spawn.sh references .cekernel-env"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
-  echo "  FAIL: spawn-worker.sh does not reference .cekernel-env"
+  echo "  FAIL: spawn.sh does not reference .cekernel-env"
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
@@ -103,6 +103,7 @@ fi
 
 # ── Test 10: .cekernel-env includes PATH with $PATH preservation ──
 # The env file must append to existing PATH (:\$PATH) to avoid losing /usr/bin etc.
+# Check spawn.sh (which now contains the logic)
 if grep -q 'PATH=.*:\$PATH' "$SPAWN_SCRIPT" || grep -q 'PATH=.*:\\$PATH' "$SPAWN_SCRIPT"; then
   echo "  PASS: .cekernel-env preserves existing PATH (:\$PATH)"
   TESTS_PASSED=$((TESTS_PASSED + 1))

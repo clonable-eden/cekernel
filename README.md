@@ -50,7 +50,7 @@ Orchestrator (agent1)             Worker (agent2, 3, 4, ...)
 | `tail -f` / `journalctl` | `watch-logs.sh` |
 | log rotation | Logs deleted by `cleanup-worktree.sh` |
 | page cache | `.cekernel-task.md` (issue data pre-extracted at spawn) |
-| `ulimit -u` (max processes) | `CEKERNEL_MAX_WORKERS` |
+| `ulimit -u` (max processes) | `CEKERNEL_MAX_PROCESSES` |
 | `ps aux` | `worker-status.sh` |
 | process scheduler | Orchestrator queuing logic (priority queue + preemption) |
 | semaphore | Concurrency guard via FIFO count |
@@ -99,7 +99,8 @@ scripts/
     health-check.sh        # Detect zombie Workers
     orchctrl.sh            # Worker control interface (systemctl for cekernel)
     send-signal.sh         # Send signal (TERM/SUSPEND) to a running Worker
-    spawn-worker.sh        # Create worktree + launch Worker via backend (with concurrency guard)
+    spawn.sh               # Common process spawning logic (concurrency guard, FIFO, state, backend, Type)
+    spawn-worker.sh        # Spawn Worker (thin wrapper for spawn.sh --agent worker)
     watch-logs.sh          # Real-time Worker log monitoring
     watch-worker.sh        # Monitor Worker completion (FIFO + state file + crash detection)
     worker-status.sh       # List active Workers

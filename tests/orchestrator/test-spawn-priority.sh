@@ -24,8 +24,8 @@ trap cleanup EXIT
 rm -rf "$CEKERNEL_IPC_DIR"
 mkdir -p "$CEKERNEL_IPC_DIR"
 
-# ── Simulate spawn-worker.sh flag parsing logic ──
-# Extract the flag parsing pattern from spawn-worker.sh
+# ── Simulate spawn.sh flag parsing logic ──
+# Extract the flag parsing pattern from spawn.sh
 parse_spawn_flags() {
   local PRIORITY="normal"
   while [[ $# -gt 0 ]]; do

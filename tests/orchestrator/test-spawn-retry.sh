@@ -23,11 +23,11 @@ git -C "$FAKE_REPO" -c user.name="test" -c user.email="test@test" commit --allow
 
 # ── Extract cleanup_stale_worktree function from spawn-worker.sh ──
 source_cleanup_stale() {
-  local script="${CEKERNEL_DIR}/scripts/orchestrator/spawn-worker.sh"
+  local script="${CEKERNEL_DIR}/scripts/orchestrator/spawn.sh"
   local func_body
   func_body=$(sed -n '/^cleanup_stale_worktree()/,/^}/p' "$script")
   if [[ -z "$func_body" ]]; then
-    echo "  FAIL: cleanup_stale_worktree() function not found in spawn-worker.sh" >&2
+    echo "  FAIL: cleanup_stale_worktree() function not found in spawn.sh" >&2
     return 1
   fi
   eval "$func_body"

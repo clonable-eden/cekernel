@@ -40,9 +40,10 @@ scripts/orchestrator/watch-logs.sh 4           # Specific Worker
 
 ### Concurrency Limit
 
-The `CEKERNEL_MAX_WORKERS` environment variable limits concurrent Workers (default: 3).
-`spawn-worker.sh` counts active FIFOs in the session and returns exit 2 when the limit is reached.
+The `CEKERNEL_MAX_PROCESSES` environment variable limits concurrent processes (default: 3).
+`spawn.sh` counts active FIFOs in the session and returns exit 2 when the limit is reached.
 The Orchestrator uses this exit code to perform queuing.
+`CEKERNEL_MAX_WORKERS` is deprecated but still supported (takes priority if set; emits a warning).
 
 ### Worker Status
 
