@@ -43,7 +43,7 @@ backend_spawn_worker() {
     unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ACCESS_TOKEN && \
     CEKERNEL_SESSION_ID="${CEKERNEL_SESSION_ID:-}" \
     exec claude -p --agent "${CEKERNEL_AGENT_WORKER:-worker}" "$prompt"
-  ) > "$log_file" 2>&1 &
+  ) >> "$log_file" 2>&1 &
   local pid=$!
 
   # Save handle (PID)
