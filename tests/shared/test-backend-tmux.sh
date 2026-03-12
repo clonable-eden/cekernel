@@ -207,6 +207,28 @@ CLAUDE_LINE=$(echo "$LOGGED" | grep "send-keys" | grep "claude")
 assert_match "unset CLAUDECODE in claude command" "unset CLAUDECODE" "$CLAUDE_LINE"
 rm -f "$MOCK_LOG"
 
+# ── Test 11: backend_spawn_worker — creates log directory and uses script capture ──
+MOCK_LOG=$(mktemp)
+SPLIT_CALL_COUNT=0
+export TMUX="/tmp/tmux-501/default,12345,0"
+tmux() {
+  echo "tmux $*" >> "$MOCK_LOG"
+  if [[ "$1" == "new-window" ]]; then echo "my-session:1.0"; fi
+  if [[ "$1" == "display-message" ]]; then echo "my-session"; fi
+  if [[ "$1" == "split-window" ]]; then
+    SPLIT_CALL_COUNT=$((SPLIT_CALL_COUNT + 1))
+    echo "my-session:1.$SPLIT_CALL_COUNT"
+  fi
+}
+export -f tmux
+rm -rf "${CEKERNEL_IPC_DIR}/logs"
+backend_spawn_worker "412" "worker" "$WORKTREE" "test prompt"
+LOGGED=$(cat "$MOCK_LOG")
+CLAUDE_LINE=$(echo "$LOGGED" | grep "send-keys" | grep "claude")
+assert_match "claude command is wrapped with script" "script -q" "$CLAUDE_LINE"
+assert_dir_exists "log directory created by spawn" "${CEKERNEL_IPC_DIR}/logs"
+rm -f "$MOCK_LOG"
+
 # ── Cleanup ──
 unset -f tmux 2>/dev/null || true
 unset TMUX 2>/dev/null || true
