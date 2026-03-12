@@ -118,7 +118,6 @@ scripts/
     cron.sh                # /cron command handler (register/list/cancel)
     preflight.sh           # Registration preflight checks
     registry.sh            # Schedule registry CRUD
-    resolve-api-key.sh     # API key dynamic resolution
     wrapper.sh             # Runner script generator
   shared/
     backend-adapter.sh     # Backend abstraction layer (wezterm/tmux/headless)
