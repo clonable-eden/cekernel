@@ -44,7 +44,7 @@ Priority is assigned at issue intake by the Orchestrator. The default is `normal
 
 ### 2. Timeout → TERM signal
 
-When `watch-worker.sh`（現 `watch.sh`）reports timeout, the Orchestrator sends a TERM signal before resorting to force-kill:
+When `watch-worker.sh` (now `watch.sh`) reports timeout, the Orchestrator sends a TERM signal before resorting to force-kill:
 
 ```
 timeout detected
@@ -119,7 +119,7 @@ Worker A completes → slot freed
 
 ### 5. Worker state reporting at phase boundaries
 
-Workers write their state at each phase boundary using `worker_state_write`. This makes Worker activity visible to `worker-status.sh`（現 `process-status.sh`）, `health-check.sh`, and the Orchestrator.
+Workers write their state at each phase boundary using `worker_state_write`. This makes Worker activity visible to `worker-status.sh` (now `process-status.sh`), `health-check.sh`, and the Orchestrator.
 
 State transitions map to Worker protocol phases:
 

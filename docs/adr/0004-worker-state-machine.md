@@ -8,7 +8,7 @@ Accepted
 
 cekernel's Worker lifecycle visibility is binary: a Worker is either "alive" (FIFO exists) or "dead" (FIFO removed). The scripts that provide observability reflect this:
 
-- `worker-status.sh`（現 `process-status.sh`）lists Workers by enumerating FIFOs in the IPC directory. It reports issue number, worktree path, and uptime — but not what the Worker is *doing*.
+- `worker-status.sh` (now `process-status.sh`) lists Workers by enumerating FIFOs in the IPC directory. It reports issue number, worktree path, and uptime — but not what the Worker is *doing*.
 - `health-check.sh` determines "healthy" (pane alive) or "zombie" (pane dead, FIFO still exists). It cannot distinguish between a Worker actively coding and one stuck waiting on CI.
 
 In Unix terms, this is equivalent to `ps` only showing PIDs without process states. The kernel tracks NEW, READY, RUNNING, WAITING, TERMINATED — cekernel tracks nothing between spawn and completion.
@@ -165,7 +165,7 @@ Rejected:
 
 > Rule of Least Surprise: "In interface design, always do the least surprising thing."
 
-Every script that references FIFOs uses the pattern `worker-{issue}`. Changing FIFO names at runtime would break `watch-worker.sh`（現 `watch.sh`）(which opens FIFOs by known path), `notify-complete.sh` (which writes to a known path), `health-check.sh` (which finds FIFOs by glob), and `cleanup-worktree.sh` (which removes FIFOs by known path). A renaming FIFO violates the expectation that IPC endpoints have stable names.
+Every script that references FIFOs uses the pattern `worker-{issue}`. Changing FIFO names at runtime would break `watch-worker.sh` (now `watch.sh`) (which opens FIFOs by known path), `notify-complete.sh` (which writes to a known path), `health-check.sh` (which finds FIFOs by glob), and `cleanup-worktree.sh` (which removes FIFOs by known path). A renaming FIFO violates the expectation that IPC endpoints have stable names.
 
 ### Alternative: Central state database (SQLite)
 

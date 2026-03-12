@@ -183,7 +183,7 @@ If a human later requests additional changes on an approved-but-not-merged PR, t
 
 #### Concurrency Slot Behavior
 
-The concurrency guard in `spawn-worker.sh` counts FIFOs in the IPC directory. When `watch-worker.sh`（現 `watch.sh`）receives `ci-passed`, it removes the FIFO, freeing the concurrency slot. The worktree persists (for potential re-spawn), but the slot is free for other Workers.
+The concurrency guard in `spawn-worker.sh` counts FIFOs in the IPC directory. When `watch-worker.sh` (now `watch.sh`) receives `ci-passed`, it removes the FIFO, freeing the concurrency slot. The worktree persists (for potential re-spawn), but the slot is free for other Workers.
 
 If the Reviewer rejects and the Worker is re-spawned via `spawn-worker.sh --resume`, a new FIFO is created, consuming a slot. This means the Worker only holds a concurrency slot while actively running — between `ci-passed` and any re-spawn decision, the slot is available for other Workers. This is the correct behavior: review is a lightweight subagent operation that should not block Worker slots.
 
