@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # test-spawn-reviewer.sh — Tests for spawn-reviewer.sh (reviewer spawning wrapper)
 #
-# Verifies that spawn-reviewer.sh correctly delegates to spawn.sh --agent reviewer.
+# Verifies that spawn-reviewer.sh correctly delegates to spawn.sh --agent reviewer
+# with the <issue-number> <pr-number> interface.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -24,7 +25,6 @@ else
 fi
 
 # ── Test 2: spawn-reviewer.sh delegates to spawn.sh --agent reviewer ──
-# Read the script content and verify it calls spawn.sh with --agent reviewer
 CONTENT=$(cat "$SPAWN_REVIEWER")
 if echo "$CONTENT" | grep -q 'spawn\.sh.*--agent reviewer'; then
   echo "  PASS: spawn-reviewer.sh delegates to spawn.sh --agent reviewer"
@@ -34,16 +34,7 @@ else
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-# ── Test 3: spawn-reviewer.sh passes through all arguments ──
-if echo "$CONTENT" | grep -q '"$@"'; then
-  echo "  PASS: spawn-reviewer.sh passes through all arguments"
-  TESTS_PASSED=$((TESTS_PASSED + 1))
-else
-  echo "  FAIL: spawn-reviewer.sh should pass through all arguments via \"\$@\""
-  TESTS_FAILED=$((TESTS_FAILED + 1))
-fi
-
-# ── Test 4: spawn-reviewer.sh uses exec (replaces process) ──
+# ── Test 3: spawn-reviewer.sh uses exec (replaces process) ──
 if echo "$CONTENT" | grep -q 'exec.*spawn\.sh'; then
   echo "  PASS: spawn-reviewer.sh uses exec"
   TESTS_PASSED=$((TESTS_PASSED + 1))
@@ -52,7 +43,7 @@ else
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-# ── Test 5: spawn-reviewer.sh starts with set -euo pipefail ──
+# ── Test 4: spawn-reviewer.sh starts with set -euo pipefail ──
 if echo "$CONTENT" | grep -q 'set -euo pipefail'; then
   echo "  PASS: spawn-reviewer.sh starts with set -euo pipefail"
   TESTS_PASSED=$((TESTS_PASSED + 1))
@@ -61,29 +52,27 @@ else
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-# ── Test 6: spawn.sh resolves CEKERNEL_AGENT_REVIEWER for reviewer type ──
-# The dynamic agent name resolution in spawn.sh constructs CEKERNEL_AGENT_REVIEWER
-# from the agent type. Verify this logic works for "reviewer".
-RESULT_6=$(
+# ── Test 5: spawn.sh resolves CEKERNEL_AGENT_REVIEWER for reviewer type ──
+RESULT_5=$(
   AGENT_TYPE="reviewer"
   AGENT_VAR="CEKERNEL_AGENT_$(echo "$AGENT_TYPE" | tr '[:lower:]' '[:upper:]')"
   unset CEKERNEL_AGENT_REVIEWER
   AGENT_NAME="${!AGENT_VAR:-$AGENT_TYPE}"
   echo "$AGENT_NAME"
 )
-assert_eq "spawn.sh defaults CEKERNEL_AGENT_REVIEWER to 'reviewer'" "reviewer" "$RESULT_6"
+assert_eq "spawn.sh defaults CEKERNEL_AGENT_REVIEWER to 'reviewer'" "reviewer" "$RESULT_5"
 
-# ── Test 7: spawn.sh uses CEKERNEL_AGENT_REVIEWER when set ──
-RESULT_7=$(
+# ── Test 6: spawn.sh uses CEKERNEL_AGENT_REVIEWER when set ──
+RESULT_6=$(
   AGENT_TYPE="reviewer"
   export CEKERNEL_AGENT_REVIEWER="cekernel:reviewer"
   AGENT_VAR="CEKERNEL_AGENT_$(echo "$AGENT_TYPE" | tr '[:lower:]' '[:upper:]')"
   AGENT_NAME="${!AGENT_VAR:-$AGENT_TYPE}"
   echo "$AGENT_NAME"
 )
-assert_eq "spawn.sh uses CEKERNEL_AGENT_REVIEWER=cekernel:reviewer when set" "cekernel:reviewer" "$RESULT_7"
+assert_eq "spawn.sh uses CEKERNEL_AGENT_REVIEWER=cekernel:reviewer when set" "cekernel:reviewer" "$RESULT_6"
 
-# ── Test 8: spawn-reviewer.sh passes --prompt to spawn.sh ──
+# ── Test 7: spawn-reviewer.sh passes --prompt to spawn.sh ──
 if echo "$CONTENT" | grep -q '\-\-prompt'; then
   echo "  PASS: spawn-reviewer.sh passes --prompt to spawn.sh"
   TESTS_PASSED=$((TESTS_PASSED + 1))
@@ -92,7 +81,7 @@ else
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-# ── Test 9: spawn-reviewer.sh prompt contains review instructions ──
+# ── Test 8: spawn-reviewer.sh prompt contains review instructions ──
 if echo "$CONTENT" | grep -q 'Review the PR'; then
   echo "  PASS: spawn-reviewer.sh prompt contains review instructions"
   TESTS_PASSED=$((TESTS_PASSED + 1))
@@ -101,7 +90,7 @@ else
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-# ── Test 10: spawn-reviewer.sh prompt references notify-complete.sh ──
+# ── Test 9: spawn-reviewer.sh prompt references notify-complete.sh ──
 if echo "$CONTENT" | grep -q 'notify-complete.sh'; then
   echo "  PASS: spawn-reviewer.sh prompt references notify-complete.sh"
   TESTS_PASSED=$((TESTS_PASSED + 1))
@@ -110,7 +99,7 @@ else
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-# ── Test 11: spawn.sh accepts --prompt flag ──
+# ── Test 10: spawn.sh accepts --prompt flag ──
 SPAWN_SH="${CEKERNEL_DIR}/scripts/orchestrator/spawn.sh"
 SPAWN_CONTENT=$(cat "$SPAWN_SH")
 if echo "$SPAWN_CONTENT" | grep -q '\-\-prompt)'; then
@@ -121,7 +110,7 @@ else
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-# ── Test 12: spawn.sh uses CUSTOM_PROMPT when provided ──
+# ── Test 11: spawn.sh uses CUSTOM_PROMPT when provided ──
 if echo "$SPAWN_CONTENT" | grep -q 'CUSTOM_PROMPT'; then
   echo "  PASS: spawn.sh uses CUSTOM_PROMPT variable"
   TESTS_PASSED=$((TESTS_PASSED + 1))
@@ -130,20 +119,71 @@ else
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-# ── Test 13: spawn-reviewer.sh correctly skips --priority value when extracting issue number ──
-# Simulate: spawn-reviewer.sh --priority 5 123
+# ── Test 12: spawn-reviewer.sh requires <issue-number> <pr-number> (two positional args) ──
+# Usage header should document <issue-number> <pr-number>
+if echo "$CONTENT" | grep -q '<issue-number> <pr-number>'; then
+  echo "  PASS: spawn-reviewer.sh documents <issue-number> <pr-number> interface"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+else
+  echo "  FAIL: spawn-reviewer.sh should document <issue-number> <pr-number> interface"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+
+# ── Test 13: spawn-reviewer.sh validates PR_NUMBER is required ──
+# The script should use ${2:?...} or equivalent for PR_NUMBER
+if echo "$CONTENT" | grep -qE 'PR_NUMBER.*\$\{2:\?' || echo "$CONTENT" | grep -qE 'PR_NUMBER="\$\{'; then
+  echo "  PASS: spawn-reviewer.sh validates PR_NUMBER as required"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+else
+  echo "  FAIL: spawn-reviewer.sh should validate PR_NUMBER as required"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+
+# ── Test 14: spawn-reviewer.sh passes issue number (not PR number) to spawn.sh ──
+# The exec line should pass ISSUE_NUMBER to spawn.sh, not PR_NUMBER.
+# State management must use issue number for consistency with Workers.
+if echo "$CONTENT" | grep -q 'exec.*spawn\.sh.*"\$ISSUE_NUMBER"'; then
+  echo "  PASS: spawn-reviewer.sh passes issue number to spawn.sh"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+else
+  echo "  FAIL: spawn-reviewer.sh should pass issue number (not PR number) to spawn.sh"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+
+# ── Test 15: spawn-reviewer.sh prompt includes PR_NUMBER variable ──
+# The reviewer prompt should reference the PR number so the reviewer knows which PR to review
+if echo "$CONTENT" | grep -q '\$.*PR_NUMBER'; then
+  echo "  PASS: spawn-reviewer.sh prompt includes PR_NUMBER"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+else
+  echo "  FAIL: spawn-reviewer.sh prompt should include PR_NUMBER for the reviewer"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+
+# ── Test 16: spawn-reviewer.sh prompt embeds PR number in gh pr review instruction ──
+if echo "$CONTENT" | grep -q 'gh pr review'; then
+  echo "  PASS: spawn-reviewer.sh prompt includes gh pr review instruction"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+else
+  echo "  FAIL: spawn-reviewer.sh prompt should include gh pr review instruction"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+
+# ── Test 17: spawn-reviewer.sh extracts flags correctly with new interface ──
+# Simulate arg parsing: spawn-reviewer.sh --priority high 267 296
+# Should extract ISSUE=267, PR=296
 SKIP_NEXT=0
-ISSUE=""
-for arg in --priority 5 123; do
+ARGS_POSITIONAL=()
+for arg in --priority high 267 296; do
   if [[ "$SKIP_NEXT" -eq 1 ]]; then
     SKIP_NEXT=0; continue
   fi
   case "$arg" in
-    --resume) ;;
     --priority) SKIP_NEXT=1 ;;
-    [0-9]*) ISSUE="$arg"; break ;;
+    *) ARGS_POSITIONAL+=("$arg") ;;
   esac
 done
-assert_eq "Issue extraction skips --priority value" "123" "$ISSUE"
+assert_eq "Positional arg extraction: issue" "267" "${ARGS_POSITIONAL[0]}"
+assert_eq "Positional arg extraction: pr" "296" "${ARGS_POSITIONAL[1]}"
 
 report_results
