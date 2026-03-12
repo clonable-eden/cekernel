@@ -97,8 +97,6 @@ SYSLOG_FILE="/usr/local/var/cekernel/logs/schedule.log"
 RUN_LOG="/usr/local/var/cekernel/logs/cekernel-cron-a1b2c3.run.log"
 
 export PATH=<captured-user-path>
-# Resolve API key dynamically (env var > OS keychain fallback)
-export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-$(resolve-api-key 2>/dev/null)}"
 
 source "<cekernel-dir>/scripts/scheduler/registry.sh"
 
@@ -201,7 +199,7 @@ The `os_backend` field identifies which backend manages each entry and tracks Ti
 
 **Permission Model (Evolving)**: In non-interactive environments, `.claude/settings.json`'s `permissions.allow` is the only mechanism for granting tool permissions. If the target repository lacks this configuration, scheduled execution will fail. The `register` preflight check validates this.
 
-**Authentication**: `claude -p` normally retrieves credentials from the OS Keychain, but non-interactive environments (cron, launchd) cannot access it. Explicit `ANTHROPIC_API_KEY` is required. This constraint is specific to the Claude Code platform.
+**Authentication**: `claude -p` retrieves credentials from the OS Keychain in non-interactive environments (cron, launchd) without requiring an explicit `ANTHROPIC_API_KEY`. This has been verified on macOS (launchd `RunAtLoad`) — `claude -p` resolves credentials autonomously. Linux/WSL uses file-based credentials (`~/.claude/.credentials.json`), which are directly accessible from cron/atd.
 
 **PATH snapshot**: The registry's `path` field captures the user's `$PATH` at registration time. Subsequent changes to the user's PATH (e.g., installing new tools, modifying shell profiles) are not reflected in existing schedules. Users must re-register (`cancel` + `register`) to update the PATH.
 
@@ -283,7 +281,6 @@ Rejected: cron jobs are silently skipped during macOS sleep — a frequent occur
 
 - Tier 1 requires platform-specific backend code (launchd plist on macOS, crontab on Linux/WSL)
 - Linux/WSL crontab still lacks missed-run catch-up (mitigated in Tier 2 with systemd)
-- `ANTHROPIC_API_KEY` must be available in the non-interactive environment (security consideration)
 - `path` is a registration-time snapshot; PATH changes require re-registration
 - For recurring cron entries, `<id>.run.log` grows indefinitely across runs (appended on each execution). Log rotation is not implemented in Tier 1
 
@@ -292,3 +289,19 @@ Rejected: cron jobs are silently skipped during macOS sleep — a frequent occur
 **Platform-specific Tier 1 vs. Single code path**: Using launchd on macOS and crontab on Linux/WSL adds implementation complexity compared to a universal crontab approach. However, a scheduler that silently skips invocations on the primary platform is not a viable MVP. The `os_backend` field absorbs this difference at the registry level.
 
 **User-scope vs. Repo-scope**: Placing the registry in `/usr/local/var/cekernel/` enables user-level scheduling across multiple repositories. Per-repository configuration (e.g., `.cekernel/schedules.json`) is intentionally omitted to maintain simplicity.
+
+## Amendment: Authentication Constraint Revised (2026-03-12)
+
+**Issue**: [#307](https://github.com/clonable-eden/cekernel/issues/307) — resolve-api-key.sh の Keychain フォールバックを削除する
+
+**Original statement**: "Authentication: `claude -p` normally retrieves credentials from the OS Keychain, but non-interactive environments (cron, launchd) **cannot access it**. Explicit `ANTHROPIC_API_KEY` is required."
+
+**Correction**: This assumption was incorrect. Verification confirmed that `claude -p` running under launchd `RunAtLoad` resolves credentials from the macOS Keychain (`Claude Code-credentials`) autonomously — without an explicit `ANTHROPIC_API_KEY` environment variable. The OS-level security boundary is satisfied by the launchd session context.
+
+**Impact**:
+- `resolve-api-key.sh` (Keychain fallback helper) has been removed
+- The wrapper script no longer exports `ANTHROPIC_API_KEY`
+- `preflight.sh`'s API key check has been removed
+- Linux/WSL credential resolution is unaffected (file-based, `~/.claude/.credentials.json`)
+
+**Revised behavior**: Credential resolution is fully delegated to the `claude` CLI across all platforms. No explicit API key handling is required in cekernel's scheduler layer.

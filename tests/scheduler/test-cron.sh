@@ -36,9 +36,6 @@ setup() {
     fi
   done
   export PATH="${_MOCK_BIN}:${PATH}"
-
-  # Satisfy preflight API key check
-  export ANTHROPIC_API_KEY="test-key"
 }
 
 teardown() {

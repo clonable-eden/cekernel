@@ -14,22 +14,9 @@ schedule_preflight_check() {
   local type="${1:?Usage: schedule_preflight_check <cron|at> <repo>}"
   local repo="${2:?Usage: schedule_preflight_check <cron|at> <repo>}"
 
-  # Resolve CEKERNEL_DIR for resolve-api-key.sh
-  local cekernel_dir
-  cekernel_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-
   local failed=0
 
-  # 1. API key is resolvable (env var or Keychain)
-  if bash "${cekernel_dir}/scripts/scheduler/resolve-api-key.sh" >/dev/null 2>&1; then
-    echo "  OK: API key is resolvable"
-  else
-    echo "  FAIL: API key cannot be resolved" >&2
-    echo "    Set ANTHROPIC_API_KEY or add key to macOS Keychain" >&2
-    failed=1
-  fi
-
-  # 2. Required commands: claude, gh, git
+  # 1. Required commands: claude, gh, git
   for cmd in claude gh git; do
     if command -v "$cmd" >/dev/null 2>&1; then
       echo "  OK: ${cmd} found ($(command -v "$cmd"))"
@@ -39,7 +26,7 @@ schedule_preflight_check() {
     fi
   done
 
-  # 3. .claude/settings.json exists
+  # 2. .claude/settings.json exists
   if [[ -f "${repo}/.claude/settings.json" ]]; then
     echo "  OK: ${repo}/.claude/settings.json exists"
   else
@@ -48,7 +35,7 @@ schedule_preflight_check() {
     failed=1
   fi
 
-  # 4. OS scheduler accessibility
+  # 3. OS scheduler accessibility
   case "$(uname)" in
     Darwin)
       if command -v launchctl >/dev/null 2>&1; then
@@ -68,7 +55,7 @@ schedule_preflight_check() {
       ;;
   esac
 
-  # 5. For /at on Linux: check atd is running
+  # 4. For /at on Linux: check atd is running
   if [[ "$type" == "at" && "$(uname)" == "Linux" ]]; then
     if systemctl is-active atd >/dev/null 2>&1; then
       echo "  OK: atd is active"

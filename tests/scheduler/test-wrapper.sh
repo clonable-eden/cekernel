@@ -161,15 +161,7 @@ else
 fi
 teardown
 
-# ── Test 16: resolve-api-key is referenced ──
-setup
-schedule_generate_wrapper "$TEST_ID" "$TEST_REPO" "$TEST_PATH" "$TEST_PROMPT"
-RUNNER="${CEKERNEL_VAR_DIR}/runners/${TEST_ID}.sh"
-CONTENT=$(cat "$RUNNER")
-assert_match "references resolve-api-key" "resolve-api-key" "$CONTENT"
-teardown
-
-# ── Test 17: registry update_status is called ──
+# ── Test 16: registry update_status is called ──
 setup
 schedule_generate_wrapper "$TEST_ID" "$TEST_REPO" "$TEST_PATH" "$TEST_PROMPT"
 RUNNER="${CEKERNEL_VAR_DIR}/runners/${TEST_ID}.sh"

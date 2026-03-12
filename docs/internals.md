@@ -177,28 +177,18 @@ make install
 `scripts/scheduler/wrapper.sh` generates runner scripts at `runners/<id>.sh`. Each wrapper:
 
 1. Sets `PATH` (registration-time snapshot)
-2. Resolves API key dynamically (env var → macOS Keychain)
-3. Executes `claude -p` with `if/else` pattern (`set -e` safe)
-4. Updates registry status (`success` / `error`)
-5. Sends OS-native notification on failure (best-effort)
-
-### API Key Resolution
-
-`scripts/scheduler/resolve-api-key.sh` resolves `ANTHROPIC_API_KEY`:
-
-1. Environment variable (if non-empty)
-2. macOS Keychain (`"Claude Code-credentials"`, Darwin only)
-3. Exit 1 with diagnostic message
+2. Executes `claude -p` with `if/else` pattern (`set -e` safe)
+3. Updates registry status (`success` / `error`)
+4. Sends OS-native notification on failure (best-effort)
 
 ### Preflight
 
 `scripts/scheduler/preflight.sh` validates the environment before registration:
 
-1. API key is resolvable
-2. `claude`, `gh`, `git` are in PATH
-3. `.claude/settings.json` exists in the target repo
-4. OS scheduler is accessible (launchctl / crontab)
-5. `atd` is running (Linux, `/at` only)
+1. `claude`, `gh`, `git` are in PATH
+2. `.claude/settings.json` exists in the target repo
+3. OS scheduler is accessible (launchctl / crontab)
+4. `atd` is running (Linux, `/at` only)
 
 ### Cron Backend
 
