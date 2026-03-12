@@ -161,11 +161,18 @@ compute_elapsed() {
   fi
 }
 
-# ── Helper: detect backend from handle file ──
+# ── Helper: detect backend from metadata file (with heuristic fallback) ──
 detect_backend() {
   local ipc_dir="$1" issue="$2"
 
-  # Find the first handle-{issue}.{type} file
+  # Primary: read from metadata file written at spawn time
+  local backend_file="${ipc_dir}/worker-${issue}.backend"
+  if [[ -f "$backend_file" ]]; then
+    tr -d '[:space:]' < "$backend_file"
+    return
+  fi
+
+  # Fallback: heuristic detection from handle file (pre-#311 workers)
   local handle_file=""
   for hf in "${ipc_dir}"/handle-"${issue}".*; do
     [[ -f "$hf" ]] && handle_file="$hf" && break

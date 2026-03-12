@@ -253,6 +253,48 @@ assert_match "inspect contains detail" '"detail":"phase1:implement"' "$OUTPUT"
 assert_match "inspect contains timestamp" '"timestamp":"2026-02-28T10:00:00Z"' "$OUTPUT"
 
 # ══════════════════════════════════════════════
+# detect_backend: metadata file
+# ══════════════════════════════════════════════
+
+# ── Test 28a: ls output contains backend from metadata file (wezterm) ──
+echo "wezterm" > "${IPC_A}/worker-10.backend"
+OUTPUT=$(bash "$ORCHCTRL" ls 2>/dev/null | grep '"issue":10')
+assert_match "ls backend metadata: wezterm" '"backend":"wezterm"' "$OUTPUT"
+
+# ── Test 28b: ls output contains backend from metadata file (headless) ──
+echo "headless" > "${IPC_A}/worker-10.backend"
+OUTPUT=$(bash "$ORCHCTRL" ls 2>/dev/null | grep '"issue":10')
+assert_match "ls backend metadata: headless" '"backend":"headless"' "$OUTPUT"
+
+# ── Test 28c: ls output contains backend from metadata file (tmux) ──
+echo "tmux" > "${IPC_A}/worker-10.backend"
+OUTPUT=$(bash "$ORCHCTRL" ls 2>/dev/null | grep '"issue":10')
+assert_match "ls backend metadata: tmux" '"backend":"tmux"' "$OUTPUT"
+
+# ── Test 28d: ls backend prefers metadata file over stdout.log heuristic ──
+# Even if stdout.log exists (which would trigger old "headless" heuristic),
+# metadata file takes precedence.
+mkdir -p "${IPC_A}/logs"
+touch "${IPC_A}/logs/worker-10.stdout.log"
+echo "wezterm" > "${IPC_A}/worker-10.backend"
+OUTPUT=$(bash "$ORCHCTRL" ls 2>/dev/null | grep '"issue":10')
+assert_match "ls backend: metadata overrides stdout.log heuristic" '"backend":"wezterm"' "$OUTPUT"
+rm -f "${IPC_A}/logs/worker-10.stdout.log"
+rmdir "${IPC_A}/logs" 2>/dev/null || true
+
+# ── Test 28e: ls backend falls back to heuristic when metadata file absent ──
+rm -f "${IPC_A}/worker-10.backend"
+# No handle file → should return "unknown"
+OUTPUT=$(bash "$ORCHCTRL" ls 2>/dev/null | grep '"issue":10')
+assert_match "ls backend fallback: no handle → unknown" '"backend":"unknown"' "$OUTPUT"
+
+# ── Test 28f: inspect output contains backend from metadata file ──
+echo "headless" > "${IPC_A}/worker-10.backend"
+OUTPUT=$(bash "$ORCHCTRL" inspect 10 --session "$SESSION_A" 2>/dev/null)
+assert_match "inspect backend metadata: headless" '"backend":"headless"' "$OUTPUT"
+rm -f "${IPC_A}/worker-10.backend"
+
+# ══════════════════════════════════════════════
 # usage / no command
 # ══════════════════════════════════════════════
 
