@@ -302,6 +302,47 @@ export -f wezterm
 RESULT=$(backend_get_pid "300" "worker" 2>/dev/null) || true
 assert_eq "backend_get_pid returns pid directly when not null" "77777" "$RESULT"
 
+# ── Test 15: backend_spawn_worker — creates log directory and payload includes command field ──
+MOCK_LOG=$(mktemp)
+wezterm() {
+  echo "wezterm $*" >> "$MOCK_LOG"
+  if [[ "$1" == "cli" && "$2" == "spawn" ]]; then
+    echo "42"  # mock pane ID
+  fi
+  if [[ "$1" == "cli" && "$2" == "list" ]]; then
+    echo '[{"pane_id": 42, "workspace": "default"}]'
+  fi
+}
+export -f wezterm
+export WEZTERM_PANE=42
+rm -rf "${CEKERNEL_IPC_DIR}/logs"
+ISSUE="302"
+WORKTREE="/tmp/test-worktree"
+backend_spawn_worker "$ISSUE" "worker" "$WORKTREE" "test prompt"
+
+# Log directory should be created
+assert_dir_exists "log directory created by spawn" "${CEKERNEL_IPC_DIR}/logs"
+
+# Payload should contain 'command' field with script capture
+PAYLOAD_FILE="${CEKERNEL_IPC_DIR}/payload-${ISSUE}.b64"
+assert_file_exists "Payload file created after spawn" "$PAYLOAD_FILE"
+DECODED=$(base64 -d < "$PAYLOAD_FILE" 2>/dev/null || base64 -D < "$PAYLOAD_FILE" 2>/dev/null || echo "")
+if echo "$DECODED" | jq -e '.command' >/dev/null 2>&1; then
+  echo "  PASS: Payload contains command field"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+else
+  echo "  FAIL: Payload should contain command field"
+  echo "    decoded: ${DECODED}"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+
+# Command field should contain script capture
+COMMAND_FIELD=$(echo "$DECODED" | jq -r '.command')
+assert_match "command field contains script" "script -q" "$COMMAND_FIELD"
+assert_match "command field contains claude" "claude" "$COMMAND_FIELD"
+assert_match "command field contains unset CLAUDECODE" "unset CLAUDECODE" "$COMMAND_FIELD"
+rm -f "$MOCK_LOG"
+
 # ── Cleanup ──
 unset -f wezterm 2>/dev/null || true
 unset -f ps 2>/dev/null || true

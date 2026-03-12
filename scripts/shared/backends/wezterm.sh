@@ -6,6 +6,10 @@
 #
 # Handle file: ${CEKERNEL_IPC_DIR}/handle-{issue}.{type} contains WezTerm pane ID (numeric).
 
+# ── Dependencies ──
+_WEZTERM_BACKEND_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${_WEZTERM_BACKEND_DIR}/../script-capture.sh"
+
 # ── External API ──
 
 backend_available() {
@@ -25,15 +29,24 @@ backend_spawn_worker() {
   local workspace=""
   workspace=$(_backend_resolve_workspace)
 
+  # Ensure log directory exists and build script-captured claude command
+  ensure_log_dir
+  local log_file="${CEKERNEL_IPC_DIR}/logs/worker-${issue}.stdout.log"
+  local raw_claude_cmd="claude -p --agent ${CEKERNEL_AGENT_WORKER:-worker} \"${prompt}\""
+  local captured_cmd
+  captured_cmd=$(build_script_capture_cmd "$log_file" "$raw_claude_cmd")
+
+  # Build the full command to execute in the pane (bash side, not Lua side)
+  local full_command="cd '${worktree}' && unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ACCESS_TOKEN && export CEKERNEL_SESSION_ID='${CEKERNEL_SESSION_ID:-}' && ${captured_cmd}"
+
   # Build JSON payload for Lua-side layout construction
   local layout_payload
   layout_payload=$(jq -n \
     --arg worktree "$worktree" \
     --arg session_id "${CEKERNEL_SESSION_ID:-}" \
-    --arg prompt "$prompt" \
     --arg issue_number "$issue" \
-    --arg agent_name "${CEKERNEL_AGENT_WORKER:-worker}" \
-    '{worktree: $worktree, session_id: $session_id, prompt: $prompt, issue_number: $issue_number, agent_name: $agent_name}'
+    --arg command "$full_command" \
+    '{worktree: $worktree, session_id: $session_id, issue_number: $issue_number, command: $command}'
   )
 
   # Spawn window (IPC 1)
