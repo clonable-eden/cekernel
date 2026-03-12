@@ -101,6 +101,20 @@ rm -rf "$TEST_LOG_DIR"
 ensure_log_dir
 assert_dir_exists "ensure_log_dir creates logs directory" "$TEST_LOG_DIR"
 
+# ── Test 16: macOS runner contains flush flag (-F) ──
+RUNNER_16=$(write_runner_script "46" "/tmp/worktree" "test-session" "worker" "hello" "/tmp/test.log")
+RUNNER_16_CONTENT=$(cat "$RUNNER_16")
+assert_match "macOS runner contains -F flush flag" "script -q -a -F" "$RUNNER_16_CONTENT"
+
+# ── Test 17: macOS runner contains append flag (-a) ──
+assert_match "macOS runner contains -a append flag" "script -q -a" "$RUNNER_16_CONTENT"
+
+# ── Test 18: Linux runner contains --flush flag ──
+assert_match "Linux runner contains --flush flag" "script -q -a --flush" "$RUNNER_16_CONTENT"
+
+# ── Test 19: Linux runner contains append flag (-a) ──
+assert_match "Linux runner contains -a append flag" "script -q -a --flush" "$RUNNER_16_CONTENT"
+
 # ── Cleanup ──
 rm -rf "$CEKERNEL_IPC_DIR"
 
