@@ -527,8 +527,101 @@ cmd_gc() {
   local cleaned=0
   local locks_dir="${CEKERNEL_VAR_DIR}/locks"
 
+  # Stale timeout for NEW/READY state (seconds). Default: 30 minutes.
+  local stale_timeout="${CEKERNEL_GC_STALE_TIMEOUT:-1800}"
+
+  # ── Helper: check if a FIFO is stale ──
+  # Returns 0 (stale) or 1 (active).
+  # A FIFO is stale when:
+  #   - State is TERMINATED and no live handle exists
+  #   - No handle exists and state is NEW/READY past stale_timeout
+  #   - Handle exists but the referenced process is dead
+  _gc_is_stale_fifo() {
+    local sdir="$1" issue="$2" fifo="$3" timeout="$4"
+
+    # Check for any handle file
+    local has_live_handle=0
+    local has_any_handle=0
+    for hf in "${sdir}"handle-"${issue}".*; do
+      [[ -f "$hf" ]] || continue
+      has_any_handle=1
+      local handle_content
+      handle_content=$(tr -d '[:space:]' < "$hf")
+      # For headless backend, handle is a PID
+      # For tmux, handle is session:window.pane — check if tmux session exists
+      # For wezterm, handle is a pane ID
+      # Simple heuristic: if handle is numeric, check kill -0; otherwise assume stale
+      if [[ "$handle_content" =~ ^[0-9]+$ ]]; then
+        if kill -0 "$handle_content" 2>/dev/null; then
+          has_live_handle=1
+          break
+        fi
+      elif [[ "$handle_content" == *:*.* ]]; then
+        # tmux pane target — check if tmux session exists
+        if tmux has-session -t "${handle_content%%:*}" 2>/dev/null; then
+          has_live_handle=1
+          break
+        fi
+      else
+        # Unknown handle format — assume alive to be safe
+        has_live_handle=1
+        break
+      fi
+    done
+
+    # If there's a live handle, the FIFO is active
+    if [[ "$has_live_handle" -eq 1 ]]; then
+      return 1
+    fi
+
+    # Read state from state file
+    local state="UNKNOWN"
+    local state_file="${sdir}worker-${issue}.state"
+    if [[ -f "$state_file" ]]; then
+      local line
+      line=$(cat "$state_file")
+      state="${line%%:*}"
+    fi
+
+    # TERMINATED → always stale (process completed, FIFO should have been cleaned)
+    if [[ "$state" == "TERMINATED" ]]; then
+      return 0
+    fi
+
+    # Handle exists but process is dead → stale
+    if [[ "$has_any_handle" -eq 1 ]]; then
+      return 0
+    fi
+
+    # No handle, state is NEW/READY → check timeout
+    if [[ "$state" == "NEW" || "$state" == "READY" ]]; then
+      local created=""
+      if stat -f '%m' "$fifo" &>/dev/null; then
+        created=$(stat -f '%m' "$fifo")
+      elif stat -c '%Y' "$fifo" &>/dev/null; then
+        created=$(stat -c '%Y' "$fifo")
+      fi
+      if [[ -n "$created" ]]; then
+        local now elapsed
+        now=$(date +%s)
+        elapsed=$((now - created))
+        if [[ "$elapsed" -ge "$timeout" ]]; then
+          return 0
+        fi
+      fi
+      # Within timeout — still active
+      return 1
+    fi
+
+    # No handle, non-terminal state (RUNNING/WAITING/SUSPENDED/UNKNOWN) → stale
+    # (A RUNNING worker without any handle is abnormal)
+    return 0
+  }
+
   # ── 1. Collect active issues (FIFOs across all sessions) ──
-  # Build a set of active issue numbers per session for orphan detection
+  # Build a set of active issue numbers per session for orphan detection.
+  # FIFOs are checked for staleness: if the process is dead or state is
+  # TERMINATED, the FIFO is removed and not added to active_issues.
   declare -A active_issues  # key: "session_dir:issue" value: 1
 
   if [[ -d "$IPC_BASE" ]]; then
@@ -541,7 +634,19 @@ cmd_gc() {
         # Only match worker-{issue} FIFOs (not worker-{issue}.state etc)
         [[ "$fname" == worker-* && "$fname" != *.* ]] || continue
         local issue="${fname#worker-}"
-        active_issues["${session_dir}:${issue}"]=1
+
+        # Check if this FIFO is stale
+        if _gc_is_stale_fifo "$session_dir" "$issue" "$fifo" "$stale_timeout"; then
+          # Stale: remove FIFO and do NOT add to active_issues
+          if [[ "$dry_run" -eq 1 ]]; then
+            echo "[dry-run] would remove stale FIFO: $fifo" >&2
+          else
+            rm -f "$fifo"
+          fi
+          cleaned=$((cleaned + 1))
+        else
+          active_issues["${session_dir}:${issue}"]=1
+        fi
       done
     done
   fi
