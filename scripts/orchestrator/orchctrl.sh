@@ -12,6 +12,7 @@
 #   term <target>               Send TERM signal (graceful shutdown)
 #   kill <target>               Force kill worker
 #   nice <target> <priority>    Change worker priority
+#   gc [--dry-run]              Clean up stale IPC/lock resources
 #
 # Target formats:
 #   <issue>                     Match by issue number (unique across all sessions)
@@ -28,7 +29,8 @@ source "${SCRIPT_DIR}/../shared/worker-state.sh"
 source "${SCRIPT_DIR}/../shared/worker-priority.sh"
 source "${SCRIPT_DIR}/../shared/checkpoint-file.sh"
 
-IPC_BASE="${CEKERNEL_IPC_BASE:-${CEKERNEL_VAR_DIR:-/usr/local/var/cekernel}/ipc}"
+CEKERNEL_VAR_DIR="${CEKERNEL_VAR_DIR:-/usr/local/var/cekernel}"
+IPC_BASE="${CEKERNEL_IPC_BASE:-${CEKERNEL_VAR_DIR}/ipc}"
 
 # ── Usage ──
 usage() {
@@ -44,6 +46,7 @@ Commands:
   term <target>               Send TERM signal
   kill <target>               Force kill worker
   nice <target> <priority>    Change priority
+  gc [--dry-run]              Clean up stale resources
 
 Target: <issue> | <repo>:<issue> | <issue> --session <id>
 USAGE
@@ -511,6 +514,147 @@ cmd_nice() {
   echo "$updated_json"
 }
 
+# ── gc: Clean up stale IPC/lock resources ──
+cmd_gc() {
+  local dry_run=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --dry-run) dry_run=1; shift ;;
+      *) echo "Error: unknown option '$1'" >&2; return 1 ;;
+    esac
+  done
+
+  local cleaned=0
+  local locks_dir="${CEKERNEL_VAR_DIR}/locks"
+
+  # ── 1. Collect active issues (FIFOs across all sessions) ──
+  # Build a set of active issue numbers per session for orphan detection
+  declare -A active_issues  # key: "session_dir:issue" value: 1
+
+  if [[ -d "$IPC_BASE" ]]; then
+    for session_dir in "$IPC_BASE"/*/; do
+      [[ -d "$session_dir" ]] || continue
+      for fifo in "$session_dir"worker-*; do
+        [[ -p "$fifo" ]] || continue
+        local fname
+        fname=$(basename "$fifo")
+        # Only match worker-{issue} FIFOs (not worker-{issue}.state etc)
+        [[ "$fname" == worker-* && "$fname" != *.* ]] || continue
+        local issue="${fname#worker-}"
+        active_issues["${session_dir}:${issue}"]=1
+      done
+    done
+  fi
+
+  # ── 2. Clean stale locks ──
+  if [[ -d "$locks_dir" ]]; then
+    for repo_hash_dir in "$locks_dir"/*/; do
+      [[ -d "$repo_hash_dir" ]] || continue
+      for lock_dir in "$repo_hash_dir"*.lock; do
+        [[ -d "$lock_dir" ]] || continue
+        local pid_file="${lock_dir}/pid"
+        local is_stale=0
+
+        if [[ -f "$pid_file" ]]; then
+          local holder_pid
+          holder_pid=$(cat "$pid_file")
+          if ! kill -0 "$holder_pid" 2>/dev/null; then
+            is_stale=1
+          fi
+        else
+          # No PID file — treat as stale
+          is_stale=1
+        fi
+
+        if [[ "$is_stale" -eq 1 ]]; then
+          if [[ "$dry_run" -eq 1 ]]; then
+            echo "[dry-run] would remove stale lock: $lock_dir" >&2
+          else
+            rm -f "${lock_dir}/pid"
+            rmdir "$lock_dir" 2>/dev/null || true
+          fi
+          cleaned=$((cleaned + 1))
+        fi
+      done
+
+      # Remove empty repo-hash directory
+      if [[ "$dry_run" -eq 0 ]]; then
+        rmdir "$repo_hash_dir" 2>/dev/null || true
+      else
+        # Check if it would be empty after lock removal
+        local remaining
+        remaining=$(find "$repo_hash_dir" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+        if [[ "$remaining" -eq 0 ]]; then
+          echo "[dry-run] would remove empty repo-hash dir: $repo_hash_dir" >&2
+        fi
+      fi
+    done
+  fi
+
+  # ── Helper: clean orphan files matching a glob pattern ──
+  # Extracts issue number from filename using the given prefix, then checks
+  # if a FIFO exists for that issue. If not, removes the file.
+  # Args: session_dir glob_pattern prefix label
+  _gc_clean_orphan_files() {
+    local sdir="$1" pattern="$2" prefix="$3" label="$4"
+    for orphan_file in ${sdir}${pattern}; do
+      [[ -f "$orphan_file" ]] || continue
+      local fname
+      fname=$(basename "$orphan_file")
+      local issue_with_ext="${fname#"${prefix}"}"
+      local issue="${issue_with_ext%%.*}"
+
+      # Skip if there's an active FIFO
+      if [[ -n "${active_issues["${sdir}:${issue}"]:-}" ]]; then
+        continue
+      fi
+
+      if [[ "$dry_run" -eq 1 ]]; then
+        echo "[dry-run] would remove orphan ${label}: $orphan_file" >&2
+      else
+        rm -f "$orphan_file"
+      fi
+      cleaned=$((cleaned + 1))
+    done
+  }
+
+  # ── 3. Clean orphan IPC files (no active FIFO) ──
+  if [[ -d "$IPC_BASE" ]]; then
+    for session_dir in "$IPC_BASE"/*/; do
+      [[ -d "$session_dir" ]] || continue
+
+      _gc_clean_orphan_files "$session_dir" "worker-*.*"   "worker-"  "IPC file"
+      _gc_clean_orphan_files "$session_dir" "handle-*.*"   "handle-"  "handle"
+      _gc_clean_orphan_files "$session_dir" "payload-*.b64" "payload-" "payload"
+
+      # Log files live in a subdirectory
+      if [[ -d "${session_dir}logs" ]]; then
+        _gc_clean_orphan_files "${session_dir}logs/" "worker-*" "worker-" "log"
+
+        if [[ "$dry_run" -eq 0 ]]; then
+          rmdir "${session_dir}logs" 2>/dev/null || true
+        fi
+      fi
+
+      # Remove empty session directory
+      if [[ "$dry_run" -eq 0 ]]; then
+        rmdir "$session_dir" 2>/dev/null || true
+      fi
+    done
+  fi
+
+  # ── 4. Summary ──
+  if [[ "$cleaned" -eq 0 ]]; then
+    echo "gc: nothing to clean." >&2
+  else
+    if [[ "$dry_run" -eq 1 ]]; then
+      echo "gc: ${cleaned} stale resources found (dry-run, nothing cleaned)." >&2
+    else
+      echo "gc: ${cleaned} stale resources cleaned." >&2
+    fi
+  fi
+}
+
 # ══════════════════════════════════════════════
 # Main
 # ══════════════════════════════════════════════
@@ -527,5 +671,6 @@ case "$COMMAND" in
   term)    cmd_term "$@" ;;
   kill)    cmd_kill "$@" ;;
   nice)    cmd_nice "$@" ;;
+  gc)      cmd_gc "$@" ;;
   *)       usage ;;
 esac
