@@ -82,7 +82,7 @@ else
 fi
 
 # ── Test 8: spawn-reviewer.sh prompt contains review instructions ──
-if echo "$CONTENT" | grep -q 'Review the PR'; then
+if echo "$CONTENT" | grep -q 'Review PR'; then
   echo "  PASS: spawn-reviewer.sh prompt contains review instructions"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
