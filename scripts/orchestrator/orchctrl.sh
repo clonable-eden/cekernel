@@ -591,96 +591,46 @@ cmd_gc() {
     done
   fi
 
+  # ── Helper: clean orphan files matching a glob pattern ──
+  # Extracts issue number from filename using the given prefix, then checks
+  # if a FIFO exists for that issue. If not, removes the file.
+  # Args: session_dir glob_pattern prefix label
+  _gc_clean_orphan_files() {
+    local sdir="$1" pattern="$2" prefix="$3" label="$4"
+    for orphan_file in ${sdir}${pattern}; do
+      [[ -f "$orphan_file" ]] || continue
+      local fname
+      fname=$(basename "$orphan_file")
+      local issue_with_ext="${fname#"${prefix}"}"
+      local issue="${issue_with_ext%%.*}"
+
+      # Skip if there's an active FIFO
+      if [[ -n "${active_issues["${sdir}:${issue}"]:-}" ]]; then
+        continue
+      fi
+
+      if [[ "$dry_run" -eq 1 ]]; then
+        echo "[dry-run] would remove orphan ${label}: $orphan_file" >&2
+      else
+        rm -f "$orphan_file"
+      fi
+      cleaned=$((cleaned + 1))
+    done
+  }
+
   # ── 3. Clean orphan IPC files (no active FIFO) ──
   if [[ -d "$IPC_BASE" ]]; then
     for session_dir in "$IPC_BASE"/*/; do
       [[ -d "$session_dir" ]] || continue
 
-      # Find orphan worker files (state, priority, type, signal)
-      for worker_file in "$session_dir"worker-*.*; do
-        [[ -f "$worker_file" ]] || continue
-        local fname
-        fname=$(basename "$worker_file")
-        # Extract issue number: worker-{issue}.{ext}
-        local issue_with_ext="${fname#worker-}"
-        local issue="${issue_with_ext%%.*}"
+      _gc_clean_orphan_files "$session_dir" "worker-*.*"   "worker-"  "IPC file"
+      _gc_clean_orphan_files "$session_dir" "handle-*.*"   "handle-"  "handle"
+      _gc_clean_orphan_files "$session_dir" "payload-*.b64" "payload-" "payload"
 
-        # Skip if there's an active FIFO
-        if [[ -n "${active_issues["${session_dir}:${issue}"]:-}" ]]; then
-          continue
-        fi
-
-        if [[ "$dry_run" -eq 1 ]]; then
-          echo "[dry-run] would remove orphan IPC file: $worker_file" >&2
-        else
-          rm -f "$worker_file"
-        fi
-        cleaned=$((cleaned + 1))
-      done
-
-      # Find orphan handle files
-      for handle_file in "$session_dir"handle-*.*; do
-        [[ -f "$handle_file" ]] || continue
-        local fname
-        fname=$(basename "$handle_file")
-        local issue_with_ext="${fname#handle-}"
-        local issue="${issue_with_ext%%.*}"
-
-        if [[ -n "${active_issues["${session_dir}:${issue}"]:-}" ]]; then
-          continue
-        fi
-
-        if [[ "$dry_run" -eq 1 ]]; then
-          echo "[dry-run] would remove orphan handle: $handle_file" >&2
-        else
-          rm -f "$handle_file"
-        fi
-        cleaned=$((cleaned + 1))
-      done
-
-      # Find orphan payload files
-      for payload_file in "$session_dir"payload-*.b64; do
-        [[ -f "$payload_file" ]] || continue
-        local fname
-        fname=$(basename "$payload_file")
-        local issue_with_ext="${fname#payload-}"
-        local issue="${issue_with_ext%%.*}"
-
-        if [[ -n "${active_issues["${session_dir}:${issue}"]:-}" ]]; then
-          continue
-        fi
-
-        if [[ "$dry_run" -eq 1 ]]; then
-          echo "[dry-run] would remove orphan payload: $payload_file" >&2
-        else
-          rm -f "$payload_file"
-        fi
-        cleaned=$((cleaned + 1))
-      done
-
-      # Find orphan log files
+      # Log files live in a subdirectory
       if [[ -d "${session_dir}logs" ]]; then
-        for log_file in "${session_dir}logs"/worker-*; do
-          [[ -f "$log_file" ]] || continue
-          local fname
-          fname=$(basename "$log_file")
-          # Extract issue: worker-{issue}.log or worker-{issue}.stdout.log
-          local issue_with_ext="${fname#worker-}"
-          local issue="${issue_with_ext%%.*}"
+        _gc_clean_orphan_files "${session_dir}logs/" "worker-*" "worker-" "log"
 
-          if [[ -n "${active_issues["${session_dir}:${issue}"]:-}" ]]; then
-            continue
-          fi
-
-          if [[ "$dry_run" -eq 1 ]]; then
-            echo "[dry-run] would remove orphan log: $log_file" >&2
-          else
-            rm -f "$log_file"
-          fi
-          cleaned=$((cleaned + 1))
-        done
-
-        # Remove empty logs directory
         if [[ "$dry_run" -eq 0 ]]; then
           rmdir "${session_dir}logs" 2>/dev/null || true
         fi
