@@ -26,7 +26,7 @@ schedule_preflight_check() {
     fi
   done
 
-  # 3. .claude/settings.json exists
+  # 2. .claude/settings.json exists
   if [[ -f "${repo}/.claude/settings.json" ]]; then
     echo "  OK: ${repo}/.claude/settings.json exists"
   else
@@ -35,7 +35,7 @@ schedule_preflight_check() {
     failed=1
   fi
 
-  # 4. OS scheduler accessibility
+  # 3. OS scheduler accessibility
   case "$(uname)" in
     Darwin)
       if command -v launchctl >/dev/null 2>&1; then
@@ -55,7 +55,7 @@ schedule_preflight_check() {
       ;;
   esac
 
-  # 5. For /at on Linux: check atd is running
+  # 4. For /at on Linux: check atd is running
   if [[ "$type" == "at" && "$(uname)" == "Linux" ]]; then
     if systemctl is-active atd >/dev/null 2>&1; then
       echo "  OK: atd is active"
