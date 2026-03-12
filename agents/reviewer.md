@@ -24,9 +24,29 @@ The Orchestrator spawns the Reviewer with the following context (via spawn promp
 - **PR number**: the PR to review
 - **Target repository path**: for reading CLAUDE.md and conventions
 
+## State Reporting
+
+Reviewers report their state at each workflow step using `worker_state_write`. This makes Reviewer activity visible to `process-status.sh`, `health-check.sh`, and the Orchestrator.
+
+```bash
+source worker-state.sh && worker_state_write <issue-number> RUNNING "phase1:reading-conventions"
+```
+
+Write state at the **start** of each step:
+
+| Phase | State | Detail | When |
+|---|---|---|---|
+| 1. Understand Conventions | RUNNING | `phase1:reading-conventions` | Before reading CLAUDE.md |
+| 2. Understand Intent | RUNNING | `phase2:reading-issue` | Before `gh issue view` |
+| 3. Review the Diff | RUNNING | `phase3:reviewing-diff` | Before `gh pr diff` |
+| 4. Submit Review | RUNNING | `phase4:submitting-review` | Before `gh pr review` |
+| 5. Notify | — | — | `notify-complete.sh` writes TERMINATED automatically |
+
 ## Workflow
 
 ### 1. Understand Conventions
+
+> State: `source worker-state.sh && worker_state_write <issue-number> RUNNING "phase1:reading-conventions"`
 
 Read the target repository's CLAUDE.md and any referenced documents to understand:
 
@@ -44,6 +64,8 @@ If CLAUDE.md references other documents, read those as well.
 
 ### 2. Understand Intent
 
+> State: `source worker-state.sh && worker_state_write <issue-number> RUNNING "phase2:reading-issue"`
+
 Read the issue body to understand what the changes are meant to accomplish:
 
 ```bash
@@ -51,6 +73,8 @@ gh issue view <issue-number>
 ```
 
 ### 3. Review the Diff
+
+> State: `source worker-state.sh && worker_state_write <issue-number> RUNNING "phase3:reviewing-diff"`
 
 Read the PR diff and PR description:
 
@@ -69,6 +93,8 @@ Assess the changes against:
 - **Scope**: Are the changes focused on the issue, without unrelated modifications?
 
 ### 5. Submit Review
+
+> State: `source worker-state.sh && worker_state_write <issue-number> RUNNING "phase4:submitting-review"`
 
 Based on the evaluation, submit one of two verdicts:
 
