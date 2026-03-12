@@ -58,6 +58,7 @@ backend_spawn_worker() {
 
 # backend_get_pid <issue> [type]
 # Returns the PID of the foreground process in the WezTerm pane.
+# WezTerm's .pid field may return null, so falls back to tty_name-based lookup.
 backend_get_pid() {
   local issue="$1"
   local type="${2:-}"
@@ -76,8 +77,30 @@ backend_get_pid() {
 
   local pane_id
   pane_id=$(cat "$handle_file")
-  wezterm cli list --format json 2>/dev/null \
-    | jq -r --argjson target "$pane_id" '.[] | select(.pane_id == $target) | .pid' 2>/dev/null
+
+  local json
+  json=$(wezterm cli list --format json 2>/dev/null) || return 1
+
+  # Try .pid field first
+  local pid
+  pid=$(echo "$json" | jq -r --argjson target "$pane_id" '.[] | select(.pane_id == $target) | .pid' 2>/dev/null)
+
+  if [[ -n "$pid" && "$pid" != "null" ]]; then
+    echo "$pid"
+    return 0
+  fi
+
+  # Fallback: use tty_name to find PID via ps (#297)
+  local tty_name
+  tty_name=$(echo "$json" | jq -r --argjson target "$pane_id" '.[] | select(.pane_id == $target) | .tty_name' 2>/dev/null)
+
+  if [[ -z "$tty_name" || "$tty_name" == "null" ]]; then
+    return 1
+  fi
+
+  # Extract tty short name (e.g., /dev/ttys042 -> ttys042) and find claude process
+  ps -t "${tty_name##*/}" -o pid= -o comm= 2>/dev/null \
+    | awk '/claude/ {print $1; exit}'
 }
 
 # backend_worker_alive <issue> [type]

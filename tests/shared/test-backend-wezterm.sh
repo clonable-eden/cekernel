@@ -236,8 +236,75 @@ backend_kill_worker "$ISSUE" 2>/dev/null
 assert_not_exists "Payload file cleaned up after kill" "$PAYLOAD_FILE"
 rm -f "$MOCK_LOG"
 
+# ── Test 12: backend_get_pid — uses tty_name when pid is null (#297) ──
+echo "42" > "${CEKERNEL_IPC_DIR}/handle-300.worker"
+wezterm() {
+  if [[ "$1" == "cli" && "$2" == "list" ]]; then
+    cat <<'MOCK_JSON'
+[
+  {"pane_id": 42, "pid": null, "tty_name": "/dev/ttys042"},
+  {"pane_id": 43, "pid": null, "tty_name": "/dev/ttys043"}
+]
+MOCK_JSON
+  fi
+}
+export -f wezterm
+
+# Mock ps to return a PID for the tty
+ps() {
+  if [[ "$1" == "-t" && "$2" == "ttys042" ]]; then
+    printf '%s\n' "  12345 claude"
+  fi
+}
+export -f ps
+
+RESULT=$(backend_get_pid "300" "worker" 2>/dev/null) || true
+assert_eq "backend_get_pid returns PID via tty_name when pid is null" "12345" "$RESULT"
+unset -f ps 2>/dev/null || true
+
+# ── Test 13: backend_get_pid — returns empty when pid is null and no matching process on tty ──
+echo "42" > "${CEKERNEL_IPC_DIR}/handle-300.worker"
+wezterm() {
+  if [[ "$1" == "cli" && "$2" == "list" ]]; then
+    cat <<'MOCK_JSON'
+[
+  {"pane_id": 42, "pid": null, "tty_name": "/dev/ttys042"}
+]
+MOCK_JSON
+  fi
+}
+export -f wezterm
+
+ps() {
+  if [[ "$1" == "-t" && "$2" == "ttys042" ]]; then
+    printf '%s\n' "  99999 bash"
+  fi
+}
+export -f ps
+
+RESULT=$(backend_get_pid "300" "worker" 2>/dev/null) || true
+assert_eq "backend_get_pid returns empty when no claude process on tty" "" "$RESULT"
+unset -f ps 2>/dev/null || true
+
+# ── Test 14: backend_get_pid — uses pid field when it is not null ──
+echo "42" > "${CEKERNEL_IPC_DIR}/handle-300.worker"
+wezterm() {
+  if [[ "$1" == "cli" && "$2" == "list" ]]; then
+    cat <<'MOCK_JSON'
+[
+  {"pane_id": 42, "pid": 77777, "tty_name": "/dev/ttys042"}
+]
+MOCK_JSON
+  fi
+}
+export -f wezterm
+
+RESULT=$(backend_get_pid "300" "worker" 2>/dev/null) || true
+assert_eq "backend_get_pid returns pid directly when not null" "77777" "$RESULT"
+
 # ── Cleanup ──
 unset -f wezterm 2>/dev/null || true
+unset -f ps 2>/dev/null || true
 unset WEZTERM_PANE 2>/dev/null || true
 rm -rf "$CEKERNEL_IPC_DIR"
 
