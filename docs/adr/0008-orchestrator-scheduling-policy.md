@@ -36,7 +36,7 @@ The Orchestrator itself runs as a Claude Code agent (`orchestrator.md`). Its "sc
 
 ### 1. Priority-sorted queue
 
-When more issues are queued than `CEKERNEL_MAX_WORKERS`（deprecated、現 `CEKERNEL_MAX_PROCESSES`） allows, the Orchestrator sorts the queue by nice value (ascending) before spawning. This is the Unix `nice` model: lower value = higher priority = spawned first.
+When more issues are queued than `CEKERNEL_MAX_WORKERS` (deprecated; now `CEKERNEL_MAX_PROCESSES`) allows, the Orchestrator sorts the queue by nice value (ascending) before spawning. This is the Unix `nice` model: lower value = higher priority = spawned first.
 
 Priority is assigned at issue intake by the Orchestrator. The default is `normal` (10). The user may specify priority via the `/cekernel:orchestrate` skill's `--priority` flag or the future `/cekernel:orchctrl nice` command.
 
