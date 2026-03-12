@@ -69,13 +69,15 @@ echo "TERMINATED:2026-02-28T10:00:00Z:done" > "${SESSION_DIR}/worker-50.state"
 bash "$ORCHCTRL" gc >/dev/null 2>&1
 assert_not_exists "gc removes orphan state file" "${SESSION_DIR}/worker-50.state"
 
-# ── Test 6: gc preserves state file with active FIFO ──
+# ── Test 6: gc preserves state file with active FIFO + live handle ──
 SESSION_DIR2="${IPC_BASE}/session-gc-03"
 mkdir -p "$SESSION_DIR2"
 mkfifo "${SESSION_DIR2}/worker-51"
 echo "RUNNING:2026-02-28T10:00:00Z:working" > "${SESSION_DIR2}/worker-51.state"
 echo "10" > "${SESSION_DIR2}/worker-51.priority"
 echo "worker" > "${SESSION_DIR2}/worker-51.type"
+# A live handle (our own PID) makes this an active worker
+echo "$$" > "${SESSION_DIR2}/handle-51.worker"
 bash "$ORCHCTRL" gc >/dev/null 2>&1
 assert_file_exists "gc preserves state with FIFO" "${SESSION_DIR2}/worker-51.state"
 assert_file_exists "gc preserves priority with FIFO" "${SESSION_DIR2}/worker-51.priority"
@@ -128,6 +130,77 @@ echo "stdout data" > "${SESSION_DIR}/logs/worker-50.stdout.log"
 bash "$ORCHCTRL" gc >/dev/null 2>&1
 assert_not_exists "gc removes orphan log" "${SESSION_DIR}/logs/worker-50.log"
 assert_not_exists "gc removes orphan stdout log" "${SESSION_DIR}/logs/worker-50.stdout.log"
+
+# ══════════════════════════════════════════════
+# gc — stale FIFO cleanup (issue #303)
+# ══════════════════════════════════════════════
+
+# ── Test 16: gc removes stale FIFO when TERMINATED + no handle ──
+SESSION_DIR_STALE="${IPC_BASE}/session-gc-stale"
+mkdir -p "$SESSION_DIR_STALE"
+mkfifo "${SESSION_DIR_STALE}/worker-296"
+echo "TERMINATED:2026-02-28T10:00:00Z:done" > "${SESSION_DIR_STALE}/worker-296.state"
+echo "worker" > "${SESSION_DIR_STALE}/worker-296.type"
+echo "10" > "${SESSION_DIR_STALE}/worker-296.priority"
+bash "$ORCHCTRL" gc >/dev/null 2>&1
+assert_not_exists "gc removes stale FIFO (TERMINATED + no handle)" "${SESSION_DIR_STALE}/worker-296"
+assert_not_exists "gc removes state for stale FIFO" "${SESSION_DIR_STALE}/worker-296.state"
+assert_not_exists "gc removes type for stale FIFO" "${SESSION_DIR_STALE}/worker-296.type"
+assert_not_exists "gc removes priority for stale FIFO" "${SESSION_DIR_STALE}/worker-296.priority"
+
+# ── Test 17: gc removes stale FIFO when NEW + no handle + old (stale timeout) ──
+SESSION_DIR_STALE2="${IPC_BASE}/session-gc-stale2"
+mkdir -p "$SESSION_DIR_STALE2"
+mkfifo "${SESSION_DIR_STALE2}/worker-297"
+# State is NEW with old timestamp (>30 min ago)
+echo "NEW:2026-02-28T01:00:00Z:spawning" > "${SESSION_DIR_STALE2}/worker-297.state"
+echo "worker" > "${SESSION_DIR_STALE2}/worker-297.type"
+# Override staleness: set CEKERNEL_GC_STALE_TIMEOUT=0 to force stale
+CEKERNEL_GC_STALE_TIMEOUT=0 bash "$ORCHCTRL" gc >/dev/null 2>&1
+assert_not_exists "gc removes stale FIFO (NEW + timeout)" "${SESSION_DIR_STALE2}/worker-297"
+assert_not_exists "gc removes state for stale NEW FIFO" "${SESSION_DIR_STALE2}/worker-297.state"
+assert_not_exists "gc removes type for stale NEW FIFO" "${SESSION_DIR_STALE2}/worker-297.type"
+
+# ── Test 18: gc removes stale FIFO with handle but dead process ──
+SESSION_DIR_STALE3="${IPC_BASE}/session-gc-stale3"
+mkdir -p "$SESSION_DIR_STALE3"
+mkfifo "${SESSION_DIR_STALE3}/worker-298"
+echo "RUNNING:2026-02-28T10:00:00Z:working" > "${SESSION_DIR_STALE3}/worker-298.state"
+echo "worker" > "${SESSION_DIR_STALE3}/worker-298.type"
+# Create a handle file with a dead PID
+echo "99999999" > "${SESSION_DIR_STALE3}/handle-298.worker"
+bash "$ORCHCTRL" gc >/dev/null 2>&1
+assert_not_exists "gc removes stale FIFO (dead handle PID)" "${SESSION_DIR_STALE3}/worker-298"
+assert_not_exists "gc removes state for dead handle" "${SESSION_DIR_STALE3}/worker-298.state"
+assert_not_exists "gc removes handle for dead process" "${SESSION_DIR_STALE3}/handle-298.worker"
+
+# ── Test 19: gc preserves FIFO with live handle ──
+SESSION_DIR_LIVE="${IPC_BASE}/session-gc-live"
+mkdir -p "$SESSION_DIR_LIVE"
+mkfifo "${SESSION_DIR_LIVE}/worker-299"
+echo "RUNNING:2026-02-28T10:00:00Z:working" > "${SESSION_DIR_LIVE}/worker-299.state"
+echo "worker" > "${SESSION_DIR_LIVE}/worker-299.type"
+# Create a handle file with our own (live) PID
+echo "$$" > "${SESSION_DIR_LIVE}/handle-299.worker"
+bash "$ORCHCTRL" gc >/dev/null 2>&1
+assert_fifo_exists "gc preserves FIFO with live handle" "${SESSION_DIR_LIVE}/worker-299"
+assert_file_exists "gc preserves state with live handle" "${SESSION_DIR_LIVE}/worker-299.state"
+assert_file_exists "gc preserves handle with live process" "${SESSION_DIR_LIVE}/handle-299.worker"
+# Cleanup
+rm -f "${SESSION_DIR_LIVE}/worker-299" "${SESSION_DIR_LIVE}/worker-299.state" "${SESSION_DIR_LIVE}/worker-299.type" "${SESSION_DIR_LIVE}/handle-299.worker"
+rmdir "$SESSION_DIR_LIVE" 2>/dev/null || true
+
+# ── Test 20: gc --dry-run shows stale FIFO but doesn't remove it ──
+SESSION_DIR_DRY="${IPC_BASE}/session-gc-stale-dry"
+mkdir -p "$SESSION_DIR_DRY"
+mkfifo "${SESSION_DIR_DRY}/worker-300"
+echo "TERMINATED:2026-02-28T10:00:00Z:done" > "${SESSION_DIR_DRY}/worker-300.state"
+OUTPUT=$(bash "$ORCHCTRL" gc --dry-run 2>&1)
+assert_fifo_exists "dry-run preserves stale FIFO" "${SESSION_DIR_DRY}/worker-300"
+assert_match "dry-run mentions stale FIFO" "stale FIFO" "$OUTPUT"
+# Cleanup the stale resources for subsequent tests
+rm -f "${SESSION_DIR_DRY}/worker-300" "${SESSION_DIR_DRY}/worker-300.state"
+rmdir "$SESSION_DIR_DRY" 2>/dev/null || true
 
 # ══════════════════════════════════════════════
 # gc --dry-run
