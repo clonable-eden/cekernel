@@ -39,9 +39,6 @@ RUN_LOG="${run_log}"
 
 export PATH="${captured_path}"
 
-# Resolve API key dynamically (env var > OS keychain fallback)
-export ANTHROPIC_API_KEY="\${ANTHROPIC_API_KEY:-\$("\${CEKERNEL_DIR}/scripts/scheduler/resolve-api-key.sh" 2>/dev/null)}"
-
 source "\${CEKERNEL_DIR}/scripts/scheduler/registry.sh"
 source "\${CEKERNEL_DIR}/scripts/shared/desktop-notify.sh"
 

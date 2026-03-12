@@ -54,9 +54,6 @@ MOCK_SYSTEMCTL
   chmod +x "${_MOCK_BIN}/systemctl"
 
   export PATH="${_MOCK_BIN}:${PATH}"
-
-  # Satisfy preflight API key check
-  export ANTHROPIC_API_KEY="test-key"
 }
 
 teardown() {
