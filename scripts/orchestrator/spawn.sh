@@ -129,11 +129,12 @@ rollback() {
   # Delete log file
   rm -f "${LOG_FILE:-}"
   rmdir "${LOG_DIR:-}" 2>/dev/null || true
-  # Delete FIFO, state file, priority file, and type file
+  # Delete FIFO, state file, priority file, type file, and backend file
   rm -f "${FIFO:-}"
   rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.state"
   rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.priority"
   rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.type"
+  rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.backend"
   # Release issue lock
   if [[ -n "${REPO_ROOT:-}" ]]; then
     issue_lock_release "$REPO_ROOT" "$ISSUE_NUMBER"
@@ -154,6 +155,9 @@ worker_priority_write "$ISSUE_NUMBER" "$PRIORITY"
 
 # ── Record process type ──
 echo "$AGENT_TYPE" > "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.type"
+
+# ── Record backend name ──
+echo "$CEKERNEL_ACTIVE_BACKEND" > "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.backend"
 
 # ── Create log file ──
 LOG_DIR="${CEKERNEL_IPC_DIR}/logs"
