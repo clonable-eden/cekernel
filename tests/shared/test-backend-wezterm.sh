@@ -336,11 +336,19 @@ else
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-# Command field should contain script capture
+# Command field should reference runner script (not embed raw commands)
 COMMAND_FIELD=$(echo "$DECODED" | jq -r '.command')
-assert_match "command field contains script" "script -q" "$COMMAND_FIELD"
-assert_match "command field contains claude" "claude" "$COMMAND_FIELD"
-assert_match "command field contains unset CLAUDECODE" "unset CLAUDECODE" "$COMMAND_FIELD"
+assert_match "command field references runner script" "run-${ISSUE}.sh" "$COMMAND_FIELD"
+
+# Runner script should contain the actual commands
+RUNNER_CONTENT=$(cat "${CEKERNEL_IPC_DIR}/run-${ISSUE}.sh")
+assert_match "runner script contains script -q" "script -q" "$RUNNER_CONTENT"
+assert_match "runner script contains claude" "claude" "$RUNNER_CONTENT"
+assert_match "runner script contains unset CLAUDECODE" "unset CLAUDECODE" "$RUNNER_CONTENT"
+
+# Prompt file should contain exact prompt
+PROMPT_CONTENT=$(cat "${CEKERNEL_IPC_DIR}/prompt-${ISSUE}.txt")
+assert_eq "prompt file contains exact prompt" "test prompt" "$PROMPT_CONTENT"
 rm -f "$MOCK_LOG"
 
 # ── Cleanup ──

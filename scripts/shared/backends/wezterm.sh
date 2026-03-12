@@ -29,23 +29,20 @@ backend_spawn_worker() {
   local workspace=""
   workspace=$(_backend_resolve_workspace)
 
-  # Ensure log directory exists and build script-captured claude command
+  # Generate runner script (handles cd, env, script capture, claude)
   ensure_log_dir
   local log_file="${CEKERNEL_IPC_DIR}/logs/worker-${issue}.stdout.log"
-  local raw_claude_cmd="claude -p --agent ${CEKERNEL_AGENT_WORKER:-worker} \"${prompt}\""
-  local captured_cmd
-  captured_cmd=$(build_script_capture_cmd "$log_file" "$raw_claude_cmd")
-
-  # Build the full command to execute in the pane (bash side, not Lua side)
-  local full_command="cd '${worktree}' && unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ACCESS_TOKEN && export CEKERNEL_SESSION_ID='${CEKERNEL_SESSION_ID:-}' && ${captured_cmd}"
+  local runner
+  runner=$(write_runner_script "$issue" "$worktree" "${CEKERNEL_SESSION_ID:-}" "${CEKERNEL_AGENT_WORKER:-worker}" "$prompt" "$log_file")
 
   # Build JSON payload for Lua-side layout construction
+  # Only a file path is sent — no escaping concerns
   local layout_payload
   layout_payload=$(jq -n \
     --arg worktree "$worktree" \
     --arg session_id "${CEKERNEL_SESSION_ID:-}" \
     --arg issue_number "$issue" \
-    --arg command "$full_command" \
+    --arg command "bash '${runner}'" \
     '{worktree: $worktree, session_id: $session_id, issue_number: $issue_number, command: $command}'
   )
 
