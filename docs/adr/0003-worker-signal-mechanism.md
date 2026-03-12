@@ -13,7 +13,7 @@ Orchestrator → Worker:  spawn (one-time, at birth)
 Worker → Orchestrator:  notify-complete via FIFO (one-time, at death)
 ```
 
-Between spawn and completion, there is no communication channel from Orchestrator to Worker. The Orchestrator can detect problems (`health-check.sh` finds zombies, `watch-worker.sh` detects timeouts) but cannot act on them — it can only kill the terminal pane (`cleanup-worktree.sh`), which is the equivalent of `SIGKILL`: immediate, ungraceful, no cleanup by the Worker.
+Between spawn and completion, there is no communication channel from Orchestrator to Worker. The Orchestrator can detect problems (`health-check.sh` finds zombies, `watch-worker.sh` (now `watch.sh`) detects timeouts) but cannot act on them — it can only kill the terminal pane (`cleanup-worktree.sh`), which is the equivalent of `SIGKILL`: immediate, ungraceful, no cleanup by the Worker.
 
 This creates three operational gaps:
 

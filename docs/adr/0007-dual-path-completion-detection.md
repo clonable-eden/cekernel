@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-During execution of issue #72, a Worker completed its work successfully — the state file shows `TERMINATED:merged` and the issue was closed. However, `watch-worker.sh` remained blocked on FIFO read, and the FIFO (`worker-72`) was absent from the IPC directory. The Orchestrator only detected completion when the 1-hour timeout fired.
+During execution of issue #72, a Worker completed its work successfully — the state file shows `TERMINATED:merged` and the issue was closed. However, `watch-worker.sh` (now `watch.sh`) remained blocked on FIFO read, and the FIFO (`worker-72`) was absent from the IPC directory. The Orchestrator only detected completion when the 1-hour timeout fired.
 
 Observed IPC directory state:
 
@@ -206,7 +206,7 @@ Rejected: Treats the symptom, not the cause. If the FIFO was never created or wa
 
 ### Negative
 
-- `watch-worker.sh` gains a dependency on `worker-state.sh` (previously only used by `worker-status.sh` and `spawn-worker.sh`)
+- `watch-worker.sh` gains a dependency on `worker-state.sh` (previously only used by `worker-status.sh` (now `process-status.sh`) and `spawn-worker.sh`)
 - Poll interval adds a theoretical 30-second worst-case latency for the fallback path (acceptable — current worst case is 3600 seconds)
 - Slightly more complex `watch_one()` function (loop replaces single `read`)
 
