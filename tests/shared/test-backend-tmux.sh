@@ -141,7 +141,7 @@ EXIT_CODE=0
 backend_kill_worker "99999" 2>/dev/null || EXIT_CODE=$?
 assert_eq "kill_worker for missing handle exits cleanly" "0" "$EXIT_CODE"
 
-# ── Test 9: Apostrophe in prompt is safely escaped ──
+# ── Test 9: Apostrophe in prompt is safely passed via file ──
 MOCK_LOG=$(mktemp)
 SPLIT_CALL_COUNT=0
 export TMUX="/tmp/tmux-501/default,12345,0"
@@ -156,39 +156,24 @@ tmux() {
 }
 export -f tmux
 backend_spawn_worker "410" "worker" "$WORKTREE" "Read the target repository's CLAUDE.md"
+
+# Prompt file should contain the exact prompt (including apostrophe)
+PROMPT_CONTENT=$(cat "${CEKERNEL_IPC_DIR}/prompt-410.txt")
+assert_eq "apostrophe preserved in prompt file" "Read the target repository's CLAUDE.md" "$PROMPT_CONTENT"
+
+# send-keys should only reference the runner script, not the raw prompt
 LOGGED=$(cat "$MOCK_LOG")
-# The send-keys line for the claude command must not have an unescaped single quote
-# that would break the shell. Check that repository's is intact and properly quoted.
-if echo "$LOGGED" | grep "send-keys" | grep "claude" | grep -q "repository"; then
-  # Verify no bare single-quote breakage: the prompt should be in a form
-  # where the apostrophe doesn't prematurely close the quoting
-  CLAUDE_LINE=$(echo "$LOGGED" | grep "send-keys" | grep "claude")
-  # The claude command must use double quotes for the prompt (not single quotes)
-  # so that apostrophes don't break shell quoting.
-  # With double quotes: claude -p "...repository's..."
-  # With single quote escape: '...repository'\''s...'
-  # Either is acceptable. What's NOT acceptable: '...repository's...' (bare apostrophe in single quotes)
-  #
-  # Check: the command should NOT contain the pattern 'repository's (single-quote, text, apostrophe, text, single-quote)
-  # which indicates broken quoting.
-  if echo "$CLAUDE_LINE" | grep -q "\".*repository's.*\""; then
-    echo "  PASS: Apostrophe in prompt is safely escaped (double quotes)"
-    TESTS_PASSED=$((TESTS_PASSED + 1))
-  elif echo "$CLAUDE_LINE" | grep -q "repository'\\\\''s"; then
-    echo "  PASS: Apostrophe in prompt is safely escaped (single quote escape)"
-    TESTS_PASSED=$((TESTS_PASSED + 1))
-  else
-    echo "  FAIL: Apostrophe in prompt may break shell quoting"
-    echo "    line: $CLAUDE_LINE"
-    TESTS_FAILED=$((TESTS_FAILED + 1))
-  fi
+RUNNER_LINE=$(echo "$LOGGED" | grep "send-keys" | grep "run-410.sh")
+if [[ -n "$RUNNER_LINE" ]]; then
+  echo "  PASS: send-keys references runner script (no raw prompt escaping needed)"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
 else
-  echo "  FAIL: Claude command with prompt not found in tmux log"
+  echo "  FAIL: send-keys should reference runner script"
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 rm -f "$MOCK_LOG"
 
-# ── Test 10: CLAUDECODE env vars are unset in claude command ──
+# ── Test 10: Runner script contains unset CLAUDECODE ──
 MOCK_LOG=$(mktemp)
 SPLIT_CALL_COUNT=0
 tmux() {
@@ -202,9 +187,29 @@ tmux() {
 }
 export -f tmux
 backend_spawn_worker "411" "worker" "$WORKTREE" "test prompt"
-LOGGED=$(cat "$MOCK_LOG")
-CLAUDE_LINE=$(echo "$LOGGED" | grep "send-keys" | grep "claude")
-assert_match "unset CLAUDECODE in claude command" "unset CLAUDECODE" "$CLAUDE_LINE"
+RUNNER_CONTENT=$(cat "${CEKERNEL_IPC_DIR}/run-411.sh")
+assert_match "runner script unsets CLAUDECODE" "unset CLAUDECODE" "$RUNNER_CONTENT"
+rm -f "$MOCK_LOG"
+
+# ── Test 11: Runner script uses script capture and log directory is created ──
+MOCK_LOG=$(mktemp)
+SPLIT_CALL_COUNT=0
+export TMUX="/tmp/tmux-501/default,12345,0"
+tmux() {
+  echo "tmux $*" >> "$MOCK_LOG"
+  if [[ "$1" == "new-window" ]]; then echo "my-session:1.0"; fi
+  if [[ "$1" == "display-message" ]]; then echo "my-session"; fi
+  if [[ "$1" == "split-window" ]]; then
+    SPLIT_CALL_COUNT=$((SPLIT_CALL_COUNT + 1))
+    echo "my-session:1.$SPLIT_CALL_COUNT"
+  fi
+}
+export -f tmux
+rm -rf "${CEKERNEL_IPC_DIR}/logs"
+backend_spawn_worker "412" "worker" "$WORKTREE" "test prompt"
+RUNNER_CONTENT=$(cat "${CEKERNEL_IPC_DIR}/run-412.sh")
+assert_match "runner script uses script -q" "script -q" "$RUNNER_CONTENT"
+assert_dir_exists "log directory created by spawn" "${CEKERNEL_IPC_DIR}/logs"
 rm -f "$MOCK_LOG"
 
 # ── Cleanup ──

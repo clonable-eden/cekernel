@@ -302,6 +302,55 @@ export -f wezterm
 RESULT=$(backend_get_pid "300" "worker" 2>/dev/null) || true
 assert_eq "backend_get_pid returns pid directly when not null" "77777" "$RESULT"
 
+# ── Test 15: backend_spawn_worker — creates log directory and payload includes command field ──
+MOCK_LOG=$(mktemp)
+wezterm() {
+  echo "wezterm $*" >> "$MOCK_LOG"
+  if [[ "$1" == "cli" && "$2" == "spawn" ]]; then
+    echo "42"  # mock pane ID
+  fi
+  if [[ "$1" == "cli" && "$2" == "list" ]]; then
+    echo '[{"pane_id": 42, "workspace": "default"}]'
+  fi
+}
+export -f wezterm
+export WEZTERM_PANE=42
+rm -rf "${CEKERNEL_IPC_DIR}/logs"
+ISSUE="302"
+WORKTREE="/tmp/test-worktree"
+backend_spawn_worker "$ISSUE" "worker" "$WORKTREE" "test prompt"
+
+# Log directory should be created
+assert_dir_exists "log directory created by spawn" "${CEKERNEL_IPC_DIR}/logs"
+
+# Payload should contain 'command' field with script capture
+PAYLOAD_FILE="${CEKERNEL_IPC_DIR}/payload-${ISSUE}.b64"
+assert_file_exists "Payload file created after spawn" "$PAYLOAD_FILE"
+DECODED=$(base64 -d < "$PAYLOAD_FILE" 2>/dev/null || base64 -D < "$PAYLOAD_FILE" 2>/dev/null || echo "")
+if echo "$DECODED" | jq -e '.command' >/dev/null 2>&1; then
+  echo "  PASS: Payload contains command field"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+else
+  echo "  FAIL: Payload should contain command field"
+  echo "    decoded: ${DECODED}"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+
+# Command field should reference runner script (not embed raw commands)
+COMMAND_FIELD=$(echo "$DECODED" | jq -r '.command')
+assert_match "command field references runner script" "run-${ISSUE}.sh" "$COMMAND_FIELD"
+
+# Runner script should contain the actual commands
+RUNNER_CONTENT=$(cat "${CEKERNEL_IPC_DIR}/run-${ISSUE}.sh")
+assert_match "runner script contains script -q" "script -q" "$RUNNER_CONTENT"
+assert_match "runner script contains claude" "claude" "$RUNNER_CONTENT"
+assert_match "runner script contains unset CLAUDECODE" "unset CLAUDECODE" "$RUNNER_CONTENT"
+
+# Prompt file should contain exact prompt
+PROMPT_CONTENT=$(cat "${CEKERNEL_IPC_DIR}/prompt-${ISSUE}.txt")
+assert_eq "prompt file contains exact prompt" "test prompt" "$PROMPT_CONTENT"
+rm -f "$MOCK_LOG"
+
 # ── Cleanup ──
 unset -f wezterm 2>/dev/null || true
 unset -f ps 2>/dev/null || true

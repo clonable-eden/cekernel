@@ -34,9 +34,8 @@ wezterm.on('user-var-changed', function(window, pane, name, value)
 
   local worktree = params.worktree or wezterm.home_dir
   local session_id = params.session_id or ''
-  local prompt = params.prompt or ''
   local issue_number = params.issue_number or ''
-  local agent_name = params.agent_name or 'worker'
+  local command = params.command or ''
 
   wezterm.log_info('[cekernel] issue=#' .. issue_number .. ' worktree=' .. worktree)
 
@@ -65,19 +64,13 @@ wezterm.on('user-var-changed', function(window, pane, name, value)
     .. " && tail -5 " .. ipc_dir .. "/logs/worker-" .. issue_number .. ".log 2>/dev/null'\n"
   )
 
-  -- Send cd + export + claude command to main pane
-  -- Wait for shell to be ready before send_text
-  wezterm.time.call_after(0.3, function()
-    main_pane:send_text(
-      "cd '" .. worktree .. "' && export CEKERNEL_SESSION_ID='" .. session_id .. "'\n"
-    )
-    if prompt ~= '' then
-      -- Shell escape: ' → '\''
-      local escaped = prompt:gsub("'", "'\\''")
-      local cmd = "claude --agent " .. agent_name .. " '" .. escaped .. "'"
-      main_pane:send_text(cmd .. '\n')
-    end
-  end)
+  -- Send the pre-built command to main pane
+  -- Command is fully constructed on bash side (cd, env vars, script capture, claude)
+  if command ~= '' then
+    wezterm.time.call_after(0.3, function()
+      main_pane:send_text(command .. '\n')
+    end)
+  end
 
   wezterm.log_info('[cekernel] layout complete: 3 panes created')
 end)

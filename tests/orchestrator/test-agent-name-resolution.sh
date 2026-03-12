@@ -117,21 +117,25 @@ else
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-# ── Test 5: WezTerm backend JSON payload includes agent_name ──
-if grep -q 'agent_name' "${CEKERNEL_DIR}/scripts/shared/backends/wezterm.sh"; then
-  echo "  PASS: wezterm backend includes agent_name in payload"
+# ── Test 5: WezTerm backend uses CEKERNEL_AGENT_WORKER in command ──
+# Since #305, wezterm builds the full command on bash side (not Lua).
+# The agent name is embedded in the command field via CEKERNEL_AGENT_WORKER.
+if grep -q 'CEKERNEL_AGENT_WORKER' "${CEKERNEL_DIR}/scripts/shared/backends/wezterm.sh"; then
+  echo "  PASS: wezterm backend references CEKERNEL_AGENT_WORKER"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
-  echo "  FAIL: wezterm backend should include agent_name in JSON payload"
+  echo "  FAIL: wezterm backend should reference CEKERNEL_AGENT_WORKER"
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-# ── Test 6: WezTerm Lua reads agent_name from params ──
-if grep -q 'agent_name' "${CEKERNEL_DIR}/config/wezterm.cekernel.lua"; then
-  echo "  PASS: wezterm lua reads agent_name from params"
+# ── Test 6: WezTerm Lua receives command field from bash ──
+# Since #305, Lua no longer builds the claude command. It receives a
+# pre-built command from bash via the 'command' payload field.
+if grep -q 'command' "${CEKERNEL_DIR}/config/wezterm.cekernel.lua"; then
+  echo "  PASS: wezterm lua reads command from params"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
-  echo "  FAIL: wezterm lua should read agent_name from params"
+  echo "  FAIL: wezterm lua should read command from params"
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
