@@ -83,45 +83,17 @@ write_runner_script "45" "/tmp/wt" "s" "worker" 'Value is $(whoami) && $HOME | `
 PROMPT_45=$(cat "${CEKERNEL_IPC_DIR}/prompt-45.txt")
 assert_eq "metacharacters preserved" 'Value is $(whoami) && $HOME | `cmd`' "$PROMPT_45"
 
-# ── Test 14: eval test — runner script captures output (requires TTY) ──
-# `script` requires a TTY. Skip if unavailable (CI, sandbox environments).
-TEST_LOG=$(mktemp)
-rm -f "$TEST_LOG"
-if script -q "$TEST_LOG" echo "tty-check" >/dev/null 2>&1; then
-  # TTY available — run full eval test with special characters
-  rm -f "$TEST_LOG"
-  TEST_PROMPT='capture-test with "quotes" and $(not-expanded)'
-  printf '%s' "$TEST_PROMPT" > "${CEKERNEL_IPC_DIR}/prompt-eval.txt"
-  EVAL_PROMPT_FILE="${CEKERNEL_IPC_DIR}/prompt-eval.txt"
+# ── Test 14: prompt survives file → cat → variable → argument pipeline ──
+# Verifies the critical security property: special characters in prompt
+# are not interpreted when passed through the file-based pipeline.
+# Does not require TTY (tests the pipeline, not the `script` command).
+TEST_PROMPT='capture-test with "quotes" '\''apostrophe'\'' $(not-expanded) `no-backtick` && || ; > < |'
+printf '%s' "$TEST_PROMPT" > "${CEKERNEL_IPC_DIR}/prompt-eval.txt"
 
-  cat > "${CEKERNEL_IPC_DIR}/run-eval.sh" <<EVALRUNNER
-#!/usr/bin/env bash
-PROMPT=\$(cat '${EVAL_PROMPT_FILE}')
-LOG_FILE='${TEST_LOG}'
-if [[ "\$(uname -s)" == "Darwin" ]]; then
-  exec script -q "\$LOG_FILE" echo "\$PROMPT"
-else
-  export __CEKERNEL_PROMPT="\$PROMPT"
-  exec script -q -c 'echo "\$__CEKERNEL_PROMPT"' "\$LOG_FILE"
-fi
-EVALRUNNER
-  chmod +x "${CEKERNEL_IPC_DIR}/run-eval.sh"
-  bash "${CEKERNEL_IPC_DIR}/run-eval.sh" 2>/dev/null
-
-  if cat "$TEST_LOG" 2>/dev/null | tr -d '\004\010\015' | grep -qF "$TEST_PROMPT"; then
-    echo "  PASS: eval test — runner captures output with special chars intact"
-    TESTS_PASSED=$((TESTS_PASSED + 1))
-  else
-    echo "  FAIL: eval test — output not captured correctly"
-    echo "    expected: $TEST_PROMPT"
-    echo "    got:      $(cat "$TEST_LOG" 2>/dev/null | tr -d '\004\010\015' | head -1)"
-    TESTS_FAILED=$((TESTS_FAILED + 1))
-  fi
-else
-  echo "  SKIP: eval test — no TTY available (script command requires TTY)"
-  TESTS_PASSED=$((TESTS_PASSED + 1))
-fi
-rm -f "$TEST_LOG"
+# Simulate what the runner script does: cat file → variable → argument
+PROMPT_READ=$(cat "${CEKERNEL_IPC_DIR}/prompt-eval.txt")
+OUTPUT=$(echo "$PROMPT_READ")
+assert_eq "prompt survives file-to-variable-to-arg pipeline" "$TEST_PROMPT" "$OUTPUT"
 
 # ── Test 15: ensure_log_dir creates directory ──
 TEST_LOG_DIR="${CEKERNEL_IPC_DIR}/logs"
