@@ -14,7 +14,7 @@ cekernel's configurable behavior is driven by `CEKERNEL_*` environment variables
 | `CEKERNEL_SESSION_ID` | auto-generated | No | `session-id.sh` → all scripts |
 | `CEKERNEL_IPC_DIR` | derived from SESSION_ID | No | `session-id.sh` → all scripts |
 | `CEKERNEL_MAX_WORKERS` | `3` | Yes | `spawn-worker.sh` |
-| `CEKERNEL_WORKER_TIMEOUT` | `3600` | Yes | `watch-worker.sh` |
+| `CEKERNEL_WORKER_TIMEOUT` | `3600` | Yes | `watch-worker.sh`（現 `watch.sh`）|
 | `CEKERNEL_CHECKPOINT_FILENAME` | `.cekernel-checkpoint.md` | Yes | `checkpoint-file.sh` |
 | `CEKERNEL_TASK_FILENAME` | `.cekernel-task.md` | Yes | `task-file.sh` |
 | `CEKERNEL_ACTIVE_BACKEND` | derived from BACKEND | No | `backend-adapter.sh` (internal) |
