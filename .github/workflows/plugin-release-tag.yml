@@ -14,6 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      MARKETPLACE_PAT: ${{ secrets.MARKETPLACE_PAT }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -63,7 +65,7 @@ jobs:
           fi
 
       - name: Checkout plugins repository
-        if: ${{ secrets.MARKETPLACE_PAT != '' }}
+        if: env.MARKETPLACE_PAT != ''
         uses: actions/checkout@v6
         with:
           repository: clonable-eden/plugins
@@ -71,7 +73,7 @@ jobs:
           path: plugins-checkout
 
       - name: Update marketplace
-        if: ${{ secrets.MARKETPLACE_PAT != '' }}
+        if: env.MARKETPLACE_PAT != ''
         env:
           GH_TOKEN: ${{ secrets.MARKETPLACE_PAT }}
         run: |
