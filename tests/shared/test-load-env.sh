@@ -14,7 +14,9 @@ echo "test: load-env.sh"
 TEST_TMPDIR=$(mktemp -d)
 PLUGIN_ENVS="${TEST_TMPDIR}/plugin-envs"
 PROJECT_ENVS="${TEST_TMPDIR}/project-envs"
-mkdir -p "$PLUGIN_ENVS" "$PROJECT_ENVS"
+USER_ENVS="${TEST_TMPDIR}/user-envs"
+NONEXISTENT_USER="${TEST_TMPDIR}/nonexistent-user"
+mkdir -p "$PLUGIN_ENVS" "$PROJECT_ENVS" "$USER_ENVS"
 
 cleanup() {
   rm -rf "$TEST_TMPDIR"
@@ -34,6 +36,7 @@ RESULT=$(
   # Provide the plugin envs dir directly
   _CEKERNEL_PLUGIN_ENVS_DIR="$PLUGIN_ENVS" \
   _CEKERNEL_PROJECT_ENVS_DIR="${TEST_TMPDIR}/nonexistent-project" \
+  _CEKERNEL_USER_ENVS_DIR="$NONEXISTENT_USER" \
   source "$LOAD_ENV_SCRIPT"
   echo "${CEKERNEL_TEST_VAR1}|${CEKERNEL_TEST_VAR2}"
 )
@@ -52,6 +55,7 @@ RESULT=$(
 
   _CEKERNEL_PLUGIN_ENVS_DIR="$PLUGIN_ENVS" \
   _CEKERNEL_PROJECT_ENVS_DIR="${TEST_TMPDIR}/nonexistent-project" \
+  _CEKERNEL_USER_ENVS_DIR="$NONEXISTENT_USER" \
   source "$LOAD_ENV_SCRIPT"
   echo "${CEKERNEL_TEST_VAR1}|${CEKERNEL_TEST_VAR2}"
 )
@@ -73,6 +77,7 @@ RESULT=$(
 
   _CEKERNEL_PLUGIN_ENVS_DIR="$PLUGIN_ENVS" \
   _CEKERNEL_PROJECT_ENVS_DIR="$PROJECT_ENVS" \
+  _CEKERNEL_USER_ENVS_DIR="$NONEXISTENT_USER" \
   source "$LOAD_ENV_SCRIPT"
   echo "${CEKERNEL_TEST_VAR1}|${CEKERNEL_TEST_VAR2}"
 )
@@ -85,6 +90,7 @@ RESULT=$(
 
   _CEKERNEL_PLUGIN_ENVS_DIR="$PLUGIN_ENVS" \
   _CEKERNEL_PROJECT_ENVS_DIR="$PROJECT_ENVS" \
+  _CEKERNEL_USER_ENVS_DIR="$NONEXISTENT_USER" \
   source "$LOAD_ENV_SCRIPT" 2>&1
   echo "ok"
 )
@@ -106,6 +112,7 @@ RESULT=$(
 
   _CEKERNEL_PLUGIN_ENVS_DIR="$PLUGIN_ENVS" \
   _CEKERNEL_PROJECT_ENVS_DIR="${TEST_TMPDIR}/nonexistent-project" \
+  _CEKERNEL_USER_ENVS_DIR="$NONEXISTENT_USER" \
   source "$LOAD_ENV_SCRIPT"
   echo "${CEKERNEL_TEST_VAR1}|${CEKERNEL_TEST_VAR2}"
 )
@@ -121,6 +128,7 @@ RESULT=$(
 
   _CEKERNEL_PLUGIN_ENVS_DIR="$PLUGIN_ENVS" \
   _CEKERNEL_PROJECT_ENVS_DIR="${TEST_TMPDIR}/nonexistent-project" \
+  _CEKERNEL_USER_ENVS_DIR="$NONEXISTENT_USER" \
   source "$LOAD_ENV_SCRIPT"
   echo "$CEKERNEL_TEST_VAR1"
 )
@@ -138,6 +146,7 @@ RESULT=$(
 
   _CEKERNEL_PLUGIN_ENVS_DIR="$PLUGIN_ENVS" \
   _CEKERNEL_PROJECT_ENVS_DIR="${TEST_TMPDIR}/nonexistent-project" \
+  _CEKERNEL_USER_ENVS_DIR="$NONEXISTENT_USER" \
   source "$LOAD_ENV_SCRIPT"
   echo "${CEKERNEL_TEST_VAR1}|${CEKERNEL_TEST_VAR2}"
 )
@@ -162,9 +171,86 @@ RESULT=$(
 
   _CEKERNEL_PLUGIN_ENVS_DIR="$PLUGIN_ENVS" \
   _CEKERNEL_PROJECT_ENVS_DIR="$PROJECT_ENVS" \
+  _CEKERNEL_USER_ENVS_DIR="$NONEXISTENT_USER" \
   source "$LOAD_ENV_SCRIPT"
   echo "${CEKERNEL_TEST_VAR1}|${CEKERNEL_TEST_VAR2}|${CEKERNEL_TEST_VAR3}"
 )
 assert_eq "Full priority: env > project > plugin" "from-env|from-project|from-plugin" "$RESULT"
+
+# ── Test 9: User profile overrides project and plugin ──
+cat > "${PLUGIN_ENVS}/test9.env" <<'ENVFILE'
+CEKERNEL_TEST_VAR1=from-plugin
+CEKERNEL_TEST_VAR2=from-plugin
+ENVFILE
+
+cat > "${PROJECT_ENVS}/test9.env" <<'ENVFILE'
+CEKERNEL_TEST_VAR1=from-project
+ENVFILE
+
+cat > "${USER_ENVS}/test9.env" <<'ENVFILE'
+CEKERNEL_TEST_VAR1=from-user
+CEKERNEL_TEST_VAR2=from-user
+ENVFILE
+
+RESULT=$(
+  unset CEKERNEL_TEST_VAR1 CEKERNEL_TEST_VAR2 2>/dev/null || true
+  export CEKERNEL_ENV=test9
+
+  _CEKERNEL_PLUGIN_ENVS_DIR="$PLUGIN_ENVS" \
+  _CEKERNEL_PROJECT_ENVS_DIR="$PROJECT_ENVS" \
+  _CEKERNEL_USER_ENVS_DIR="$USER_ENVS" \
+  source "$LOAD_ENV_SCRIPT"
+  echo "${CEKERNEL_TEST_VAR1}|${CEKERNEL_TEST_VAR2}"
+)
+assert_eq "User profile overrides project and plugin" "from-user|from-user" "$RESULT"
+
+# ── Test 10: Full priority chain (env > user > project > plugin) ──
+cat > "${PLUGIN_ENVS}/test10.env" <<'ENVFILE'
+CEKERNEL_TEST_VAR1=from-plugin
+CEKERNEL_TEST_VAR2=from-plugin
+CEKERNEL_TEST_VAR3=from-plugin
+CEKERNEL_TEST_VAR4=from-plugin
+ENVFILE
+
+cat > "${PROJECT_ENVS}/test10.env" <<'ENVFILE'
+CEKERNEL_TEST_VAR1=from-project
+CEKERNEL_TEST_VAR2=from-project
+CEKERNEL_TEST_VAR3=from-project
+ENVFILE
+
+cat > "${USER_ENVS}/test10.env" <<'ENVFILE'
+CEKERNEL_TEST_VAR1=from-user
+CEKERNEL_TEST_VAR2=from-user
+ENVFILE
+
+RESULT=$(
+  export CEKERNEL_TEST_VAR1="from-env"
+  unset CEKERNEL_TEST_VAR2 CEKERNEL_TEST_VAR3 CEKERNEL_TEST_VAR4 2>/dev/null || true
+  export CEKERNEL_ENV=test10
+
+  _CEKERNEL_PLUGIN_ENVS_DIR="$PLUGIN_ENVS" \
+  _CEKERNEL_PROJECT_ENVS_DIR="$PROJECT_ENVS" \
+  _CEKERNEL_USER_ENVS_DIR="$USER_ENVS" \
+  source "$LOAD_ENV_SCRIPT"
+  echo "${CEKERNEL_TEST_VAR1}|${CEKERNEL_TEST_VAR2}|${CEKERNEL_TEST_VAR3}|${CEKERNEL_TEST_VAR4}"
+)
+assert_eq "Full priority: env > user > project > plugin" "from-env|from-user|from-project|from-plugin" "$RESULT"
+
+# ── Test 11: Missing user profile handled gracefully ──
+RESULT=$(
+  unset CEKERNEL_TEST_VAR1 2>/dev/null || true
+  export CEKERNEL_ENV=test11
+
+  cat > "${PLUGIN_ENVS}/test11.env" <<'ENVFILE'
+CEKERNEL_TEST_VAR1=from-plugin
+ENVFILE
+
+  _CEKERNEL_PLUGIN_ENVS_DIR="$PLUGIN_ENVS" \
+  _CEKERNEL_PROJECT_ENVS_DIR="${TEST_TMPDIR}/nonexistent-project" \
+  _CEKERNEL_USER_ENVS_DIR="$NONEXISTENT_USER" \
+  source "$LOAD_ENV_SCRIPT" 2>&1
+  echo "${CEKERNEL_TEST_VAR1}"
+)
+assert_eq "Missing user profile handled gracefully" "from-plugin" "$RESULT"
 
 report_results
