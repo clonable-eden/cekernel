@@ -44,8 +44,8 @@ assert_match "Result contains script command" "script" "$RESULT"
 assert_match "Result uses -q flag" "-q" "$RESULT"
 
 # ── Test 6: macOS format uses 'script -q <logfile> <cmd>' pattern ──
-# On macOS, the format is: script -q <logfile> <cmd...>
-# On Linux, the format is: script -q -c "<cmd>" <logfile>
+# On macOS, the format is: script -q '<logfile>' <cmd...>
+# On Linux, the format is: script -q -c '<cmd>' '<logfile>'
 # We test the actual platform behavior.
 if [[ "$(uname -s)" == "Darwin" ]]; then
   assert_match "macOS: script -q logfile cmd" "script -q.*/tmp/test.log.*echo hello" "$RESULT"
@@ -57,7 +57,41 @@ fi
 RESULT2=$(build_script_capture_cmd "/tmp/special.log" "claude --agent worker 'hello world'")
 assert_match "Special chars: contains claude command" "claude --agent worker" "$RESULT2"
 
-# ── Test 8: ensure_log_dir creates log directory ──
+# ── Test 8: eval test — generated command actually runs and captures output ──
+TEST_LOG_FILE=$(mktemp)
+rm -f "$TEST_LOG_FILE"
+GENERATED_CMD=$(build_script_capture_cmd "$TEST_LOG_FILE" "echo 'capture-test-output'")
+eval "$GENERATED_CMD" >/dev/null 2>&1
+if [[ -f "$TEST_LOG_FILE" ]] && grep -q "capture-test-output" "$TEST_LOG_FILE"; then
+  echo "  PASS: eval test — generated command captures output to log file"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+else
+  echo "  FAIL: eval test — log file missing or output not captured"
+  echo "    generated_cmd: $GENERATED_CMD"
+  echo "    log_file exists: $(test -f "$TEST_LOG_FILE" && echo yes || echo no)"
+  echo "    log_content: $(cat "$TEST_LOG_FILE" 2>/dev/null || echo '(none)')"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+rm -f "$TEST_LOG_FILE"
+
+# ── Test 9: eval test — command with multiple arguments and spaces ──
+# This mirrors the real usage: claude -p --agent worker "prompt with spaces"
+TEST_LOG_FILE2=$(mktemp)
+rm -f "$TEST_LOG_FILE2"
+GENERATED_CMD2=$(build_script_capture_cmd "$TEST_LOG_FILE2" "echo 'hello world' extra_arg")
+eval "$GENERATED_CMD2" >/dev/null 2>&1
+if [[ -f "$TEST_LOG_FILE2" ]] && grep -q "hello world" "$TEST_LOG_FILE2" && grep -q "extra_arg" "$TEST_LOG_FILE2"; then
+  echo "  PASS: eval test — multi-argument command with spaces works"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+else
+  echo "  FAIL: eval test — multi-argument command failed"
+  echo "    generated_cmd: $GENERATED_CMD2"
+  echo "    log_content: $(cat "$TEST_LOG_FILE2" 2>/dev/null || echo '(none)')"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+rm -f "$TEST_LOG_FILE2"
+
+# ── Test 10: ensure_log_dir creates log directory ──
 TEST_LOG_DIR="${CEKERNEL_IPC_DIR}/logs"
 rm -rf "$TEST_LOG_DIR"
 ensure_log_dir

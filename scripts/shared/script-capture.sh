@@ -21,11 +21,14 @@ build_script_capture_cmd() {
   local cmd="${2:?Usage: build_script_capture_cmd <log_file> <command>}"
 
   if [[ "$(uname -s)" == "Darwin" ]]; then
-    # macOS (BSD): script -q <logfile> <shell> -c <command>
-    echo "script -q ${log_file} bash -c ${cmd}"
+    # macOS (BSD): script -q <logfile> <command...>
+    # BSD script runs everything after logfile as the command directly
+    echo "script -q '${log_file}' ${cmd}"
   else
-    # Linux (GNU): script -q -c <command> <logfile>
-    echo "script -q -c ${cmd} ${log_file}"
+    # Linux (GNU): script -q -c '<command>' <logfile>
+    # -c requires the command as a single quoted argument
+    local escaped_cmd="${cmd//\'/\'\\\'\'}"
+    echo "script -q -c '${escaped_cmd}' '${log_file}'"
   fi
 }
 
