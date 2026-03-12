@@ -259,7 +259,7 @@ backend_spawn_worker "$ISSUE_NUMBER" "$AGENT_TYPE" "$WORKTREE" "$PROMPT"
 # Without this update, stale detection (kill -0) would always see a dead PID,
 # causing false stale-lock recovery and potential duplicate spawns.
 BACKEND_PID=$(backend_get_pid "$ISSUE_NUMBER" "$AGENT_TYPE" 2>/dev/null) || true
-if [[ -n "$BACKEND_PID" ]]; then
+if [[ -n "$BACKEND_PID" && "$BACKEND_PID" != "null" ]]; then
   issue_lock_update_pid "$REPO_ROOT" "$ISSUE_NUMBER" "$BACKEND_PID"
 fi
 
