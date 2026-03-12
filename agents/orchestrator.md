@@ -67,7 +67,7 @@ If `CEKERNEL_AGENT_REVIEWER` is not provided, derive it from `CEKERNEL_AGENT_WOR
 
 ```bash
 # Example: propagate agent name to spawn-reviewer.sh
-export CEKERNEL_SESSION_ID=cekernel-7861a821 && export CEKERNEL_AGENT_REVIEWER=cekernel:reviewer && spawn-reviewer.sh 4
+export CEKERNEL_SESSION_ID=cekernel-7861a821 && export CEKERNEL_AGENT_REVIEWER=cekernel:reviewer && spawn-reviewer.sh 4 <pr-number>
 ```
 
 `spawn-reviewer.sh` defaults `CEKERNEL_AGENT_REVIEWER` to `reviewer` if unset, ensuring safe fallback for direct execution.
