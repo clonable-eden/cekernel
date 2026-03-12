@@ -42,14 +42,16 @@ PROMPT=\$(cat '${prompt_file}')
 LOG_FILE='${log_file}'
 
 if [[ "\$(uname -s)" == "Darwin" ]]; then
-  # macOS (BSD): script -q <logfile> <command> [args...]
+  # macOS (BSD): script -q -a -F <logfile> <command> [args...]
+  # -a = append mode, -F = flush after each write
   # Arguments passed directly via execvp() — no shell interpretation
-  exec script -q "\$LOG_FILE" claude -p --agent ${agent_name} "\$PROMPT"
+  exec script -q -a -F "\$LOG_FILE" claude -p --agent ${agent_name} "\$PROMPT"
 else
   # Linux (GNU): script -c <command> uses sh -c internally
+  # -a = append mode, --flush = flush after each write
   # Export prompt as env var, use single quotes to prevent premature expansion
   export __CEKERNEL_PROMPT="\$PROMPT"
-  exec script -q -c 'claude -p --agent ${agent_name} "\$__CEKERNEL_PROMPT"' "\$LOG_FILE"
+  exec script -q -a --flush -c 'claude -p --agent ${agent_name} "\$__CEKERNEL_PROMPT"' "\$LOG_FILE"
 fi
 RUNNER
   chmod +x "$runner"
