@@ -133,6 +133,40 @@ sleep 0.2
 HANDLE_FILE2="${CEKERNEL_IPC_DIR}/handle-${ISSUE2}.worker"
 assert_file_exists "Handle file created for second worker" "$HANDLE_FILE2"
 
+# ── Test 11: Log file uses append mode — Worker → Reviewer switch preserves logs ──
+# Replace mock claude with one that outputs a line and exits immediately
+cat > "${MOCK_BIN}/claude" <<'MOCK_SCRIPT'
+#!/usr/bin/env bash
+# Mock claude that outputs a marker line and exits
+echo "output: $*"
+MOCK_SCRIPT
+chmod +x "${MOCK_BIN}/claude"
+
+ISSUE3="502"
+LOG_FILE3="${CEKERNEL_IPC_DIR}/logs/worker-${ISSUE3}.stdout.log"
+
+# Spawn first process (simulates Worker)
+backend_spawn_worker "$ISSUE3" "worker" "$WORKTREE" "worker-prompt"
+sleep 0.3
+wait 2>/dev/null || true
+
+# Spawn second process (simulates Reviewer replacing Worker on same issue)
+backend_spawn_worker "$ISSUE3" "reviewer" "$WORKTREE" "reviewer-prompt"
+sleep 0.3
+wait 2>/dev/null || true
+
+# Both outputs must be present — log must not have been truncated
+WORKER_LINE=$(grep -c "worker-prompt" "$LOG_FILE3" 2>/dev/null || echo "0")
+REVIEWER_LINE=$(grep -c "reviewer-prompt" "$LOG_FILE3" 2>/dev/null || echo "0")
+
+if [[ "$WORKER_LINE" -ge 1 && "$REVIEWER_LINE" -ge 1 ]]; then
+  echo "  PASS: Log file preserved both Worker and Reviewer output (append mode)"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+else
+  echo "  FAIL: Log file truncated (worker_lines=${WORKER_LINE}, reviewer_lines=${REVIEWER_LINE})"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+
 # ── Restore PATH ──
 PATH="$OLD_PATH"
 
