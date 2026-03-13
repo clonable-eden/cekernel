@@ -9,6 +9,9 @@
 # Environment variables (overridable for testing):
 #   CEKERNEL_VAR_DIR — Base directory (default: /usr/local/var/cekernel)
 
+_WRAPPER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${_WRAPPER_DIR}/../shared/load-env.sh"
+
 CEKERNEL_VAR_DIR="${CEKERNEL_VAR_DIR:-/usr/local/var/cekernel}"
 
 # Resolve CEKERNEL_DIR from this script's location

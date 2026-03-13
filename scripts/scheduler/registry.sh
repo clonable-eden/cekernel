@@ -18,6 +18,9 @@ if ! command -v jq >/dev/null 2>&1; then
   return 1
 fi
 
+_REGISTRY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${_REGISTRY_DIR}/../shared/load-env.sh"
+
 CEKERNEL_VAR_DIR="${CEKERNEL_VAR_DIR:-/usr/local/var/cekernel}"
 CEKERNEL_REGISTRY="${CEKERNEL_VAR_DIR}/schedules.json"
 CEKERNEL_REGISTRY_LOCK="${CEKERNEL_REGISTRY}.lock"
