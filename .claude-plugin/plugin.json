@@ -1,6 +1,6 @@
 {
   "name": "cekernel",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Parallel agent infrastructure for Claude Code. Modeled after the OS process model, it distributes, monitors, and reaps issues via independent Workers.",
   "author": {
     "name": "clonable-eden"

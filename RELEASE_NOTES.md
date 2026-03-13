@@ -1,3 +1,68 @@
+# cekernel-v1.6.0
+
+## Highlights
+- **User profile layer + `/setup` skill**: New 5th environment layer (`~/.config/cekernel/envs/`) and interactive `/setup` skill replace `Makefile`-based setup, eliminating the need for `sudo` to create runtime directories
+- **Worker stdout/stderr logging**: WezTerm and tmux backends now capture Worker output to log files via `script-capture.sh`, enabling post-mortem debugging
+- **orchctrl gc**: New garbage collection command cleans up stale IPC directories, FIFOs, and lockfiles from terminated or crashed Workers
+- **Reviewer State Reporting**: Reviewer agent now reports its state transitions, improving observability through orchctrl
+- **Reliability fixes**: Lock PID staleness detection, spawn-reviewer PR state separation, WezTerm PID resolution fallback, and headless stdout log truncation fix
+
+## New Features
+- User profile layer (Layer 4) in `load-env.sh` for user-local environment configuration
+- `/setup` skill — interactive runtime directory and user profile initialization (replaces `Makefile`)
+- `orchctrl gc` command for stale IPC/lock cleanup with state/handle awareness
+- `script-capture.sh` helper for cross-platform stdout/stderr capture
+- WezTerm and tmux backends capture Worker stdout/stderr to log files
+- Reviewer agent State Reporting for orchctrl observability
+- `script-capture` real-time flush and append mode
+
+## Bug Fixes
+- Fix headless backend stdout.log truncation on process switch
+- Fix `orchctrl gc` stale FIFO detection with state/type awareness
+- Fix WezTerm `backend_get_pid` null — tty_name-based PID fallback
+- Fix `spawn-reviewer.sh` accepting separate issue and PR number arguments
+- Fix `spawn.sh` lock PID staleness detection
+- Fix `orchctrl ls` backend detection via metadata file
+- Remove `resolve-api-key.sh` Keychain fallback (simplification)
+- Fix plugin-release-tag push failure with event_name guard
+- Fix marketplace update git push auth via actions/checkout migration
+
+## Documentation
+- ADR-0006 amendment: User profile layer + `/setup` skill
+- Replace hardcoded paths with `$CEKERNEL_VAR_DIR` in internals.md and orchctrl SKILL.md
+- Add deprecated annotations to `CEKERNEL_MAX_WORKERS` references in ADRs
+- Add annotations for renamed scripts in ADRs
+- Update internals.md script path references to current architecture
+
+## Other Changes
+- Refactor: reorder source and add `load-env.sh` to standalone scripts
+- Refactor: remove redundant `-a` flag test cases in script-capture
+- Refactor: replace command string building with file-based runner script
+- Delete `Makefile` (replaced by `/setup` skill)
+
+## What's Changed
+* feat: user profile layer + /setup skill by @clonable-eden in #324
+* fix: headless backend が stdout.log をトランケートする問題を修正 by @clonable-eden in #322
+* docs: ADR群のCEKERNEL_MAX_WORKERS参照にdeprecated注釈を追加 by @clonable-eden in #320
+* docs: ADR群の旧スクリプト名（watch-worker.sh, worker-status.sh）に括弧書き注釈を追加 by @clonable-eden in #319
+* docs: internals.md のスクリプトパス参照を現行アーキテクチャに更新 by @clonable-eden in #318
+* feat: script-capture にリアルタイム flush と追記モードを追加 by @clonable-eden in #314
+* fix: orchctrl ls の backend 検出をメタデータ方式に変更する by @clonable-eden in #313
+* feat: Reviewer agent に State Reporting を追加する by @clonable-eden in #310
+* fix: resolve-api-key.sh の Keychain フォールバックを削除する by @clonable-eden in #308
+* feat: wezterm/tmux バックエンドで Worker の stdout/stderr をログファイルに保存 by @clonable-eden in #306
+* fix: make orchctrl gc detect and clean stale FIFOs with state/handle awareness by @clonable-eden in #304
+* fix: add event_name guard to prevent push-triggered failure by @clonable-eden in #302
+* fix: WezTerm backend_get_pid が null を返す — tty_name ベースの PID 取得に切り替え by @clonable-eden in #300
+* fix: spawn-reviewer.sh に issue番号とPR番号を分離して渡す by @clonable-eden in #299
+* feat: add orchctrl gc command for stale IPC/lock cleanup by @clonable-eden in #296
+* fix: update lock PID with Worker's real process PID after spawn by @clonable-eden in #295
+* fix: marketplace update step fails on git push — migrate to actions/checkout by @clonable-eden in #291
+
+**Full Changelog**: https://github.com/clonable-eden/cekernel/compare/cekernel-v1.5.0...cekernel-v1.6.0
+
+---
+
 # cekernel-v1.5.0
 
 ## Highlights
