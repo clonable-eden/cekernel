@@ -4,10 +4,10 @@
 # Usage: source backend-adapter.sh
 #
 # Dispatches to the appropriate backend based on CEKERNEL_BACKEND env var.
-# Supported backends: wezterm (default), tmux, headless
+# Supported backends: headless (default), wezterm, tmux
 #
 # Environment:
-#   CEKERNEL_BACKEND — Backend to use (default: wezterm)
+#   CEKERNEL_BACKEND — Backend to use (default: headless)
 #
 # External API (5 functions, provided by backends):
 #   backend_available       — Check if backend is usable
@@ -22,8 +22,8 @@
 # Resolve the directory where this script lives
 _BACKEND_ADAPTER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Select backend (default: wezterm)
-CEKERNEL_ACTIVE_BACKEND="${CEKERNEL_BACKEND:-wezterm}"
+# Select backend (default: headless)
+CEKERNEL_ACTIVE_BACKEND="${CEKERNEL_BACKEND:-headless}"
 
 _BACKEND_FILE="${_BACKEND_ADAPTER_DIR}/backends/${CEKERNEL_ACTIVE_BACKEND}.sh"
 

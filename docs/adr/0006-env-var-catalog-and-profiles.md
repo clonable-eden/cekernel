@@ -289,4 +289,4 @@ Changes:
 - `tmux.env`: New profile for tmux backend
 - `ci.env`: Removed (redundant with the new headless-based default; GHA does not currently run Claude)
 
-The `CEKERNEL_BACKEND` script-level default in `backend-adapter.sh` remains unchanged — profiles set the value before scripts are sourced.
+The `CEKERNEL_BACKEND` script-level default in `backend-adapter.sh` is also changed from `wezterm` to `headless` for consistency with the new default profile.

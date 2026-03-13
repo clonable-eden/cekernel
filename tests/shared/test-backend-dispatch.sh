@@ -16,9 +16,9 @@ echo "test: backend-dispatch"
 export CEKERNEL_SESSION_ID="test-backend-dispatch-001"
 source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
 
-# ── Test 1: Default backend is wezterm ──
+# ── Test 1: Default backend is headless ──
 RESULT=$(unset CEKERNEL_BACKEND; bash -c "source '${CEKERNEL_DIR}/scripts/shared/backend-adapter.sh' && echo \"\$CEKERNEL_ACTIVE_BACKEND\"" 2>/dev/null)
-assert_eq "default CEKERNEL_ACTIVE_BACKEND is wezterm" "wezterm" "$RESULT"
+assert_eq "default CEKERNEL_ACTIVE_BACKEND is headless" "headless" "$RESULT"
 
 # ── Test 2: CEKERNEL_BACKEND=wezterm selects wezterm backend ──
 RESULT=$(CEKERNEL_BACKEND=wezterm bash -c "source '${CEKERNEL_DIR}/scripts/shared/backend-adapter.sh' && echo \"\$CEKERNEL_ACTIVE_BACKEND\"" 2>/dev/null)
