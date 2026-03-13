@@ -278,3 +278,15 @@ A new **User profile** layer is added between Project profile and Environment va
 **`/setup` skill**: Interactive skill that creates the runtime directory structure and writes `~/.config/cekernel/envs/default.env`. Replaces the `Makefile`-based setup (`make install`) that required prior `sudo mkdir`.
 
 The `_CEKERNEL_USER_ENVS_DIR` override variable is added for testing, following the existing `_CEKERNEL_PLUGIN_ENVS_DIR` and `_CEKERNEL_PROJECT_ENVS_DIR` pattern.
+
+### 2026-03-14: Reorganize env profiles (#335)
+
+The default profile is changed from WezTerm-based to headless-based. The rationale: most cekernel usage is headless (CI, cron, SSH), so `default` should reflect the common case. Users who need a terminal backend select `wezterm` or `tmux` explicitly.
+
+Changes:
+- `default.env`: `CEKERNEL_BACKEND=wezterm` → `CEKERNEL_BACKEND=headless`, `CEKERNEL_MAX_PROCESSES=5`, added `CEKERNEL_WORKER_TIMEOUT=1800`
+- `wezterm.env`: New profile for WezTerm backend (previously the default)
+- `tmux.env`: New profile for tmux backend
+- `ci.env`: Removed (redundant with the new headless-based default; GHA does not currently run Claude)
+
+The `CEKERNEL_BACKEND` script-level default in `backend-adapter.sh` is also changed from `wezterm` to `headless` for consistency with the new default profile.
