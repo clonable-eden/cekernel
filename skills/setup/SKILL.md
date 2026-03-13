@@ -1,5 +1,5 @@
 ---
-description: Initialize cekernel runtime directory and user profile
+description: 🔰 Initialize cekernel runtime directory and user profile
 allowed-tools: Bash, Read, AskUserQuestion
 ---
 
