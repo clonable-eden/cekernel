@@ -14,10 +14,10 @@ Interactive setup for cekernel runtime environment. Creates the directory struct
 Ask the user where to store cekernel runtime data.
 
 ```
-cekernel のランタイムディレクトリを指定してください。
-このディレクトリに IPC ファイル、ロック、ログ、スケジュールデータが格納されます。
+Where should cekernel store runtime data?
+This directory will contain IPC files, locks, logs, and schedule data.
 
-デフォルト: ~/.local/var/cekernel
+Default: ~/.local/var/cekernel
 ```
 
 If the user accepts the default or provides a custom path, store it as `VAR_DIR`.
@@ -27,13 +27,13 @@ If the user accepts the default or provides a custom path, store it as `VAR_DIR`
 Ask the user which backend to use.
 
 ```
-バックエンドを選択してください:
+Select a backend:
 
-1. headless (default) — ターミナル不要。バックグラウンドで実行
-2. wezterm — WezTerm タブで Worker を可視化
-3. tmux — tmux セッションで Worker を実行
+1. headless (default) — No terminal required. Runs in the background.
+2. wezterm — Visualize Workers in WezTerm tabs.
+3. tmux — Run Workers in tmux sessions.
 
-選択 [1/2/3]:
+Choice [1/2/3]:
 ```
 
 Map the selection: 1 → `headless`, 2 → `wezterm`, 3 → `tmux`. Default is `headless`.
@@ -70,19 +70,18 @@ EOF
 Display the result and guide the user to further configuration:
 
 ```
-セットアップ完了:
-  ランタイムディレクトリ: ${VAR_DIR}
-  バックエンド: ${BACKEND}
-  ユーザープロファイル: ~/.config/cekernel/envs/default.env
+Setup complete:
+  Runtime directory: ${VAR_DIR}
+  Backend: ${BACKEND}
+  User profile: ~/.config/cekernel/envs/default.env
 
-その他の設定項目については envs/README.md を参照してください。
+See envs/README.md for other configuration options.
 ```
 
 If the user selected `wezterm`, also mention:
 
 ```
-WezTerm バックエンドを使用する場合は config/README.md を参照して
-WezTerm プラグインをインストールしてください。
+For WezTerm backend, see config/README.md to install the WezTerm plugin.
 ```
 
 Read these files using the Read tool to provide the actual content path relative to the plugin directory.
