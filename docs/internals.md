@@ -145,10 +145,10 @@ Related: [#117](https://github.com/clonable-eden/cekernel/issues/117), [PR #178]
 
 ## Scheduler Runtime
 
-Scheduled execution infrastructure for `/cron` and `/at` skills. Runtime state is stored in `/usr/local/var/cekernel/` (configurable via `CEKERNEL_VAR_DIR`).
+Scheduled execution infrastructure for `/cron` and `/at` skills. Runtime state is stored in `CEKERNEL_VAR_DIR` (default: `~/.local/var/cekernel`, configurable via user profile or environment variable).
 
 ```
-/usr/local/var/cekernel/
+~/.local/var/cekernel/          # (or /usr/local/var/cekernel/)
 ├── schedules.json          # Schedule registry (CRUD via registry.sh)
 ├── ipc/                    # Session-scoped IPC directories ({SESSION_ID}/)
 ├── locks/                  # Issue-level locks (repo-hash/issue-number.lock)
@@ -161,8 +161,7 @@ Scheduled execution infrastructure for `/cron` and `/at` skills. Runtime state i
 ### Setup
 
 ```bash
-sudo mkdir -p /usr/local/var/cekernel && sudo chown $(whoami):admin /usr/local/var/cekernel
-make install
+/cekernel:setup
 ```
 
 ### Registry

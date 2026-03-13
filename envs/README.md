@@ -45,7 +45,8 @@ Profiles are **partial** — they only set variables that differ from defaults.
 1. **Script defaults** — `${VAR:-default}` in each script
 2. **Plugin profile** — `envs/${CEKERNEL_ENV}.env`
 3. **Project profile** — `.cekernel/envs/${CEKERNEL_ENV}.env`
-4. **Environment variables** — explicit `export` before invocation
+4. **User profile** — `~/.config/cekernel/envs/${CEKERNEL_ENV}.env`
+5. **Environment variables** — explicit `export` before invocation
 
 Profiles only fill unset variables. Explicit `export` always wins.
 
@@ -56,6 +57,18 @@ Profiles only fill unset variables. Explicit `export` always wins.
 | `default.env` | Default settings for local development with WezTerm |
 | `headless.env` | Terminal-free execution with higher concurrency |
 | `ci.env` | CI-optimized settings with shorter timeout |
+
+### User Profile
+
+User-level configuration that applies across all projects. Created by `/setup`:
+
+```
+~/.config/cekernel/
+  envs/
+    default.env    # User defaults (e.g., CEKERNEL_VAR_DIR, CEKERNEL_BACKEND)
+```
+
+Run `/cekernel:setup` to create this interactively.
 
 ### Project Overrides
 
