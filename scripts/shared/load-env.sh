@@ -10,7 +10,8 @@
 #   1. Script defaults (${VAR:-default} in each script)
 #   2. Plugin profile (envs/${CEKERNEL_ENV}.env)
 #   3. Project profile (.cekernel/envs/${CEKERNEL_ENV}.env)
-#   4. Environment variables (explicit export)
+#   4. User profile (~/.config/cekernel/envs/${CEKERNEL_ENV}.env)
+#   5. Environment variables (explicit export)
 #
 # Profiles only fill in values that are NOT already set in the environment.
 # Explicit user intent (export) always wins over defaults (profile files).
@@ -18,6 +19,7 @@
 # For testing, override search paths via:
 #   _CEKERNEL_PLUGIN_ENVS_DIR — Override plugin envs directory
 #   _CEKERNEL_PROJECT_ENVS_DIR — Override project envs directory
+#   _CEKERNEL_USER_ENVS_DIR — Override user envs directory
 
 CEKERNEL_ENV="${CEKERNEL_ENV:-default}"
 
@@ -42,10 +44,14 @@ _cekernel_load_env() {
 }
 
 # Resolve paths (testable via override variables)
+_CEKERNEL_USER_ENVS_DIR="${_CEKERNEL_USER_ENVS_DIR:-${HOME}/.config/cekernel/envs}"
 _CEKERNEL_PROJECT_ENVS_DIR="${_CEKERNEL_PROJECT_ENVS_DIR:-.cekernel/envs}"
 _CEKERNEL_PLUGIN_ENVS_DIR="${_CEKERNEL_PLUGIN_ENVS_DIR:-${_LOAD_ENV_DIR}/../../envs}"
 
-# Layer 1: Project override (checked first — fills unset vars)
+# Layer 0: User profile (loaded first = highest file priority, fills unset vars)
+_cekernel_load_env "${_CEKERNEL_USER_ENVS_DIR}/${CEKERNEL_ENV}.env"
+
+# Layer 1: Project override (fills remaining unset vars)
 _cekernel_load_env "${_CEKERNEL_PROJECT_ENVS_DIR}/${CEKERNEL_ENV}.env"
 
 # Layer 2: Plugin defaults (fills remaining unset vars)

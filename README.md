@@ -57,7 +57,7 @@ Orchestrator (agent1)             Worker (agent2, 3, 4, ...)
 | `flock` / mutex | `issue-lock.sh` (repo × issue lockfile) |
 | `cron` / `systemd timer` | `/cron` skill + OS-native schedulers (launchd/crontab) |
 | `at` (one-shot job) | `/at` skill + OS-native schedulers (launchd/atd) |
-| `/var/` | `/usr/local/var/cekernel/` (runtime state) |
+| `/var/` | `~/.local/var/cekernel/` or `/usr/local/var/cekernel/` (runtime state) |
 
 For details on logging, IPC, and resource governance, see [internals.md](./docs/internals.md).
 
@@ -91,7 +91,6 @@ envs/
   default.env              # Default profile (wezterm, 3 processes)
   headless.env             # Headless profile (headless, 5 workers)
   README.md                # Environment variable catalog
-Makefile                   # Runtime directory setup (make install)
 RELEASE_NOTES.md           # Structured release notes
 scripts/
   orchestrator/
@@ -153,6 +152,8 @@ skills/
   references/
     namespace-detection.md # Canonical namespace detection logic
     triage.md              # Canonical issue triage protocol
+  setup/
+    SKILL.md               # /setup skill — interactive runtime initialization
   unix-architect/
     SKILL.md               # /unix-architect skill — ADR authoring and review
 tests/
@@ -230,17 +231,13 @@ Install from the Claude Code plugin marketplace:
 
 ### Runtime Setup
 
-Set up the runtime state directory for scheduled execution:
+Set up the runtime state directory (one-time, no `sudo` required):
 
 ```bash
-# Create /usr/local/var/cekernel/ (one-time)
-sudo mkdir -p /usr/local/var/cekernel && sudo chown $(whoami):admin /usr/local/var/cekernel
-
-# Initialize directory structure
-make install
+/cekernel:setup
 ```
 
-This creates `ipc/`, `locks/`, `logs/`, `runners/`, and `schedules.json` under `/usr/local/var/cekernel/`. Required for `/cron`, `/at` skills and IPC.
+This interactively creates the runtime directory structure (`ipc/`, `locks/`, `logs/`, `runners/`, `schedules.json`) and writes a user profile to `~/.config/cekernel/envs/default.env`. Required for `/cron`, `/at` skills and IPC.
 
 ### Update
 
@@ -294,7 +291,8 @@ Profiles are loaded with multi-layer priority (lowest → highest):
 1. Script defaults (`${VAR:-default}`)
 2. Plugin profile (`envs/${CEKERNEL_ENV}.env`)
 3. Project override (`.cekernel/envs/${CEKERNEL_ENV}.env`)
-4. Explicit environment variables
+4. User profile (`~/.config/cekernel/envs/${CEKERNEL_ENV}.env`)
+5. Explicit environment variables
 
 Projects can override plugin defaults by placing `.env` files in `.cekernel/envs/`. These survive `/plugin update`. See [ADR-0006](./docs/adr/0006-env-var-catalog-and-profiles.md) for design details.
 
@@ -304,6 +302,7 @@ If using the WezTerm backend, see [`config/README.md`](./config/README.md) for p
 
 | Skill | Purpose |
 |-------|---------|
+| `/setup` | Interactive runtime setup (first-time) |
 | `/orchestrate` | Issue delegation and parallel processing |
 | `/dispatch` | Batch-process ready-labeled issues |
 | `/orchctrl` | Worker inspection and control |

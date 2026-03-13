@@ -260,3 +260,21 @@ The `/cekernel:orchestrate` skill accepts `--env <profile>` as an optional argum
 ### 2026-02-28: Worker-side profile loading (ADR-0010)
 
 The key observation in the Context section — "No user-configurable environment variable needs to reach the Worker agent" — is amended by [ADR-0010](./0010-worker-env-profile-loading.md). Workers now receive `CEKERNEL_ENV` (profile name) via the launch prompt and source `load-env.sh` on demand to read Worker-side configuration (e.g., `CEKERNEL_CI_MAX_RETRIES`). The profile mechanism, loading order, and `.env` format remain unchanged. See ADR-0010 for details.
+
+### 2026-03-13: User profile layer + /setup skill (#323)
+
+A new **User profile** layer is added between Project profile and Environment variables:
+
+| # | Layer | Path | Provider |
+|---|-------|------|----------|
+| 1 | Script defaults | `${VAR:-default}` | Scripts |
+| 2 | Plugin profile | `envs/${ENV}.env` | Plugin |
+| 3 | Project profile | `.cekernel/envs/${ENV}.env` | Project |
+| **4** | **User profile** | **`~/.config/cekernel/envs/${ENV}.env`** | **User** |
+| 5 | Explicit env vars | `export VAR=val` | User |
+
+**Motivation**: The default `CEKERNEL_VAR_DIR=/usr/local/var/cekernel` requires `sudo` to create. The user profile layer allows configuring `CEKERNEL_VAR_DIR=~/.local/var/cekernel` in a user-local file that applies across all projects without `sudo`.
+
+**`/setup` skill**: Interactive skill that creates the runtime directory structure and writes `~/.config/cekernel/envs/default.env`. Replaces the `Makefile`-based setup (`make install`) that required prior `sudo mkdir`.
+
+The `_CEKERNEL_USER_ENVS_DIR` override variable is added for testing, following the existing `_CEKERNEL_PLUGIN_ENVS_DIR` and `_CEKERNEL_PROJECT_ENVS_DIR` pattern.
