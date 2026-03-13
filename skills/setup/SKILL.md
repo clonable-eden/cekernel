@@ -1,6 +1,6 @@
 ---
 description: Initialize cekernel runtime directory and user profile
-allowed-tools: Bash, Read
+allowed-tools: Bash, Read, AskUserQuestion
 ---
 
 # /setup
@@ -9,36 +9,39 @@ Interactive setup for cekernel runtime environment. Creates the directory struct
 
 ## Workflow
 
-### Step 1: Ask CEKERNEL_VAR_DIR
+### Step 1: Ask CEKERNEL_VAR_DIR and CEKERNEL_BACKEND
 
-Ask the user where to store cekernel runtime data.
+Use `AskUserQuestion` to ask both questions at once:
 
-```
-Where should cekernel store runtime data?
-This directory will contain IPC files, locks, logs, and schedule data.
-
-Default: ~/.local/var/cekernel
-```
-
-If the user accepts the default or provides a custom path, store it as `VAR_DIR`.
-
-### Step 2: Ask CEKERNEL_BACKEND
-
-Ask the user which backend to use.
+1. **Runtime directory**: Use `~/.local/var/cekernel` as default. Present as "Use default?" with the default path shown. If the user selects "Other", they can provide a custom path.
+2. **Backend**: Present the three backend options.
 
 ```
-Select a backend:
+Question 1: "Use ~/.local/var/cekernel as the runtime directory?"
+  header: "VAR_DIR"
+  options:
+    - label: "~/.local/var/cekernel (Recommended)"
+      description: "User-local directory. No sudo required."
+    - label: "/usr/local/var/cekernel"
+      description: "System-wide directory. May require sudo to create."
+  (User can also select "Other" to provide a custom path)
 
-1. headless (default) — No terminal required. Runs in the background.
-2. wezterm — Visualize Workers in WezTerm tabs.
-3. tmux — Run Workers in tmux sessions.
-
-Choice [1/2/3]:
+Question 2: "Which backend should cekernel use?"
+  header: "Backend"
+  options:
+    - label: "headless (Recommended)"
+      description: "No terminal required. Runs in the background."
+    - label: "wezterm"
+      description: "Visualize Workers in WezTerm tabs."
+    - label: "tmux"
+      description: "Run Workers in tmux sessions."
 ```
 
-Map the selection: 1 → `headless`, 2 → `wezterm`, 3 → `tmux`. Default is `headless`.
+Map the answers:
+- Question 1: extract the path from the selected label, or use the custom input
+- Question 2: extract the backend name (`headless`, `wezterm`, or `tmux`)
 
-### Step 3: Create directory structure
+### Step 2: Create directory structure
 
 Run the following commands using the chosen `VAR_DIR`:
 
@@ -52,7 +55,7 @@ if [ ! -f "${VAR_DIR}/schedules.json" ]; then
 fi
 ```
 
-### Step 4: Write user profile
+### Step 3: Write user profile
 
 Write `~/.config/cekernel/envs/default.env`:
 
@@ -67,7 +70,7 @@ EOF
 
 **Important**: `VAR_DIR` must be written as an absolute path (e.g., `/Users/alice/.local/var/cekernel`), not with `~`. Tilde is not expanded inside variable values read by `load-env.sh`. If the user specifies `~/.local/var/cekernel`, expand it to `$HOME/.local/var/cekernel` before writing.
 
-### Step 5: Summary
+### Step 4: Summary
 
 Display the result and guide the user to further configuration:
 
