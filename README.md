@@ -87,9 +87,10 @@ docs/
   tdd.md                   # Test-driven development guide
   unix-philosophy.md       # UNIX philosophy reference
 envs/
-  ci.env                   # CI profile (headless, 1800s timeout)
-  default.env              # Default profile (wezterm, 3 processes)
+  default.env              # Default profile (headless, 5 processes)
   headless.env             # Headless profile (headless, 5 workers)
+  tmux.env                 # tmux backend profile
+  wezterm.env              # WezTerm backend profile
   README.md                # Environment variable catalog
 RELEASE_NOTES.md           # Structured release notes
 scripts/
@@ -276,9 +277,10 @@ Named profiles (`.env` files) provide coherent sets of defaults for common scena
 
 | Profile | Use case |
 |---------|----------|
-| `default.env` | Local development with WezTerm |
+| `default.env` | Default settings (headless, 5 processes) |
+| `wezterm.env` | WezTerm backend |
+| `tmux.env` | tmux backend |
 | `headless.env` | Terminal-free execution (CI, cron) |
-| `ci.env` | CI-specific settings |
 
 Select a profile via `CEKERNEL_ENV`:
 

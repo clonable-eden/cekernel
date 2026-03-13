@@ -8,7 +8,7 @@ These can be set via env profiles or explicit `export`.
 
 | Variable | Default | Valid Values | Used by | Purpose |
 |----------|---------|-------------|---------|---------|
-| `CEKERNEL_BACKEND` | `wezterm` | `wezterm`, `tmux`, `headless` | `backend-adapter.sh` | Select Worker process backend |
+| `CEKERNEL_BACKEND` | `headless` | `wezterm`, `tmux`, `headless` | `backend-adapter.sh` | Select Worker process backend |
 | `CEKERNEL_MAX_PROCESSES` | `3` | Positive integer | `spawn.sh` | Maximum concurrent processes |
 | `CEKERNEL_MAX_WORKERS` | — | Positive integer | `spawn.sh` | **Deprecated**: use `CEKERNEL_MAX_PROCESSES`. If set, overrides `CEKERNEL_MAX_PROCESSES` and emits a warning |
 | `CEKERNEL_WORKER_TIMEOUT` | `3600` | Positive integer (seconds) | `watch.sh` | Worker timeout before auto-termination |
@@ -54,9 +54,10 @@ Profiles only fill unset variables. Explicit `export` always wins.
 
 | Profile | Description |
 |---------|-------------|
-| `default.env` | Default settings for local development with WezTerm |
+| `default.env` | Default settings (headless backend, 5 processes, 1800s timeout) |
+| `wezterm.env` | WezTerm backend with standard concurrency |
+| `tmux.env` | tmux backend with standard concurrency |
 | `headless.env` | Terminal-free execution with higher concurrency |
-| `ci.env` | CI-optimized settings with shorter timeout |
 
 ### User Profile
 
@@ -78,8 +79,8 @@ Projects can create `.cekernel/envs/` for project-specific configuration:
 my-project/
   .cekernel/
     envs/
-      default.env    # Override: CEKERNEL_BACKEND=tmux
-      ci.env         # Override: CEKERNEL_MAX_PROCESSES=2
+      default.env    # Override: CEKERNEL_BACKEND=wezterm
+      wezterm.env    # Override: CEKERNEL_MAX_PROCESSES=2
 ```
 
 Custom profile names (e.g., `staging.env`) are supported — the project layer
