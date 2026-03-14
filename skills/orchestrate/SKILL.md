@@ -60,9 +60,21 @@ Then, read `skills/references/triage.md` from the repository root (`$(git rev-pa
 
 After triage, delegate to the Orchestrator.
 
-### Step 2: Parse `--env` and Launch Orchestrator Agent
+### Step 2: Parse `--env`, Persist Claude Code Session ID, and Launch Orchestrator Agent
 
 If `--env <profile>` was specified, set `CEKERNEL_ENV` to the given profile name. If not specified, default to `default`.
+
+**Persist Claude Code Session ID** — Before launching the Orchestrator, discover and save the current Claude Code session ID so that `/postmortem` can later locate Orchestrator transcripts:
+
+```bash
+source "${CEKERNEL_SCRIPTS}/shared/session-id.sh"
+source "${CEKERNEL_SCRIPTS}/shared/claude-session-id.sh"
+mkdir -p "$CEKERNEL_IPC_DIR"
+PROJECT_ROOT="$(git rev-parse --show-toplevel)"
+CLAUDE_SESSION_ID=$(claude_session_id_discover "$PROJECT_ROOT") && claude_session_id_persist "$CLAUDE_SESSION_ID"
+```
+
+If discovery fails (e.g., no `.jsonl` files found), log a warning and continue — the session ID is optional for Orchestrator operation.
 
 Launch the Orchestrator subagent via the Task tool:
 

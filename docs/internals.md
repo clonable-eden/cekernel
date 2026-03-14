@@ -8,6 +8,7 @@ Worker lifecycle events are recorded in the session-scoped log directory.
 
 ```
 $CEKERNEL_VAR_DIR/ipc/{CEKERNEL_SESSION_ID}/
+├── claude-session-id # Claude Code session UUID (written by /orchestrate)
 ├── worker-4          # FIFO (existing)
 ├── worker-7          # FIFO (existing)
 └── logs/
