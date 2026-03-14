@@ -4,6 +4,7 @@
     "config:recommended",
     "helpers:pinGitHubActionDigests"
   ],
+  "platformAutomerge": true,
   "minimumReleaseAge": "7 days",
   "packageRules": [
     {
