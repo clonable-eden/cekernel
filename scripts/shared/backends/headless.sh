@@ -3,7 +3,7 @@
 #
 # Implements 5 external API functions using background processes.
 # No terminal multiplexer required — Workers run as background processes
-# with stdout/stderr redirected to log files.
+# with stdout/stderr discarded (analysis uses transcripts, not log files).
 #
 # Sourced by backend-adapter.sh when CEKERNEL_BACKEND=headless.
 #
@@ -27,11 +27,6 @@ backend_spawn_worker() {
   local prompt="$4"
   local agent_name="$5"
 
-  # Ensure log directory exists
-  local log_dir="${CEKERNEL_IPC_DIR}/logs"
-  mkdir -p "$log_dir"
-  local log_file="${log_dir}/worker-${issue}.stdout.log"
-
   # Launch Worker as a background process.
   # Bash creates a new process group for background jobs automatically,
   # so kill -- -$PID can terminate the entire group.
@@ -39,12 +34,13 @@ backend_spawn_worker() {
   # Unset Claude Code session markers to avoid nested-session detection.
   # Use -p (print mode) for non-TTY execution.
   # NOTE: -p may hang without TTY due to upstream bug (claude-code#9026).
+  # stdout/stderr discarded — analysis uses transcripts (ADR-0005, #347).
   (
     cd "$worktree" && \
     unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ACCESS_TOKEN && \
     CEKERNEL_SESSION_ID="${CEKERNEL_SESSION_ID:-}" \
     exec claude -p --agent "$agent_name" "$prompt"
-  ) >> "$log_file" 2>&1 &
+  ) >/dev/null 2>&1 &
   local pid=$!
 
   # Save handle (PID)
