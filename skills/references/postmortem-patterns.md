@@ -2,8 +2,16 @@
 
 > Canonical checklist for `/postmortem` skill analysis.
 > Each pattern describes a problem category, detection heuristic, and severity.
-> Derived from analysis of issues #335, #340, #347, #349, #358 transcripts
-> and ADR-0013 design patterns.
+> Derived from analysis of issues [#335], [#340], [#347], [#349], [#358] transcripts
+> and [ADR-0013] design patterns.
+>
+> [#335]: https://github.com/clonable-eden/cekernel/issues/335
+> [#339]: https://github.com/clonable-eden/cekernel/issues/339
+> [#340]: https://github.com/clonable-eden/cekernel/issues/340
+> [#347]: https://github.com/clonable-eden/cekernel/issues/347
+> [#349]: https://github.com/clonable-eden/cekernel/issues/349
+> [#358]: https://github.com/clonable-eden/cekernel/issues/358
+> [ADR-0013]: ../../docs/adr/0013-transcript-based-postmortem-analysis.md
 
 ## How to Use
 
@@ -23,7 +31,7 @@ Patterns are organized by category. Each has:
 ### IPC directory missing or deleted
 - **Detect**: `no such file or directory` errors on `$CEKERNEL_IPC_DIR` paths, `worker_state_write` failures, FIFO-related errors
 - **Severity**: critical
-- **Example**: #335 — `worker_state_write` failed because IPC directory did not exist; Worker had to `mkdir -p` manually
+- **Example**: [#335] — `worker_state_write` failed because IPC directory did not exist; Worker had to `mkdir -p` manually
 
 ### Stale lock files
 - **Detect**: `issue_lock_check` returns locked for an issue with no active Worker process
@@ -46,7 +54,7 @@ Patterns are organized by category. Each has:
 ### Agent definition mismatch
 - **Detect**: Reviewer transcript showing Worker-like behavior (implementation, commits), or Worker showing review-only behavior
 - **Severity**: critical
-- **Example**: #340 — Reviewer launched with Worker agent definition due to hardcoded env var
+- **Example**: [#340] — Reviewer launched with Worker agent definition due to hardcoded env var
 
 ---
 
@@ -64,12 +72,12 @@ Patterns are organized by category. Each has:
 ### Cross-platform compatibility failures
 - **Detect**: Tests passing locally (macOS) but failing in CI (Linux), or vice versa. Common culprits: `sed -i` syntax, `xargs` empty-input behavior, `declare -A` bash version, `find` flag differences
 - **Severity**: critical
-- **Example**: #358 — `xargs -0 ls` behaves differently on GNU vs BSD (GNU runs command even with empty input); #340 — `sed -i ''` macOS syntax
+- **Example**: [#358] — `xargs -0 ls` behaves differently on GNU vs BSD (GNU runs command even with empty input); [#340] — `sed -i ''` macOS syntax
 
 ### Test update ripple effects missed
 - **Detect**: Test failures caused by the Worker's own changes but in test files the Worker didn't modify; typically caught only by full test suite run
 - **Severity**: warning
-- **Example**: #347 — `test-backend-tmux.sh` and `test-backend-wezterm.sh` still asserted old `script -q` behavior after `script-capture.sh` removal; #335 — `test-backend-dispatch.sh` expected `wezterm` default after it was changed to `headless`
+- **Example**: [#347] — `test-backend-tmux.sh` and `test-backend-wezterm.sh` still asserted old `script -q` behavior after `script-capture.sh` removal; [#335] — `test-backend-dispatch.sh` expected `wezterm` default after it was changed to `headless`
 
 ---
 
@@ -78,12 +86,12 @@ Patterns are organized by category. Each has:
 ### Missing checkpoint file
 - **Detect**: Resumed Worker attempting to read `.cekernel-checkpoint.md` and getting file-not-found; Worker reconstructing context from GitHub API calls instead
 - **Severity**: warning
-- **Example**: #340, #335 — Neither initial Worker session wrote a checkpoint, forcing resumed Workers to reconstruct context from PR comments and git log
+- **Example**: [#340], [#335] — Neither initial Worker session wrote a checkpoint, forcing resumed Workers to reconstruct context from PR comments and git log
 
 ### Reviewer not following linked documents
 - **Detect**: Reviewer reading CLAUDE.md but not following `Read` instructions for linked documents (unix-philosophy.md, tdd.md, etc.)
 - **Severity**: info
-- **Example**: #347 — Reviewer read CLAUDE.md but did not read linked documents
+- **Example**: [#347] — Reviewer read CLAUDE.md but did not read linked documents
 
 ### Worker skipping plan confirmation
 - **Detect**: Worker posting execution plan as issue comment but immediately proceeding to implementation without waiting
@@ -96,22 +104,22 @@ Patterns are organized by category. Each has:
 ### Wrong script path
 - **Detect**: `command not found` (exit 127) or `no such file or directory` for cekernel scripts; Worker using `find` to locate the correct path
 - **Severity**: warning
-- **Example**: #349 — Worker called `scripts/shared/notify-complete.sh` but actual path is `scripts/process/notify-complete.sh`
+- **Example**: [#349] — Worker called `scripts/shared/notify-complete.sh` but actual path is `scripts/process/notify-complete.sh`
 
 ### PATH vs source confusion
 - **Detect**: Worker trying to call a `source`-only function as a command (exit 127), or `source` with wrong path for shared helpers
 - **Severity**: warning
-- **Example**: #340 — Worker tried `task_file_clear_resume_marker` as a command; needed `source scripts/shared/task-file.sh` first
+- **Example**: [#340] — Worker tried `task_file_clear_resume_marker` as a command; needed `source scripts/shared/task-file.sh` first
 
 ### Interactive prompt trap
 - **Detect**: `rm` command hanging (run_in_background with no output), Worker using `TaskStop` to kill stuck command
 - **Severity**: warning
-- **Example**: #347 — `rm scripts/shared/script-capture.sh` triggered macOS confirmation prompt; should have used `git rm`
+- **Example**: [#347] — `rm scripts/shared/script-capture.sh` triggered macOS confirmation prompt; should have used `git rm`
 
 ### Permission allowlist gaps
 - **Detect**: Bash commands repeatedly rejected by sandbox with "requires approval"; agent trying 3+ variations of the same command
 - **Severity**: critical
-- **Example**: #335 — Reviewer attempted `gh pr review --approve` 22 times with different approaches, all blocked by permission model
+- **Example**: [#335] — Reviewer attempted `gh pr review --approve` 22 times with different approaches, all blocked by permission model
 
 ---
 
@@ -120,7 +128,7 @@ Patterns are organized by category. Each has:
 ### Worktree deleted while agent still active
 - **Detect**: `Working directory no longer exists` errors; all subsequent Bash calls failing
 - **Severity**: critical
-- **Example**: #335 — Orchestrator deleted worktree while Reviewer was still attempting commands, permanently breaking the Reviewer session
+- **Example**: [#335] — Orchestrator deleted worktree while Reviewer was still attempting commands, permanently breaking the Reviewer session
 
 ---
 
@@ -129,12 +137,12 @@ Patterns are organized by category. Each has:
 ### Production environment side effects
 - **Detect**: Operations on `$CEKERNEL_IPC_DIR` or `$CEKERNEL_VAR_DIR` that are NOT within a test temp directory; `rm -rf` on non-temp paths
 - **Severity**: critical
-- **Example**: #339 — `run-tests.sh` inherited production `CEKERNEL_VAR_DIR` and deleted it at cleanup
+- **Example**: [#339] — `run-tests.sh` inherited production `CEKERNEL_VAR_DIR` and deleted it at cleanup
 
 ### Worker operating on main repo instead of worktree
 - **Detect**: `cd /path/to/main/repo` (not worktree path) followed by `git stash`, file modifications, or test execution
 - **Severity**: warning
-- **Example**: #340, #349 — Workers used `git stash` on main repo for pre-existing failure diagnosis; harmless but risky pattern
+- **Example**: [#340], [#349] — Workers used `git stash` on main repo for pre-existing failure diagnosis; harmless but risky pattern
 
 ---
 
@@ -143,14 +151,14 @@ Patterns are organized by category. Each has:
 ### Edit without Read
 - **Detect**: Edit tool error `"File has not been read yet"` followed by Read + retry
 - **Severity**: info
-- **Example**: #335, #340 — Worker attempted to edit files without reading them first
+- **Example**: [#335], [#340] — Worker attempted to edit files without reading them first
 
 ### Edit ambiguous match
 - **Detect**: Edit tool error about non-unique `old_string`; Worker retrying with more context
 - **Severity**: info
-- **Example**: #340 — `replace_all: false` but the target string appeared multiple times
+- **Example**: [#340] — `replace_all: false` but the target string appeared multiple times
 
 ### Worker losing track of own state
 - **Detect**: 3+ consecutive `git status`/`git diff`/`git log` commands without intervening edits or commits; Worker checking whether changes are committed when they already are
 - **Severity**: info
-- **Example**: #335 — Worker ran 6 consecutive git inspection commands before realizing changes were already committed
+- **Example**: [#335] — Worker ran 6 consecutive git inspection commands before realizing changes were already committed
