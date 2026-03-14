@@ -117,6 +117,7 @@ Shared logic used by multiple skills is placed in `skills/references/` as markdo
 ```
 skills/references/
 ├── namespace-detection.md   # Plugin vs local detection (ADR-0009)
+├── postmortem-patterns.md   # Post-mortem detection patterns (ADR-0013)
 └── triage.md                # Issue triage protocol
 ```
 

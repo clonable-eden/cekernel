@@ -70,6 +70,7 @@ For details on logging, IPC, and resource governance, see [internals.md](./docs/
   CODEOWNERS               # Code owners definition
   workflows/
     cekernel-tests.yml     # CI test workflow
+    auto-approve-renovate.yml # Auto-approve Renovate PRs
     plugin-release-tag.yml # Release tag automation
 agents/
   orchestrator.md          # Orchestrator protocol definition
@@ -127,11 +128,14 @@ scripts/
       wezterm.sh           # WezTerm backend implementation
     checkpoint-file.sh     # Checkpoint file helpers for suspend/resume
     claude-json-helper.sh  # ~/.claude.json trust entry read/write helper
+    claude-session-id.sh   # Claude Code session ID persistence for transcript discovery
     desktop-notify.sh      # OS-native notification helper
     issue-lock.sh          # Repo × issue lockfile (duplicate Worker prevention)
     load-env.sh            # Environment profile loader (multi-layer search)
+    runner.sh              # Runner script generator for terminal backends (cd, env, prompt)
     session-id.sh          # Session ID generation + IPC directory derivation
     task-file.sh           # Local task file extraction (session memory: page cache)
+    transcript-locator.sh  # Transcript discovery for post-mortem analysis (ADR-0013)
     worker-priority.sh     # Worker priority (nice value) management
     worker-state.sh        # Worker process state management
   process/
@@ -148,10 +152,13 @@ skills/
     SKILL.md               # /orchctrl skill — Worker control interface
   orchestrate/
     SKILL.md               # /orchestrate skill — issue delegation
+  postmortem/
+    SKILL.md               # /postmortem skill — transcript-based post-mortem analysis
   probe/
     SKILL.md               # /probe skill — namespace detection diagnostic
   references/
     namespace-detection.md # Canonical namespace detection logic
+    postmortem-patterns.md # Post-mortem detection patterns (ADR-0013)
     triage.md              # Canonical issue triage protocol
   setup/
     SKILL.md               # /setup skill — interactive runtime initialization
@@ -177,7 +184,7 @@ tests/
 | [tmux](https://github.com/tmux/tmux) | Worker pane management (tmux backend) | No* |
 | git | Worktree creation/management | Yes |
 
-\* One backend is required: WezTerm (default), tmux, or headless. Set `CEKERNEL_BACKEND` env var to select. Headless requires no terminal.
+\* One backend is required: headless (default), WezTerm, or tmux. Set `CEKERNEL_BACKEND` env var to select. Headless requires no terminal.
 
 ## How to Use
 
@@ -310,6 +317,7 @@ If using the WezTerm backend, see [`config/README.md`](./config/README.md) for p
 | `/orchctrl` | Worker inspection and control |
 | `/cron` | Recurring schedule management (launchd/crontab) |
 | `/at` | One-shot schedule management (launchd/atd) |
+| `/postmortem` | Transcript-based post-mortem analysis |
 | `/unix-architect` | ADR authoring and architectural review |
 
 In plugin mode, prefix with `cekernel:` (e.g., `/cekernel:orchestrate`). See each skill's `SKILL.md` for details.
