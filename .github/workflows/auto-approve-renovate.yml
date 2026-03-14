@@ -11,4 +11,7 @@ jobs:
     if: github.actor == 'renovate[bot]'
     runs-on: ubuntu-latest
     steps:
-      - uses: hmarr/auto-approve-action@f0939ea97e9205ef24d872e76833fa908a770363 # v4
+      - name: Approve PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr review --approve "${{ github.event.pull_request.number }}" --repo "${{ github.repository }}"
