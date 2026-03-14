@@ -57,15 +57,20 @@ claude_session_id_discover() {
   fi
 
   # Find the most recently modified .jsonl at the top level (not in subagents/)
-  local newest
-  newest=$(find "$project_dir" -maxdepth 1 -name '*.jsonl' -print0 2>/dev/null \
-    | xargs -0 ls -t 2>/dev/null \
-    | head -1)
+  # Collect files into an array first (portable across GNU/BSD xargs)
+  local -a files=()
+  while IFS= read -r -d '' f; do
+    files+=("$f")
+  done < <(find "$project_dir" -maxdepth 1 -name '*.jsonl' -print0 2>/dev/null)
 
-  if [[ -z "$newest" ]]; then
+  if [[ ${#files[@]} -eq 0 ]]; then
     echo "claude_session_id_discover: no .jsonl files found in ${project_dir}" >&2
     return 1
   fi
+
+  # Sort by modification time (newest first) and take the first
+  local newest
+  newest=$(ls -t "${files[@]}" | head -1)
 
   # Extract session UUID from filename (basename without .jsonl extension)
   local filename
