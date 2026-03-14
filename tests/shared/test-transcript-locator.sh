@@ -95,4 +95,30 @@ ERR_OUTPUT=$(transcript_locate_worker "abc" "$MOCK_CLAUDE_HOME" 2>&1 1>/dev/null
 assert_match "Non-numeric issue number produces error" "numeric" "$ERR_OUTPUT"
 assert_eq "Non-numeric issue number returns exit code 1" "1" "$EXIT_CODE"
 
+# ── Test 12: Orchestrator discovery via IPC-persisted session ID ──
+# Persist a Claude Code session ID to the IPC dir, then use transcript_locate_orchestrator_by_ipc
+ORIG_IPC_DIR="$CEKERNEL_IPC_DIR"
+export CEKERNEL_IPC_DIR="${TMPDIR_TEST}/ipc"
+mkdir -p "$CEKERNEL_IPC_DIR"
+
+source "${CEKERNEL_DIR}/scripts/shared/claude-session-id.sh"
+claude_session_id_persist "session-orch1"
+
+RESULT=$(transcript_locate_orchestrator_by_ipc "$MOCK_CLAUDE_HOME" "-Users-test-git-repo" | sort)
+EXPECTED=$(printf '%s\n%s' "${ORCH_SESSION_DIR}/agent-orch-001.jsonl" "${ORCH_SESSION_DIR}/agent-orch-002.jsonl" | sort)
+assert_eq "Orchestrator found via IPC-persisted session ID" "$EXPECTED" "$RESULT"
+
+# ── Test 13: Orchestrator via IPC — no persisted session ID ──
+rm -f "${CEKERNEL_IPC_DIR}/claude-session-id"
+EXIT_CODE=0
+RESULT=$(transcript_locate_orchestrator_by_ipc "$MOCK_CLAUDE_HOME" "-Users-test-git-repo" 2>/dev/null) || EXIT_CODE=$?
+assert_eq "Returns exit 1 when no persisted session ID" "1" "$EXIT_CODE"
+
+# ── Test 14: transcript_locate_all uses IPC session ID when no explicit session given ──
+claude_session_id_persist "session-orch1"
+RESULT=$(transcript_locate_all 42 "" "$MOCK_CLAUDE_HOME" "-Users-test-git-repo" 2>/dev/null | wc -l | tr -d ' ')
+assert_eq "transcript_locate_all uses IPC session ID as fallback" "5" "$RESULT"
+
+export CEKERNEL_IPC_DIR="$ORIG_IPC_DIR"
+
 report_results
