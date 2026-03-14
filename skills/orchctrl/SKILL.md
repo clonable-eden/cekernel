@@ -12,7 +12,6 @@ Worker control interface for cekernel. Like `systemctl` / `supervisorctl`, provi
 
 ```
 /orchctrl ls
-/orchctrl log <target>
 /orchctrl inspect <target>
 /orchctrl suspend <target>
 /orchctrl resume <target>
@@ -59,22 +58,14 @@ Run `orchctrl.sh` via Bash with the user's command.
 bash "$ORCHCTRL" ls
 ```
 
-Output: JSON Lines (one per Worker). Fields: `session`, `repo`, `issue`, `state`, `detail`, `priority`, `priority_name`, `elapsed`, `backend`, `log`.
+Output: JSON Lines (one per Worker). Fields: `session`, `repo`, `issue`, `state`, `detail`, `priority`, `priority_name`, `elapsed`, `backend`.
 
 If no workers are found, outputs `no workers.`
 
 Format the output as a readable table for the user:
 
-| Session | Repo | Issue | State | Priority | Elapsed | Backend | Log |
-|---------|------|-------|-------|----------|---------|---------|-----|
-
-#### log — Tail Worker log
-
-```bash
-bash "$ORCHCTRL" log <target>
-```
-
-Shows the last 100 lines of the Worker's log file. Saves the user from searching for log file locations in `$CEKERNEL_VAR_DIR/ipc/`.
+| Session | Repo | Issue | State | Priority | Elapsed | Backend |
+|---------|------|-------|-------|----------|---------|---------|
 
 #### inspect — Detailed Worker view
 
@@ -82,7 +73,7 @@ Shows the last 100 lines of the Worker's log file. Saves the user from searching
 bash "$ORCHCTRL" inspect <target>
 ```
 
-Output: JSON with `session`, `issue`, `state`, `priority`, `elapsed`, `backend`, `worktree`, `checkpoint`, `logs`.
+Output: JSON with `session`, `issue`, `state`, `priority`, `elapsed`, `backend`, `worktree`, `checkpoint`.
 
 Present the output in a human-readable format, especially the checkpoint data (current phase, completed work, next steps, key decisions).
 
@@ -136,6 +127,5 @@ Changes the Worker's priority. Priority values: `critical` (0), `high` (5), `nor
 
 - For `ls`: Format as a table
 - For `inspect`: Format as a structured summary
-- For `log`: Show the log content directly
 - For action commands (`suspend`, `resume`, `term`, `kill`, `nice`): Confirm the action was taken
 - For `resume`: Also show the follow-up `spawn-worker.sh --resume` command for the user to execute

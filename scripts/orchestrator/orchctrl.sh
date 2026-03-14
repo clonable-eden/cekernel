@@ -5,7 +5,6 @@
 #
 # Commands:
 #   ls                          List all workers across all sessions
-#   log <target>                Tail worker log
 #   inspect <target>            Detailed worker view
 #   suspend <target>            Suspend a worker (send SUSPEND signal)
 #   resume <target>             Resume a suspended worker
@@ -40,7 +39,6 @@ Usage: orchctrl.sh <command> [args...]
 
 Commands:
   ls                          List all workers
-  log <target>                Tail worker log
   inspect <target>            Detailed worker view
   suspend <target>            Suspend a worker
   resume <target>             Resume a suspended worker
@@ -196,18 +194,6 @@ detect_backend() {
   fi
 }
 
-# ── Helper: find best log file ──
-find_log_file() {
-  local ipc_dir="$1" issue="$2"
-
-  # Prefer stdout.log (headless backend output)
-  if [[ -f "${ipc_dir}/logs/worker-${issue}.stdout.log" ]]; then
-    echo "${ipc_dir}/logs/worker-${issue}.stdout.log"
-  elif [[ -f "${ipc_dir}/logs/worker-${issue}.log" ]]; then
-    echo "${ipc_dir}/logs/worker-${issue}.log"
-  fi
-}
-
 # ══════════════════════════════════════════════
 # Commands
 # ══════════════════════════════════════════════
@@ -263,10 +249,6 @@ cmd_ls() {
       local backend
       backend=$(detect_backend "$session_dir" "$issue")
 
-      # Log path
-      local log_path
-      log_path=$(find_log_file "$session_dir" "$issue")
-
       jq -cn \
         --arg session "$sid" \
         --arg repo "$sid_repo" \
@@ -278,32 +260,13 @@ cmd_ls() {
         --arg priority_name "$priority_name" \
         --arg elapsed "${elapsed:-}" \
         --arg backend "$backend" \
-        --arg log "${log_path:-}" \
-        '{session: $session, repo: $repo, issue: $issue, type: $type, state: $state, detail: $detail, priority: $priority, priority_name: $priority_name, elapsed: $elapsed, backend: $backend, log: $log}'
+        '{session: $session, repo: $repo, issue: $issue, type: $type, state: $state, detail: $detail, priority: $priority, priority_name: $priority_name, elapsed: $elapsed, backend: $backend}'
     done
   done
 
   if [[ "$found" -eq 0 ]]; then
     echo "no workers."
   fi
-}
-
-# ── log: Tail worker log ──
-cmd_log() {
-  resolve_target "$@" || return 1
-  set_ipc_context
-
-  local log_file
-  log_file=$(find_log_file "$CEKERNEL_IPC_DIR" "$RESOLVED_ISSUE")
-
-  if [[ -z "$log_file" ]]; then
-    echo "Error: no log file found for worker #${RESOLVED_ISSUE}" >&2
-    return 1
-  fi
-
-  echo "=== Log: worker #${RESOLVED_ISSUE} (session: ${RESOLVED_SESSION}) ===" >&2
-  echo "=== File: ${log_file} ===" >&2
-  tail -100 "$log_file"
 }
 
 # ── inspect: Detailed worker view ──
@@ -360,19 +323,6 @@ cmd_inspect() {
     checkpoint_json=$(read_checkpoint_file "$worktree")
   fi
 
-  # Log files
-  local log_files="[]"
-  local logs=()
-  if [[ -f "${CEKERNEL_IPC_DIR}/logs/worker-${RESOLVED_ISSUE}.stdout.log" ]]; then
-    logs+=("${CEKERNEL_IPC_DIR}/logs/worker-${RESOLVED_ISSUE}.stdout.log")
-  fi
-  if [[ -f "${CEKERNEL_IPC_DIR}/logs/worker-${RESOLVED_ISSUE}.log" ]]; then
-    logs+=("${CEKERNEL_IPC_DIR}/logs/worker-${RESOLVED_ISSUE}.log")
-  fi
-  if [[ ${#logs[@]} -gt 0 ]]; then
-    log_files=$(printf '%s\n' "${logs[@]}" | jq -Rsc 'split("\n") | map(select(. != ""))')
-  fi
-
   jq -cn \
     --arg session "$RESOLVED_SESSION" \
     --argjson issue "$RESOLVED_ISSUE" \
@@ -385,8 +335,7 @@ cmd_inspect() {
     --arg backend "$backend" \
     --arg worktree "${worktree:-}" \
     --argjson checkpoint "$checkpoint_json" \
-    --argjson logs "$log_files" \
-    '{session: $session, issue: $issue, type: $type, state: $state, detail: $detail, timestamp: $timestamp, priority: $priority, elapsed: $elapsed, backend: $backend, worktree: $worktree, checkpoint: $checkpoint, logs: $logs}'
+    '{session: $session, issue: $issue, type: $type, state: $state, detail: $detail, timestamp: $timestamp, priority: $priority, elapsed: $elapsed, backend: $backend, worktree: $worktree, checkpoint: $checkpoint}'
 }
 
 # ── suspend: Send SUSPEND signal ──
@@ -446,24 +395,30 @@ cmd_kill() {
   resolve_target "$@" || return 1
   set_ipc_context
 
+  # Detect backend once for all handles
+  local backend
+  backend=$(detect_backend "$CEKERNEL_IPC_DIR" "$RESOLVED_ISSUE")
+
   # Kill all handle files for this issue (Worker + Reviewer)
   for handle_file in "${CEKERNEL_IPC_DIR}"/handle-"${RESOLVED_ISSUE}".*; do
     [[ -f "$handle_file" ]] || continue
     local handle_content
     handle_content=$(tr -d '[:space:]' < "$handle_file")
 
-    if [[ "$handle_content" == *:*.* ]]; then
-      # tmux pane target — kill the window
-      local window_target
-      window_target=$(echo "$handle_content" | sed 's/\.[0-9]*$//')
-      tmux kill-window -t "$window_target" 2>/dev/null || true
-    elif [[ -f "${CEKERNEL_IPC_DIR}/logs/worker-${RESOLVED_ISSUE}.stdout.log" ]]; then
-      # headless — handle is PID, kill process group
-      kill -- -"$handle_content" 2>/dev/null || kill "$handle_content" 2>/dev/null || true
-    else
-      # wezterm — handle is pane ID
-      wezterm cli kill-pane --pane-id "$handle_content" 2>/dev/null || true
-    fi
+    case "$backend" in
+      tmux)
+        local window_target
+        window_target=$(echo "$handle_content" | sed 's/\.[0-9]*$//')
+        tmux kill-window -t "$window_target" 2>/dev/null || true
+        ;;
+      headless)
+        kill -- -"$handle_content" 2>/dev/null || kill "$handle_content" 2>/dev/null || true
+        ;;
+      *)
+        # wezterm or unknown — try wezterm pane kill
+        wezterm cli kill-pane --pane-id "$handle_content" 2>/dev/null || true
+        ;;
+    esac
   done
 
   # Mark as terminated
@@ -777,7 +732,6 @@ shift || true
 
 case "$COMMAND" in
   ls)      cmd_ls "$@" ;;
-  log)     cmd_log "$@" ;;
   inspect) cmd_inspect "$@" ;;
   suspend) cmd_suspend "$@" ;;
   resume)  cmd_resume "$@" ;;

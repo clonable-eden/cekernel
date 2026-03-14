@@ -207,29 +207,6 @@ assert_match "kill marks worker as TERMINATED" "^TERMINATED:" "$STATE_CONTENT"
 assert_match "kill detail says killed" ":killed$" "$STATE_CONTENT"
 
 # ══════════════════════════════════════════════
-# log command
-# ══════════════════════════════════════════════
-
-# ── Test 24: log shows log content ──
-mkdir -p "${IPC_A}/logs"
-echo "test log line 1" > "${IPC_A}/logs/worker-10.log"
-echo "test log line 2" >> "${IPC_A}/logs/worker-10.log"
-OUTPUT=$(bash "$ORCHCTRL" log 10 --session "$SESSION_A" 2>/dev/null)
-assert_match "log shows content" "test log line 1" "$OUTPUT"
-
-# ── Test 25: log prefers stdout.log for headless ──
-echo "headless output" > "${IPC_A}/logs/worker-10.stdout.log"
-OUTPUT=$(bash "$ORCHCTRL" log 10 --session "$SESSION_A" 2>/dev/null)
-assert_match "log prefers stdout.log" "headless output" "$OUTPUT"
-rm -f "${IPC_A}/logs/worker-10.stdout.log"
-
-# ── Test 26: log missing → error ──
-rm -rf "${IPC_A}/logs"
-EXIT_CODE=0
-bash "$ORCHCTRL" log 10 --session "$SESSION_A" 2>/dev/null || EXIT_CODE=$?
-assert_eq "log missing: error" "1" "$EXIT_CODE"
-
-# ══════════════════════════════════════════════
 # inspect command
 # ══════════════════════════════════════════════
 

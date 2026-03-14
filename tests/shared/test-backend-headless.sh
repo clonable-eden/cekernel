@@ -17,7 +17,6 @@ export CEKERNEL_SESSION_ID="test-headless-backend-001"
 source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
 rm -rf "$CEKERNEL_IPC_DIR"
 mkdir -p "$CEKERNEL_IPC_DIR"
-mkdir -p "${CEKERNEL_IPC_DIR}/logs"
 
 # ── Load headless backend ──
 export CEKERNEL_BACKEND=headless
@@ -116,56 +115,18 @@ EXIT_CODE=0
 backend_kill_worker "99999" 2>/dev/null || EXIT_CODE=$?
 assert_eq "kill_worker for non-existent handle exits cleanly" "0" "$EXIT_CODE"
 
-# ── Test 9: Log file is created for spawned worker ──
+# ── Test 9: Second worker spawn creates handle file ──
 ISSUE2="501"
 backend_spawn_worker "$ISSUE2" "worker" "$WORKTREE" "test prompt 2" "worker"
 sleep 0.2
 
-LOG_FILE="${CEKERNEL_IPC_DIR}/logs/worker-${ISSUE2}.stdout.log"
-assert_file_exists "Log file created for spawned worker" "$LOG_FILE"
+# Verify handle file exists
+HANDLE_FILE2="${CEKERNEL_IPC_DIR}/handle-${ISSUE2}.worker"
+assert_file_exists "Handle file created for second worker" "$HANDLE_FILE2"
 
 # Clean up process
 backend_kill_worker "$ISSUE2" 2>/dev/null || true
 sleep 0.2
-
-# ── Test 10: SESSION_ID is propagated to worker process ──
-# We can't easily check this with a mock, but verify the handle exists
-HANDLE_FILE2="${CEKERNEL_IPC_DIR}/handle-${ISSUE2}.worker"
-assert_file_exists "Handle file created for second worker" "$HANDLE_FILE2"
-
-# ── Test 11: Log file uses append mode — Worker → Reviewer switch preserves logs ──
-# Replace mock claude with one that outputs a line and exits immediately
-cat > "${MOCK_BIN}/claude" <<'MOCK_SCRIPT'
-#!/usr/bin/env bash
-# Mock claude that outputs a marker line and exits
-echo "output: $*"
-MOCK_SCRIPT
-chmod +x "${MOCK_BIN}/claude"
-
-ISSUE3="502"
-LOG_FILE3="${CEKERNEL_IPC_DIR}/logs/worker-${ISSUE3}.stdout.log"
-
-# Spawn first process (simulates Worker)
-backend_spawn_worker "$ISSUE3" "worker" "$WORKTREE" "worker-prompt" "worker"
-sleep 0.3
-wait 2>/dev/null || true
-
-# Spawn second process (simulates Reviewer replacing Worker on same issue)
-backend_spawn_worker "$ISSUE3" "reviewer" "$WORKTREE" "reviewer-prompt" "reviewer"
-sleep 0.3
-wait 2>/dev/null || true
-
-# Both outputs must be present — log must not have been truncated
-WORKER_LINE=$(grep -c "worker-prompt" "$LOG_FILE3" 2>/dev/null || echo "0")
-REVIEWER_LINE=$(grep -c "reviewer-prompt" "$LOG_FILE3" 2>/dev/null || echo "0")
-
-if [[ "$WORKER_LINE" -ge 1 && "$REVIEWER_LINE" -ge 1 ]]; then
-  echo "  PASS: Log file preserved both Worker and Reviewer output (append mode)"
-  TESTS_PASSED=$((TESTS_PASSED + 1))
-else
-  echo "  FAIL: Log file truncated (worker_lines=${WORKER_LINE}, reviewer_lines=${REVIEWER_LINE})"
-  TESTS_FAILED=$((TESTS_FAILED + 1))
-fi
 
 # ── Restore PATH ──
 PATH="$OLD_PATH"
