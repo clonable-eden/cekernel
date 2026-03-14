@@ -7,8 +7,9 @@ TOTAL_PASS=0
 TOTAL_FAIL=0
 FAILED_FILES=()
 
-# Use a temporary directory for runtime state so tests don't depend on system paths
-export CEKERNEL_VAR_DIR="${CEKERNEL_VAR_DIR:-$(mktemp -d)}"
+# Always use a fresh temporary directory for runtime state so tests never affect
+# production IPC directories (even when CEKERNEL_VAR_DIR is inherited from the environment)
+export CEKERNEL_VAR_DIR="$(mktemp -d)"
 _CEKERNEL_VAR_DIR_CREATED=1
 
 echo "=== cekernel test runner ==="
