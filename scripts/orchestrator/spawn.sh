@@ -203,6 +203,11 @@ if [[ "$RESUME" -eq 1 ]]; then
   # Re-register trust (may have been cleaned up)
   register_trust "$WORKTREE"
 
+  # Clear stale resume markers from previous resume cycles.
+  # Without this, a "## Resume Reason: changes-requested" marker left
+  # from a prior cycle causes the new Worker to misinterpret its startup mode.
+  task_file_clear_resume_marker "$WORKTREE"
+
   # Verify checkpoint exists for resume
   if checkpoint_file_exists "$WORKTREE"; then
     echo "checkpoint: $(checkpoint_file_path "$WORKTREE")" >&2
@@ -258,8 +263,8 @@ else
 fi
 
 # Backend handles workspace resolution, window spawning, and handle file management internally.
-# Callers pass (issue, type, worktree, prompt) — the backend decides how to launch.
-backend_spawn_worker "$ISSUE_NUMBER" "$AGENT_TYPE" "$WORKTREE" "$PROMPT"
+# Callers pass (issue, type, worktree, prompt, agent-name) — the backend decides how to launch.
+backend_spawn_worker "$ISSUE_NUMBER" "$AGENT_TYPE" "$WORKTREE" "$PROMPT" "$AGENT_NAME"
 
 # ── Update lock PID with the real process PID ──
 # spawn.sh ($$) is short-lived and exits after launching the process.

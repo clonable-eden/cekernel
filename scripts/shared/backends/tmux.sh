@@ -19,7 +19,7 @@ backend_available() {
   tmux list-sessions >/dev/null 2>&1
 }
 
-# backend_spawn_worker <issue> <type> <worktree> <prompt>
+# backend_spawn_worker <issue> <type> <worktree> <prompt> <agent-name>
 # Spawns a Worker in a tmux 3-pane layout.
 # Saves pane target to handle file internally.
 backend_spawn_worker() {
@@ -27,6 +27,7 @@ backend_spawn_worker() {
   local type="$2"
   local worktree="$3"
   local prompt="$4"
+  local agent_name="$5"
 
   # Resolve session (tmux-specific)
   local session=""
@@ -51,7 +52,7 @@ backend_spawn_worker() {
   ensure_log_dir
   local log_file="${CEKERNEL_IPC_DIR}/logs/worker-${issue}.stdout.log"
   local runner
-  runner=$(write_runner_script "$issue" "$worktree" "${CEKERNEL_SESSION_ID:-}" "${CEKERNEL_AGENT_WORKER:-worker}" "$prompt" "$log_file")
+  runner=$(write_runner_script "$issue" "$worktree" "${CEKERNEL_SESSION_ID:-}" "$agent_name" "$prompt" "$log_file")
 
   # Send runner script to main pane — no escaping needed, just a file path
   _backend_run_command "$main_pane" "bash '${runner}'"

@@ -53,7 +53,7 @@ ISSUE="500"
 WORKTREE="${TEST_TMP}/worktree"
 mkdir -p "$WORKTREE"
 
-backend_spawn_worker "$ISSUE" "worker" "$WORKTREE" "test prompt"
+backend_spawn_worker "$ISSUE" "worker" "$WORKTREE" "test prompt" "worker"
 
 HANDLE_FILE="${CEKERNEL_IPC_DIR}/handle-${ISSUE}.worker"
 assert_file_exists "Handle file created after spawn" "$HANDLE_FILE"
@@ -118,7 +118,7 @@ assert_eq "kill_worker for non-existent handle exits cleanly" "0" "$EXIT_CODE"
 
 # ── Test 9: Log file is created for spawned worker ──
 ISSUE2="501"
-backend_spawn_worker "$ISSUE2" "worker" "$WORKTREE" "test prompt 2"
+backend_spawn_worker "$ISSUE2" "worker" "$WORKTREE" "test prompt 2" "worker"
 sleep 0.2
 
 LOG_FILE="${CEKERNEL_IPC_DIR}/logs/worker-${ISSUE2}.stdout.log"
@@ -146,12 +146,12 @@ ISSUE3="502"
 LOG_FILE3="${CEKERNEL_IPC_DIR}/logs/worker-${ISSUE3}.stdout.log"
 
 # Spawn first process (simulates Worker)
-backend_spawn_worker "$ISSUE3" "worker" "$WORKTREE" "worker-prompt"
+backend_spawn_worker "$ISSUE3" "worker" "$WORKTREE" "worker-prompt" "worker"
 sleep 0.3
 wait 2>/dev/null || true
 
 # Spawn second process (simulates Reviewer replacing Worker on same issue)
-backend_spawn_worker "$ISSUE3" "reviewer" "$WORKTREE" "reviewer-prompt"
+backend_spawn_worker "$ISSUE3" "reviewer" "$WORKTREE" "reviewer-prompt" "reviewer"
 sleep 0.3
 wait 2>/dev/null || true
 

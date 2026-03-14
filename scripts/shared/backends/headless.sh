@@ -17,7 +17,7 @@ backend_available() {
   return 0
 }
 
-# backend_spawn_worker <issue> <type> <worktree> <prompt>
+# backend_spawn_worker <issue> <type> <worktree> <prompt> <agent-name>
 # Spawns a Worker as a background process via setsid.
 # Saves PID to handle file internally.
 backend_spawn_worker() {
@@ -25,6 +25,7 @@ backend_spawn_worker() {
   local type="$2"
   local worktree="$3"
   local prompt="$4"
+  local agent_name="$5"
 
   # Ensure log directory exists
   local log_dir="${CEKERNEL_IPC_DIR}/logs"
@@ -42,7 +43,7 @@ backend_spawn_worker() {
     cd "$worktree" && \
     unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ACCESS_TOKEN && \
     CEKERNEL_SESSION_ID="${CEKERNEL_SESSION_ID:-}" \
-    exec claude -p --agent "${CEKERNEL_AGENT_WORKER:-worker}" "$prompt"
+    exec claude -p --agent "$agent_name" "$prompt"
   ) >> "$log_file" 2>&1 &
   local pid=$!
 
