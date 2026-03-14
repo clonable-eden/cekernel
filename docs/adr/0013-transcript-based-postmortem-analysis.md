@@ -69,6 +69,7 @@ Claude Code stores conversation transcripts at the following paths:
 
 - `<project>` is the working directory path converted to hyphen-delimited form (e.g., `-Users-alice-git-myrepo`)
 - Workers and Reviewers run in worktrees, so their transcripts are stored under the worktree's corresponding project directory
+
 ### Transcript Discovery Algorithm
 
 Given an issue number, the skill locates all relevant transcripts:
