@@ -18,8 +18,15 @@
 #     — Outputs one path per line to stdout
 #     — Returns 1 if no transcripts found (error on stderr)
 #
+#   transcript_locate_orchestrator_by_ipc [claude-home] [project-slug]
+#     — Find Orchestrator transcripts using session ID persisted in IPC dir
+#     — Reads ${CEKERNEL_IPC_DIR}/claude-session-id (written by /orchestrate)
+#     — Outputs one path per line to stdout
+#     — Returns 1 if no persisted session ID or no transcripts found
+#
 #   transcript_locate_all <issue-number> [session-id] [claude-home] [project-slug]
 #     — Combine worker + orchestrator transcript discovery
+#     — Falls back to IPC-persisted session ID when session-id is empty
 #     — Outputs one path per line to stdout
 #     — Returns partial results when only some transcripts are found
 #
@@ -91,8 +98,31 @@ transcript_locate_orchestrator() {
   fi
 }
 
+# transcript_locate_orchestrator_by_ipc [claude-home] [project-slug]
+# Finds Orchestrator transcripts using the session ID persisted in IPC dir.
+# Reads ${CEKERNEL_IPC_DIR}/claude-session-id (written by claude-session-id.sh).
+# This enables transcript discovery without requiring the user to provide the
+# Claude Code session ID manually.
+transcript_locate_orchestrator_by_ipc() {
+  local claude_home="${1:-${HOME}/.claude}"
+  local project_slug="${2:-}"
+
+  # Source claude-session-id.sh if claude_session_id_read is not available
+  if ! type claude_session_id_read &>/dev/null; then
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    source "${script_dir}/claude-session-id.sh"
+  fi
+
+  local session_id
+  session_id=$(claude_session_id_read) || return 1
+
+  transcript_locate_orchestrator "$session_id" "$claude_home" "$project_slug"
+}
+
 # transcript_locate_all <issue-number> [session-id] [claude-home] [project-slug]
 # Combines worker + orchestrator transcript discovery.
+# When session-id is empty, falls back to IPC-persisted Claude Code session ID.
 # Partial success is allowed: returns whatever is found, warns about missing.
 transcript_locate_all() {
   local issue_number="${1:?Usage: transcript_locate_all <issue-number> [session-id] [claude-home] [project-slug]}"
@@ -109,12 +139,17 @@ transcript_locate_all() {
     echo "Warning: No Worker/Reviewer transcripts found for issue #${issue_number}" >&2
   fi
 
-  # Orchestrator transcripts (optional — requires session ID)
+  # Orchestrator transcripts (explicit session ID or IPC fallback)
   if [[ -n "$session_id" ]]; then
     if transcript_locate_orchestrator "$session_id" "$claude_home" "$project_slug" 2>/dev/null; then
       any_found=1
     else
       echo "Warning: No Orchestrator transcripts found for session ${session_id}" >&2
+    fi
+  else
+    # Fallback: try IPC-persisted Claude Code session ID
+    if transcript_locate_orchestrator_by_ipc "$claude_home" "$project_slug" 2>/dev/null; then
+      any_found=1
     fi
   fi
 
