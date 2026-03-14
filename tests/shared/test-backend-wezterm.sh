@@ -63,7 +63,7 @@ export -f wezterm
 export WEZTERM_PANE=42
 ISSUE="300"
 WORKTREE="/tmp/test-worktree"
-backend_spawn_worker "$ISSUE" "worker" "$WORKTREE" "test prompt"
+backend_spawn_worker "$ISSUE" "worker" "$WORKTREE" "test prompt" "worker"
 
 HANDLE_FILE="${CEKERNEL_IPC_DIR}/handle-${ISSUE}.worker"
 assert_file_exists "Handle file created after spawn" "$HANDLE_FILE"
@@ -185,7 +185,7 @@ export -f wezterm
 export WEZTERM_PANE=42
 ISSUE="301"
 WORKTREE="/tmp/test-worktree"
-backend_spawn_worker "$ISSUE" "worker" "$WORKTREE" "test prompt with long content"
+backend_spawn_worker "$ISSUE" "worker" "$WORKTREE" "test prompt with long content" "worker"
 
 PAYLOAD_FILE="${CEKERNEL_IPC_DIR}/payload-${ISSUE}.b64"
 assert_file_exists "Payload file created after spawn" "$PAYLOAD_FILE"
@@ -318,7 +318,7 @@ export WEZTERM_PANE=42
 rm -rf "${CEKERNEL_IPC_DIR}/logs"
 ISSUE="302"
 WORKTREE="/tmp/test-worktree"
-backend_spawn_worker "$ISSUE" "worker" "$WORKTREE" "test prompt"
+backend_spawn_worker "$ISSUE" "worker" "$WORKTREE" "test prompt" "worker"
 
 # Log directory should be created
 assert_dir_exists "log directory created by spawn" "${CEKERNEL_IPC_DIR}/logs"

@@ -70,7 +70,7 @@ export -f tmux
 
 ISSUE="400"
 WORKTREE="/tmp/test-worktree"
-backend_spawn_worker "$ISSUE" "worker" "$WORKTREE" "test prompt"
+backend_spawn_worker "$ISSUE" "worker" "$WORKTREE" "test prompt" "worker"
 
 HANDLE_FILE="${CEKERNEL_IPC_DIR}/handle-${ISSUE}.worker"
 assert_file_exists "Handle file created after spawn" "$HANDLE_FILE"
@@ -155,7 +155,7 @@ tmux() {
   fi
 }
 export -f tmux
-backend_spawn_worker "410" "worker" "$WORKTREE" "Read the target repository's CLAUDE.md"
+backend_spawn_worker "410" "worker" "$WORKTREE" "Read the target repository's CLAUDE.md" "worker"
 
 # Prompt file should contain the exact prompt (including apostrophe)
 PROMPT_CONTENT=$(cat "${CEKERNEL_IPC_DIR}/prompt-410.txt")
@@ -186,7 +186,7 @@ tmux() {
   fi
 }
 export -f tmux
-backend_spawn_worker "411" "worker" "$WORKTREE" "test prompt"
+backend_spawn_worker "411" "worker" "$WORKTREE" "test prompt" "worker"
 RUNNER_CONTENT=$(cat "${CEKERNEL_IPC_DIR}/run-411.sh")
 assert_match "runner script unsets CLAUDECODE" "unset CLAUDECODE" "$RUNNER_CONTENT"
 rm -f "$MOCK_LOG"
@@ -206,7 +206,7 @@ tmux() {
 }
 export -f tmux
 rm -rf "${CEKERNEL_IPC_DIR}/logs"
-backend_spawn_worker "412" "worker" "$WORKTREE" "test prompt"
+backend_spawn_worker "412" "worker" "$WORKTREE" "test prompt" "worker"
 RUNNER_CONTENT=$(cat "${CEKERNEL_IPC_DIR}/run-412.sh")
 assert_match "runner script uses script -q" "script -q" "$RUNNER_CONTENT"
 assert_dir_exists "log directory created by spawn" "${CEKERNEL_IPC_DIR}/logs"

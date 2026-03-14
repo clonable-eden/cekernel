@@ -166,4 +166,61 @@ else
   TESTS_PASSED=$((TESTS_PASSED + 1))
 fi
 
+# ── Test 11: task_file_clear_resume_marker removes resume marker ──
+MARKER_WORKTREE="${TMPDIR_TEST}/marker-worktree"
+mkdir -p "$MARKER_WORKTREE"
+cat > "${MARKER_WORKTREE}/.cekernel-task.md" <<'TASK_WITH_MARKER'
+---
+issue: 100
+title: "test issue"
+labels: [enhancement]
+---
+
+Issue body content here.
+
+## Resume Reason: changes-requested
+
+Review comments are on PR #50. Read them with `gh pr view 50 --comments`.
+TASK_WITH_MARKER
+
+task_file_clear_resume_marker "$MARKER_WORKTREE"
+MARKER_CONTENT=$(cat "${MARKER_WORKTREE}/.cekernel-task.md")
+
+# Resume marker should be removed
+if echo "$MARKER_CONTENT" | grep -q "## Resume Reason"; then
+  echo "  FAIL: Resume marker should be removed by task_file_clear_resume_marker"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+else
+  echo "  PASS: task_file_clear_resume_marker removes resume marker"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+fi
+
+# Original content should be preserved
+assert_match "Original content preserved after marker removal" "Issue body content here" "$MARKER_CONTENT"
+
+# ── Test 12: task_file_clear_resume_marker is no-op when no marker ──
+NOMARKER_WORKTREE="${TMPDIR_TEST}/nomarker-worktree"
+mkdir -p "$NOMARKER_WORKTREE"
+cat > "${NOMARKER_WORKTREE}/.cekernel-task.md" <<'TASK_NO_MARKER'
+---
+issue: 101
+title: "test issue without marker"
+labels: []
+---
+
+Just a normal task file.
+TASK_NO_MARKER
+
+BEFORE=$(cat "${NOMARKER_WORKTREE}/.cekernel-task.md")
+task_file_clear_resume_marker "$NOMARKER_WORKTREE"
+AFTER=$(cat "${NOMARKER_WORKTREE}/.cekernel-task.md")
+assert_eq "task_file_clear_resume_marker is no-op without marker" "$BEFORE" "$AFTER"
+
+# ── Test 13: task_file_clear_resume_marker when file does not exist ──
+MISSING_WORKTREE="${TMPDIR_TEST}/missing-worktree"
+mkdir -p "$MISSING_WORKTREE"
+EXIT_CODE=0
+task_file_clear_resume_marker "$MISSING_WORKTREE" 2>/dev/null || EXIT_CODE=$?
+assert_eq "task_file_clear_resume_marker exits cleanly when no task file" "0" "$EXIT_CODE"
+
 report_results
