@@ -191,7 +191,7 @@ RUNNER_CONTENT=$(cat "${CEKERNEL_IPC_DIR}/run-411.sh")
 assert_match "runner script unsets CLAUDECODE" "unset CLAUDECODE" "$RUNNER_CONTENT"
 rm -f "$MOCK_LOG"
 
-# ── Test 11: Runner script uses script capture and log directory is created ──
+# ── Test 11: Runner script uses exec claude directly (no script command) ──
 MOCK_LOG=$(mktemp)
 SPLIT_CALL_COUNT=0
 export TMUX="/tmp/tmux-501/default,12345,0"
@@ -205,11 +205,16 @@ tmux() {
   fi
 }
 export -f tmux
-rm -rf "${CEKERNEL_IPC_DIR}/logs"
 backend_spawn_worker "412" "worker" "$WORKTREE" "test prompt" "worker"
 RUNNER_CONTENT=$(cat "${CEKERNEL_IPC_DIR}/run-412.sh")
-assert_match "runner script uses script -q" "script -q" "$RUNNER_CONTENT"
-assert_dir_exists "log directory created by spawn" "${CEKERNEL_IPC_DIR}/logs"
+assert_match "runner script uses exec claude" "exec claude -p --agent" "$RUNNER_CONTENT"
+if echo "$RUNNER_CONTENT" | grep -q "exec script "; then
+  echo "  FAIL: runner script should not use script command"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+else
+  echo "  PASS: runner script does not use script command"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+fi
 rm -f "$MOCK_LOG"
 
 # ── Cleanup ──
