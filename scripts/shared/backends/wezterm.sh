@@ -8,7 +8,7 @@
 
 # ── Dependencies ──
 _WEZTERM_BACKEND_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${_WEZTERM_BACKEND_DIR}/../script-capture.sh"
+source "${_WEZTERM_BACKEND_DIR}/../runner.sh"
 
 # ── External API ──
 
@@ -30,11 +30,9 @@ backend_spawn_worker() {
   local workspace=""
   workspace=$(_backend_resolve_workspace)
 
-  # Generate runner script (handles cd, env, script capture, claude)
-  ensure_log_dir
-  local log_file="${CEKERNEL_IPC_DIR}/logs/worker-${issue}.stdout.log"
+  # Generate runner script (handles cd, env, prompt file, claude)
   local runner
-  runner=$(write_runner_script "$issue" "$worktree" "${CEKERNEL_SESSION_ID:-}" "$agent_name" "$prompt" "$log_file")
+  runner=$(write_runner_script "$issue" "$worktree" "${CEKERNEL_SESSION_ID:-}" "$agent_name" "$prompt")
 
   # Build JSON payload for Lua-side layout construction
   # Only a file path is sent — no escaping concerns
