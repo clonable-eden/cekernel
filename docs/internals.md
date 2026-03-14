@@ -37,6 +37,32 @@ scripts/orchestrator/watch-logs.sh 4           # Specific Worker
 - **Writing**: `spawn.sh` (SPAWN), `notify-complete.sh` (COMPLETE/FAILED)
 - **Deletion**: `cleanup-worktree.sh` deletes during worktree cleanup
 
+## Transcript Discovery
+
+Post-mortem analysis (`/postmortem` skill, [ADR-0013](./adr/0013-transcript-based-postmortem-analysis.md)) uses Claude Code's internal conversation transcripts. Two scripts support discovery:
+
+### Claude Code Session ID (`claude-session-id.sh`)
+
+The `/orchestrate` skill persists the Claude Code session UUID to `${CEKERNEL_IPC_DIR}/claude-session-id` at Orchestrator launch. This bridges the gap between cekernel's `CEKERNEL_SESSION_ID` and Claude Code's internal session storage.
+
+Functions:
+- `claude_session_id_discover <project-root>` — find the current session's UUID from `~/.claude/projects/`
+- `claude_session_id_persist <uuid>` — write UUID to `${CEKERNEL_IPC_DIR}/claude-session-id`
+- `claude_session_id_read` — read the persisted UUID
+
+### Transcript Locator (`transcript-locator.sh`)
+
+Locates `.jsonl` transcript files by issue number or session ID.
+
+| Function | Input | Discovery method |
+|----------|-------|-----------------|
+| `transcript_locate_worker` | issue number | Glob `~/.claude/projects/*-issue-{N}-*/*.jsonl` |
+| `transcript_locate_orchestrator` | session UUID | Glob `~/.claude/projects/*/{uuid}/subagents/*.jsonl` |
+| `transcript_locate_orchestrator_by_ipc` | (none) | Read `claude-session-id` from IPC, then call above |
+| `transcript_locate_all` | issue number + optional session UUID | Combine worker + orchestrator discovery |
+
+> **Note**: Transcript paths depend on Claude Code's internal storage layout. All path resolution is centralized in these two scripts to localize the impact of upstream changes.
+
 ## Resource Governance
 
 ### Concurrency Limit
