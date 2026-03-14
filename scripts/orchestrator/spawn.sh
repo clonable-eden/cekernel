@@ -203,10 +203,10 @@ if [[ "$RESUME" -eq 1 ]]; then
   # Re-register trust (may have been cleaned up)
   register_trust "$WORKTREE"
 
-  # Clear stale resume markers from previous resume cycles.
-  # Without this, a "## Resume Reason: changes-requested" marker left
-  # from a prior cycle causes the new Worker to misinterpret its startup mode.
-  task_file_clear_resume_marker "$WORKTREE"
+  # NOTE: Resume markers (## Resume Reason: ...) are NOT cleared here.
+  # The Worker reads the marker to determine its startup mode, then clears
+  # it as self-cleanup. Clearing here would race with the Orchestrator's
+  # marker write and prevent the Worker from entering the correct mode.
 
   # Verify checkpoint exists for resume
   if checkpoint_file_exists "$WORKTREE"; then

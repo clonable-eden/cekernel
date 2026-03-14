@@ -50,6 +50,17 @@ else
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
+# ── Test 3: spawn.sh does NOT call task_file_clear_resume_marker ──
+# Resume markers must be cleared by the Worker (after reading them), not by spawn.sh.
+# Clearing in spawn.sh would race with the Orchestrator's marker write.
+if echo "$SCRIPT_CONTENT" | grep -q 'task_file_clear_resume_marker'; then
+  echo "  FAIL: spawn.sh must not call task_file_clear_resume_marker (Worker's responsibility)"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+else
+  echo "  PASS: spawn.sh does not call task_file_clear_resume_marker (Worker handles cleanup)"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+fi
+
 # ── Cleanup ──
 rm -rf "$CEKERNEL_IPC_DIR"
 

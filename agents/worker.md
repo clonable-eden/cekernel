@@ -45,7 +45,10 @@ cekernel defines only the lifecycle skeleton for Workers:
    - If the CLAUDE.md references URLs or document paths, read those as well
    - If no CLAUDE.md exists, infer conventions from existing code (reference existing commit messages, PRs, and code style)
 3. **Determine startup mode** by checking the following in order:
-   1. `.cekernel-task.md` contains `## Resume Reason: changes-requested` → read PR review comments (`gh pr view <pr> --comments`), fix issues, push, and wait for CI
+   1. `.cekernel-task.md` contains `## Resume Reason: changes-requested` →
+      - Read the marker content and determine the processing approach
+      - **Clear the marker from the task file** (`source task-file.sh && task_file_clear_resume_marker "$PWD"`) — this prevents stale markers from causing incorrect behavior on subsequent respawns
+      - Read PR review comments (`gh pr view <pr> --comments`), fix issues, push, and wait for CI
    2. `.cekernel-checkpoint.md` exists → SUSPEND resume (read it to understand previous progress and continue from where the last Worker left off)
    3. Neither → fresh start
 4. Read issue content from `.cekernel-task.md` in the worktree (pre-extracted at spawn time)
