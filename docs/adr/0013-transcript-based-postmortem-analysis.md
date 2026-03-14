@@ -55,7 +55,7 @@ Risks of automatic execution:
 | Test isolation failures | Side effects on production environment |
 | Script UX issues | Unexpected errors, argument misinterpretation, recovery attempts |
 
-Patterns are maintained as data (list/rules), keeping the skill logic itself generic — "read transcript, match against patterns."
+Patterns are maintained as a markdown checklist in `skills/references/postmortem-patterns.md`, keeping the skill logic itself generic — "read transcript, match against patterns." Adding a new detection target means appending to the checklist, not modifying the skill.
 
 ### Transcript Storage Locations
 
@@ -69,9 +69,17 @@ Claude Code stores conversation transcripts at the following paths:
 
 - `<project>` is the working directory path converted to hyphen-delimited form (e.g., `-Users-alice-git-myrepo`)
 - Workers and Reviewers run in worktrees, so their transcripts are stored under the worktree's corresponding project directory
-- To locate a Worker's transcript by issue number, glob `~/.claude/projects/*-issue-{number}-*/*.jsonl`
+### Transcript Discovery Algorithm
 
-> **Warning**: These paths depend on Claude Code's internal implementation and may change across versions. The `/postmortem` skill should centralize path resolution logic to localize the impact of such changes.
+Given an issue number, the skill locates all relevant transcripts:
+
+1. **Worker / Reviewer transcripts**: Glob `~/.claude/projects/*-issue-{number}-*/*.jsonl`. Worktree directory names contain the issue number, so this pattern matches directly. Multiple `.jsonl` files may exist if the Worker was re-spawned (resume); all are analyzed.
+2. **Orchestrator transcript**: The Orchestrator runs as a subagent of the interactive session. Its transcript is at `~/.claude/projects/<project>/<session-id>/subagents/agent-<agent-id>.jsonl`. Discovery requires the user to provide the session context (e.g., "this session" or a session ID), since there is no filesystem-level link from issue number to Orchestrator subagent.
+3. **Absent transcripts**: Worktree cleanup (`cleanup-worktree.sh`) deletes the worktree directory, but the corresponding `~/.claude/projects/` entry persists (it is managed by Claude Code, not cekernel). If transcripts are not found, the skill reports which transcripts are missing and continues with what is available.
+
+Each transcript is delegated to a subagent for analysis, since transcripts routinely exceed 100K+ tokens and cannot fit in a single context window. This is the expected default, not an edge-case fallback.
+
+> **Note**: These paths depend on Claude Code's internal implementation and may change across versions. Path resolution logic is centralized in a `transcript-locator.sh` script so that changes can be absorbed in one place.
 
 ### UNIX Philosophy Alignment
 
@@ -93,9 +101,9 @@ Replaces manual analysis of 630KB+ transcripts with automated pattern detection.
 
 ### Platform Constraints
 
-**Context Window Limits** — Large transcripts (630KB+) may not fit in a single context window. Analysis should be delegated to subagents or transcripts should be processed in chunks.
+**Context Window Limits** — Large transcripts (630KB+) routinely exceed a single context window. Subagent delegation is the expected default: one subagent per transcript, each performing pattern matching within its own context window.
 
-**Subagent Nesting Limitation** — When `/postmortem` runs as a skill, it can use subagents one level deep. Parallel analysis of multiple transcripts must respect this nesting constraint.
+**Subagent Nesting Limitation** — When `/postmortem` runs as a skill, it can use subagents one level deep. This is sufficient for the design (skill → analysis subagent). Parallel analysis of multiple transcripts is feasible within this single nesting level.
 
 ## Alternatives Considered
 
@@ -136,8 +144,8 @@ Rejected because:
 
 ### Negative
 
-- Transcript discovery depends on Claude Code's internal implementation (storage paths and format may change)
-- Large transcript analysis incurs API cost
+- **Transcript path dependency is the single largest risk.** The entire skill is predicated on locating and reading `.jsonl` files at Claude Code's internal storage paths. If Claude Code changes its storage format or location, the skill breaks completely. Mitigation: centralize path resolution in `transcript-locator.sh` so changes are absorbed in one place
+- Large transcript analysis incurs API cost (one subagent per transcript)
 
 ### Trade-offs
 
