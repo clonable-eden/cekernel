@@ -58,6 +58,8 @@ chmod +x "${MOCK_BIN}/claude"
 OLD_PATH="$PATH"
 export PATH="${MOCK_BIN}:${PATH}"
 
+# wait_for_file is provided by helpers.sh
+
 # ── Test 3a: headless backend uses agent name from 5th parameter ──
 export CEKERNEL_BACKEND=headless
 ARGS_FILE="${TEST_TMP}/args-3a.txt"
@@ -70,13 +72,12 @@ mkdir -p "$WORKTREE"
 
 # Pass agent name as 5th parameter (spawn.sh resolves this from env var)
 backend_spawn_worker "$ISSUE" "worker" "$WORKTREE" "test prompt" "cekernel:worker"
-sleep 0.3
 
-if [[ -f "$ARGS_FILE" ]]; then
+if wait_for_file "$ARGS_FILE"; then
   ARGS=$(cat "$ARGS_FILE")
   assert_match "headless uses agent name from 5th param (cekernel:worker)" "cekernel:worker" "$ARGS"
 else
-  echo "  FAIL: headless backend did not record claude args"
+  echo "  FAIL: headless backend did not record claude args (timeout)"
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
@@ -90,13 +91,12 @@ export CEKERNEL_AGENT_ARGS_FILE="$ARGS_FILE"
 
 ISSUE2="601"
 backend_spawn_worker "$ISSUE2" "worker" "$WORKTREE" "test prompt 2" "worker"
-sleep 0.3
 
-if [[ -f "$ARGS_FILE" ]]; then
+if wait_for_file "$ARGS_FILE"; then
   ARGS=$(cat "$ARGS_FILE")
   assert_match "headless uses agent name from 5th param (worker)" "--agent worker" "$ARGS"
 else
-  echo "  FAIL: headless backend did not record claude args (default)"
+  echo "  FAIL: headless backend did not record claude args (default, timeout)"
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
