@@ -2,8 +2,8 @@
 
 > Canonical checklist for `/postmortem` skill analysis.
 > Each pattern describes a problem category, detection heuristic, and severity.
-> Derived from analysis of issues [#335], [#340], [#347], [#349], [#358] transcripts
-> and [ADR-0013] design patterns.
+> Derived from analysis of issues [#335], [#340], [#347], [#349], [#358],
+> [#372], [#373], [#374] transcripts and [ADR-0013] design patterns.
 >
 > [#335]: https://github.com/clonable-eden/cekernel/issues/335
 > [#339]: https://github.com/clonable-eden/cekernel/issues/339
@@ -11,6 +11,9 @@
 > [#347]: https://github.com/clonable-eden/cekernel/issues/347
 > [#349]: https://github.com/clonable-eden/cekernel/issues/349
 > [#358]: https://github.com/clonable-eden/cekernel/issues/358
+> [#372]: https://github.com/clonable-eden/cekernel/issues/372
+> [#373]: https://github.com/clonable-eden/cekernel/issues/373
+> [#374]: https://github.com/clonable-eden/cekernel/issues/374
 > [ADR-0013]: ../../docs/adr/0013-transcript-based-postmortem-analysis.md
 
 ## How to Use
@@ -92,6 +95,11 @@ Patterns are organized by category. Each has:
 - **Detect**: Reviewer reading CLAUDE.md but not following `Read` instructions for linked documents (unix-philosophy.md, tdd.md, etc.)
 - **Severity**: info
 - **Example**: [#347] — Reviewer read CLAUDE.md but did not read linked documents
+
+### Direct push to main branch
+- **Detect**: `git push origin main` or `git push origin master` in transcript, `Bypassed rule violations` in push output, `git commit` while on main/master branch without creating a feature branch
+- **Severity**: warning
+- **Example**: [#372], [#373], [#374] — Orchestrator session committed and pushed SKILL.md changes directly to main, bypassing branch protection rules
 
 ### Worker skipping plan confirmation
 - **Detect**: Worker posting execution plan as issue comment but immediately proceeding to implementation without waiting
