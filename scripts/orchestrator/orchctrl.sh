@@ -585,7 +585,9 @@ cmd_gc() {
   # Build a set of active issue numbers per session for orphan detection.
   # FIFOs are checked for staleness: if the process is dead or state is
   # TERMINATED, the FIFO is removed and not added to active_issues.
-  declare -A active_issues  # key: "session_dir:issue" value: 1
+  # Uses a temp file instead of declare -A for bash 3.2 compatibility.
+  local active_issues_file
+  active_issues_file=$(mktemp /tmp/cekernel-gc-active.XXXXXX)
 
   if [[ -d "$IPC_BASE" ]]; then
     for session_dir in "$IPC_BASE"/*/; do
@@ -608,7 +610,7 @@ cmd_gc() {
           fi
           cleaned=$((cleaned + 1))
         else
-          active_issues["${session_dir}:${issue}"]=1
+          echo "${session_dir}:${issue}" >> "$active_issues_file"
         fi
       done
     done
@@ -673,7 +675,7 @@ cmd_gc() {
       local issue="${issue_with_ext%%.*}"
 
       # Skip if there's an active FIFO
-      if [[ -n "${active_issues["${sdir}:${issue}"]:-}" ]]; then
+      if grep -qxF "${sdir}:${issue}" "$active_issues_file" 2>/dev/null; then
         continue
       fi
 
@@ -710,6 +712,9 @@ cmd_gc() {
       fi
     done
   fi
+
+  # ── Cleanup temp file ──
+  rm -f "$active_issues_file"
 
   # ── 4. Summary ──
   if [[ "$cleaned" -eq 0 ]]; then

@@ -58,6 +58,23 @@ Under `set -e` this causes immediate termination. Use `var=$((var + 1))` instead
 FAILED=$((FAILED + 1))
 ```
 
+`declare -A` (associative arrays) requires bash 4+. macOS ships bash 3.2 by default,
+so scripts using `declare -A` fail with exit code 2 on macOS. Use a temp file with
+`grep -qxF` for set-membership lookups instead:
+
+```bash
+# BAD: fails on bash 3.2
+declare -A seen
+seen["key"]=1
+[[ -n "${seen["key"]:-}" ]]
+
+# OK: bash 3.2 compatible
+seen_file=$(mktemp /tmp/cekernel-seen.XXXXXX)
+echo "key" >> "$seen_file"
+grep -qxF "key" "$seen_file"
+rm -f "$seen_file"
+```
+
 ### Environment Variables
 
 Use the `CEKERNEL_` prefix. Use `${VAR:-default}` pattern for default values. See [`envs/README.md`](./envs/README.md) for the full variable catalog.
