@@ -76,6 +76,17 @@ assert_not_exists() {
   fi
 }
 
+wait_for_file() {
+  local file="$1"
+  local max_attempts="${2:-30}"
+  local i
+  for i in $(seq 1 "$max_attempts"); do
+    [[ -f "$file" ]] && return 0
+    sleep 0.1
+  done
+  return 1
+}
+
 report_results() {
   echo ""
   echo "Results: ${TESTS_PASSED} passed, ${TESTS_FAILED} failed"

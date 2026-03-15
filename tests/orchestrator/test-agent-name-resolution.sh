@@ -58,17 +58,7 @@ chmod +x "${MOCK_BIN}/claude"
 OLD_PATH="$PATH"
 export PATH="${MOCK_BIN}:${PATH}"
 
-# Helper: poll for file existence with timeout (avoids flaky sleep)
-wait_for_file() {
-  local file="$1"
-  local max_attempts="${2:-30}"
-  local i
-  for i in $(seq 1 "$max_attempts"); do
-    [[ -f "$file" ]] && return 0
-    sleep 0.1
-  done
-  return 1
-}
+# wait_for_file is provided by helpers.sh
 
 # ── Test 3a: headless backend uses agent name from 5th parameter ──
 export CEKERNEL_BACKEND=headless
