@@ -93,15 +93,28 @@ Proceed with delegation to Orchestrator? (y/n)
 
 Wait for user confirmation. If the user declines, exit without action.
 
-### Step 4: Parse `--env` and Launch Orchestrator Agent
+### Step 4: Parse `--env`, Persist Claude Code Session ID, and Launch Orchestrator Agent
 
 If `--env <profile>` was specified, set `CEKERNEL_ENV` to the given profile name. If not specified, default to `default`.
+
+**Persist Claude Code Session ID** — Before launching the Orchestrator, discover and save the current Claude Code session ID so that `/postmortem` can later locate Orchestrator transcripts:
+
+```bash
+source "${CEKERNEL_SCRIPTS}/shared/load-env.sh"
+source "${CEKERNEL_SCRIPTS}/shared/session-id.sh"
+source "${CEKERNEL_SCRIPTS}/shared/claude-session-id.sh"
+mkdir -p "$CEKERNEL_IPC_DIR"
+PROJECT_ROOT="$(git rev-parse --show-toplevel)"
+CLAUDE_SESSION_ID=$(claude_session_id_discover "$PROJECT_ROOT") && claude_session_id_persist "$CLAUDE_SESSION_ID"
+```
+
+If discovery fails (e.g., no `.jsonl` files found), log a warning and continue — the session ID is optional for Orchestrator operation.
 
 Launch the Orchestrator subagent via the Task tool:
 
 - `subagent_type`: Use `CEKERNEL_AGENT_ORCHESTRATOR` determined in Step 0
 - `run_in_background`: `true`
-- `prompt`: Include issue numbers, execution order (if determined in Step 2), `CEKERNEL_ENV` value, `CEKERNEL_AGENT_WORKER` value, and `CEKERNEL_AGENT_REVIEWER` value. Instruct the Orchestrator to pass `export CEKERNEL_ENV=<profile>` in **all script invocations** (not just `spawn-worker.sh`, but also `watch.sh`, `process-status.sh`, `cleanup-worktree.sh`, `spawn-reviewer.sh`, etc.), `export CEKERNEL_AGENT_WORKER=<agent-name>` in all `spawn-worker.sh` invocations, and `export CEKERNEL_AGENT_REVIEWER=<agent-name>` in all `spawn-reviewer.sh` invocations.
+- `prompt`: Include issue numbers, execution order (if determined in Step 2), `CEKERNEL_SESSION_ID` value, `CEKERNEL_ENV` value, `CEKERNEL_AGENT_WORKER` value, and `CEKERNEL_AGENT_REVIEWER` value. Instruct the Orchestrator to pass `export CEKERNEL_SESSION_ID=<ID>` and `export CEKERNEL_ENV=<profile>` in **all script invocations** (not just `spawn-worker.sh`, but also `watch.sh`, `process-status.sh`, `cleanup-worktree.sh`, `spawn-reviewer.sh`, etc.), `export CEKERNEL_AGENT_WORKER=<agent-name>` in all `spawn-worker.sh` invocations, and `export CEKERNEL_AGENT_REVIEWER=<agent-name>` in all `spawn-reviewer.sh` invocations.
 
 Example prompt fragment:
 
