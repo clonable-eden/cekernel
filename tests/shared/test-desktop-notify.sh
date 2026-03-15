@@ -158,11 +158,13 @@ create_mock "powershell.exe" 'echo "powershell called: $*" >> "${DESKTOP_NOTIFY_
 create_mock "wslpath" 'echo "C:\\fake\\logo.png"'
 setup_platform
 
-# ── Test 10: WSL — powershell.exe called with toast XML ──
+# ── Test 10: WSL — powershell.exe called with toast XML containing title and message ──
 > "$MOCK_LOG"
 desktop_notify "WSL Title" "WSL Message"
 MOCK_OUTPUT=$(cat "$MOCK_LOG" 2>/dev/null || echo "")
 assert_match "powershell.exe called on WSL" "powershell called:" "$MOCK_OUTPUT"
+assert_match "WSL toast XML contains title" "WSL Title" "$MOCK_OUTPUT"
+assert_match "WSL toast XML contains message" "WSL Message" "$MOCK_OUTPUT"
 
 # ═══════════════════════════════════════
 # General tests
