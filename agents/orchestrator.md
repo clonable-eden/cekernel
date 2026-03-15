@@ -455,7 +455,7 @@ gh pr merge <pr-number> --delete-branch
 
 # Always:
 export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && cleanup-worktree.sh <issue>
-source desktop-notify.sh && desktop_notify "cekernel" "Issue #<issue> approved and merged"
+source desktop-notify.sh && desktop_notify "cekernel" "Issue #<issue> approved and merged" "$(gh pr view <pr-number> --json url -q .url)"
 # Release issue lock (Orchestrator's responsibility for ci-passed lifecycle)
 source issue-lock.sh && issue_lock_release "$(git rev-parse --show-toplevel)" <issue>
 ```
@@ -463,7 +463,7 @@ source issue-lock.sh && issue_lock_release "$(git rev-parse --show-toplevel)" <i
 If `CEKERNEL_AUTO_MERGE=false`, skip `gh pr merge` and notify the human instead:
 
 ```bash
-source desktop-notify.sh && desktop_notify "cekernel" "Issue #<issue> approved — waiting for human merge"
+source desktop-notify.sh && desktop_notify "cekernel" "Issue #<issue> approved — waiting for human merge" "$(gh pr view <pr-number> --json url -q .url)"
 ```
 
 #### changes-requested
@@ -497,7 +497,7 @@ Triggered when retry limit is exceeded or the Reviewer returns an unexpected res
 
 ```bash
 export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=<profile> && cleanup-worktree.sh <issue>
-source desktop-notify.sh && desktop_notify "cekernel" "Issue #<issue> escalated — human review needed"
+source desktop-notify.sh && desktop_notify "cekernel" "Issue #<issue> escalated — human review needed" "$(gh pr view <pr-number> --json url -q .url)"
 source issue-lock.sh && issue_lock_release "$(git rev-parse --show-toplevel)" <issue>
 ```
 
