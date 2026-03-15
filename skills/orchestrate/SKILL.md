@@ -67,6 +67,7 @@ If `--env <profile>` was specified, set `CEKERNEL_ENV` to the given profile name
 **Persist Claude Code Session ID** — Before launching the Orchestrator, discover and save the current Claude Code session ID so that `/postmortem` can later locate Orchestrator transcripts:
 
 ```bash
+source "${CEKERNEL_SCRIPTS}/shared/load-env.sh"
 source "${CEKERNEL_SCRIPTS}/shared/session-id.sh"
 source "${CEKERNEL_SCRIPTS}/shared/claude-session-id.sh"
 mkdir -p "$CEKERNEL_IPC_DIR"
