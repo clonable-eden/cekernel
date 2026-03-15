@@ -148,7 +148,7 @@ mv tmp.json .claude-plugin/plugin.json
 
 #### 5c: Write RELEASE_NOTES.md
 
-Write the confirmed release notes to `RELEASE_NOTES.md` at the repository root.
+Overwrite `RELEASE_NOTES.md` at the repository root with the confirmed release notes for this version only. Past releases are preserved in GitHub Releases and do not need to be kept in this file.
 
 #### 5d: Commit and push
 
