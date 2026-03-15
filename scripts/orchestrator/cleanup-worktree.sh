@@ -9,6 +9,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/../shared/load-env.sh"
 source "${SCRIPT_DIR}/../shared/session-id.sh"
 source "${SCRIPT_DIR}/../shared/claude-json-helper.sh"
 source "${SCRIPT_DIR}/../shared/backend-adapter.sh"
