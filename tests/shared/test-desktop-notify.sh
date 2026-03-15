@@ -13,10 +13,12 @@ echo "test: desktop-notify"
 MOCK_BIN=$(mktemp -d)
 MOCK_LOG=$(mktemp)
 export DESKTOP_NOTIFY_MOCK_LOG="$MOCK_LOG"
+ORIG_PATH="$PATH"
 
 cleanup() {
   rm -f "$MOCK_LOG"
   rm -rf "$MOCK_BIN"
+  PATH="$ORIG_PATH"
 }
 trap cleanup EXIT
 
@@ -29,6 +31,15 @@ create_mock() {
 ${body}
 MOCK
   chmod +x "${MOCK_BIN}/${name}"
+}
+
+# Helper: re-source desktop-notify.sh with mocked PATH.
+# Platform detection happens at source time. Sets PATH for the rest of the test block.
+setup_platform() {
+  unset -f desktop_notify 2>/dev/null || true
+  unset _DESKTOP_NOTIFY_PLATFORM 2>/dev/null || true
+  PATH="${MOCK_BIN}:${ORIG_PATH}"
+  source "${CEKERNEL_DIR}/scripts/shared/desktop-notify.sh"
 }
 
 # ── Test 1: desktop_notify function exists after sourcing ──
@@ -59,12 +70,17 @@ else
   TESTS_PASSED=$((TESTS_PASSED + 1))
 fi
 
-# ── Test 4: macOS — osascript called with sound name Glass ──
-> "$MOCK_LOG"
+# ═══════════════════════════════════════
+# macOS tests
+# ═══════════════════════════════════════
+
 create_mock "uname" 'echo "Darwin"'
 create_mock "osascript" 'echo "osascript called: $*" >> "${DESKTOP_NOTIFY_MOCK_LOG}"'
-# Ensure /proc/version does not exist (macOS) — use a non-existent path
-PATH="${MOCK_BIN}:${PATH}" desktop_notify "Test Title" "Test Message"
+setup_platform
+
+# ── Test 4: macOS — osascript called with sound name Glass ──
+> "$MOCK_LOG"
+desktop_notify "Test Title" "Test Message"
 MOCK_OUTPUT=$(cat "$MOCK_LOG" 2>/dev/null || echo "")
 assert_match "osascript called on Darwin" "osascript called:" "$MOCK_OUTPUT"
 assert_match "title is passed" "Test Title" "$MOCK_OUTPUT"
@@ -75,8 +91,8 @@ assert_match "sound name Glass included" "Glass" "$MOCK_OUTPUT"
 > "$MOCK_LOG"
 MOCK_OPEN_LOG=$(mktemp)
 create_mock "open" 'echo "open called: $*" >> "'"${MOCK_OPEN_LOG}"'"'
-unset CEKERNEL_NOTIFY_MACOS_ACTION
-PATH="${MOCK_BIN}:${PATH}" desktop_notify "Title" "Message" "https://example.com"
+unset CEKERNEL_NOTIFY_MACOS_ACTION 2>/dev/null || true
+desktop_notify "Title" "Message" "https://example.com"
 OPEN_OUTPUT=$(cat "$MOCK_OPEN_LOG" 2>/dev/null || echo "")
 if [[ -z "$OPEN_OUTPUT" ]]; then
   echo "  PASS: CEKERNEL_NOTIFY_MACOS_ACTION=none does not call open"
@@ -92,7 +108,7 @@ rm -f "$MOCK_OPEN_LOG"
 > "$MOCK_LOG"
 MOCK_OPEN_LOG=$(mktemp)
 create_mock "open" 'echo "open called: $*" >> "'"${MOCK_OPEN_LOG}"'"'
-CEKERNEL_NOTIFY_MACOS_ACTION=open PATH="${MOCK_BIN}:${PATH}" desktop_notify "Title" "Message" "https://example.com"
+CEKERNEL_NOTIFY_MACOS_ACTION=open desktop_notify "Title" "Message" "https://example.com"
 OPEN_OUTPUT=$(cat "$MOCK_OPEN_LOG" 2>/dev/null || echo "")
 assert_match "open called with URL" "open called:.*https://example.com" "$OPEN_OUTPUT"
 rm -f "$MOCK_OPEN_LOG"
@@ -101,20 +117,25 @@ rm -f "$MOCK_OPEN_LOG"
 > "$MOCK_LOG"
 MOCK_PBCOPY_LOG=$(mktemp)
 create_mock "pbcopy" 'cat > /dev/null; echo "pbcopy called" >> "'"${MOCK_PBCOPY_LOG}"'"'
-CEKERNEL_NOTIFY_MACOS_ACTION=pbcopy PATH="${MOCK_BIN}:${PATH}" desktop_notify "Title" "Message" "https://example.com"
+CEKERNEL_NOTIFY_MACOS_ACTION=pbcopy desktop_notify "Title" "Message" "https://example.com"
 PBCOPY_OUTPUT=$(cat "$MOCK_PBCOPY_LOG" 2>/dev/null || echo "")
 assert_match "pbcopy called for URL" "pbcopy called" "$PBCOPY_OUTPUT"
 rm -f "$MOCK_PBCOPY_LOG"
 
-# ── Test 8: Linux — notify-send called with icon ──
-> "$MOCK_LOG"
-# Mock uname to return Linux, ensure not WSL
+# ═══════════════════════════════════════
+# Linux tests
+# ═══════════════════════════════════════
+
 create_mock "uname" 'echo "Linux"'
 create_mock "notify-send" 'echo "notify-send called: $*" >> "${DESKTOP_NOTIFY_MOCK_LOG}"'
 create_mock "canberra-gtk-play" 'echo "canberra called: $*" >> "${DESKTOP_NOTIFY_MOCK_LOG}"'
-# Override /proc/version check — create a mock grep that returns failure for microsoft
+# Mock grep to return failure for microsoft (native Linux, not WSL)
 create_mock "grep" 'exit 1'
-PATH="${MOCK_BIN}:${PATH}" desktop_notify "Linux Title" "Linux Message"
+setup_platform
+
+# ── Test 8: Linux — notify-send called with icon ──
+> "$MOCK_LOG"
+desktop_notify "Linux Title" "Linux Message"
 MOCK_OUTPUT=$(cat "$MOCK_LOG" 2>/dev/null || echo "")
 assert_match "notify-send called on Linux" "notify-send called:" "$MOCK_OUTPUT"
 assert_match "Linux title is passed" "Linux Title" "$MOCK_OUTPUT"
@@ -126,28 +147,41 @@ assert_match "logo.png used as icon" "logo.png" "$MOCK_OUTPUT"
 assert_match "canberra-gtk-play called" "canberra called:" "$MOCK_OUTPUT"
 assert_match "message-new-instant sound" "message-new-instant" "$MOCK_OUTPUT"
 
-# ── Test 10: WSL — powershell.exe called with toast XML ──
-> "$MOCK_LOG"
+# ═══════════════════════════════════════
+# WSL tests
+# ═══════════════════════════════════════
+
 create_mock "uname" 'echo "Linux"'
 # Mock grep to return success for microsoft (WSL detection)
 create_mock "grep" 'exit 0'
 create_mock "powershell.exe" 'echo "powershell called: $*" >> "${DESKTOP_NOTIFY_MOCK_LOG}"'
 create_mock "wslpath" 'echo "C:\\fake\\logo.png"'
-PATH="${MOCK_BIN}:${PATH}" desktop_notify "WSL Title" "WSL Message"
+setup_platform
+
+# ── Test 10: WSL — powershell.exe called with toast XML ──
+> "$MOCK_LOG"
+desktop_notify "WSL Title" "WSL Message"
 MOCK_OUTPUT=$(cat "$MOCK_LOG" 2>/dev/null || echo "")
 assert_match "powershell.exe called on WSL" "powershell called:" "$MOCK_OUTPUT"
 
+# ═══════════════════════════════════════
+# General tests
+# ═══════════════════════════════════════
+
 # ── Test 11: best-effort — does not fail when notification tool is missing ──
 MOCK_BIN_EMPTY=$(mktemp -d)
-create_mock "uname" 'echo "Darwin"'
-# osascript not in MOCK_BIN_EMPTY
 cat > "${MOCK_BIN_EMPTY}/uname" <<'MOCK'
 #!/usr/bin/env bash
 echo "Darwin"
 MOCK
 chmod +x "${MOCK_BIN_EMPTY}/uname"
 
-if PATH="${MOCK_BIN_EMPTY}" desktop_notify "Title" "Message"; then
+unset -f desktop_notify 2>/dev/null || true
+unset _DESKTOP_NOTIFY_PLATFORM 2>/dev/null || true
+PATH="${MOCK_BIN_EMPTY}:${ORIG_PATH}" source "${CEKERNEL_DIR}/scripts/shared/desktop-notify.sh"
+PATH="${MOCK_BIN_EMPTY}:${ORIG_PATH}"
+
+if desktop_notify "Title" "Message"; then
   echo "  PASS: desktop_notify does not fail when notification tool is missing"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
@@ -157,10 +191,12 @@ fi
 rm -rf "$MOCK_BIN_EMPTY"
 
 # ── Test 12: URL is optional — no error when omitted ──
-> "$MOCK_LOG"
 create_mock "uname" 'echo "Darwin"'
 create_mock "osascript" 'echo "osascript called: $*" >> "${DESKTOP_NOTIFY_MOCK_LOG}"'
-if PATH="${MOCK_BIN}:${PATH}" desktop_notify "Title" "Message"; then
+setup_platform
+
+> "$MOCK_LOG"
+if desktop_notify "Title" "Message"; then
   echo "  PASS: URL is optional — no error when omitted"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
@@ -170,9 +206,12 @@ fi
 
 # ── Test 13: backward compatibility — 2-arg call still works ──
 > "$MOCK_LOG"
-PATH="${MOCK_BIN}:${PATH}" desktop_notify "Compat Title" "Compat Message"
+desktop_notify "Compat Title" "Compat Message"
 MOCK_OUTPUT=$(cat "$MOCK_LOG" 2>/dev/null || echo "")
 assert_match "backward compat: osascript called" "osascript called:" "$MOCK_OUTPUT"
 assert_match "backward compat: title passed" "Compat Title" "$MOCK_OUTPUT"
+
+# Restore PATH
+PATH="$ORIG_PATH"
 
 report_results
