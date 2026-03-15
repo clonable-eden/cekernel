@@ -1,3 +1,71 @@
+# cekernel-v1.7.0
+
+## Highlights
+- **Post-mortem analysis skill (`/postmortem`)** — New skill that locates Orchestrator/Worker/Reviewer transcripts for a given issue and analyzes them for recurring failure patterns, with ADR-0013 documenting the design
+- **Transcript discovery infrastructure** — `transcript-locator.sh` and `claude-session-id.sh` enable automatic discovery of Claude Code session transcripts via IPC-based session ID propagation
+- **Post-mortem patterns catalog** — Extracted common failure patterns from real transcript analysis into a reusable reference (`postmortem-patterns.md`)
+- **Renovate integration** — Automated dependency management with GitHub Actions pinning, grouping, automerge, and auto-approve workflow
+- **Agent name propagation** — Worker agent names are now propagated to backends, enabling better identification in multi-agent sessions
+- **Runner simplification** — Removed `script` command wrapping and headless backend stdout redirect in favor of transcript-based analysis, streamlining the execution pipeline
+- **Environment profile reorganization** — Cleaner env profile structure with headless as default, explicit wezterm/tmux profiles, and CI profile removed
+
+## New Features
+- Add `/postmortem` skill for transcript-based post-mortem analysis
+- Add `postmortem-patterns.md` derived from recent transcript analysis
+- Persist Claude Code session ID in `/orchestrate` skill for transcript discovery
+- Add IPC-based orchestrator transcript discovery
+- Add `claude-session-id.sh` for Claude Code session ID management
+- Add `transcript-locator.sh` for post-mortem transcript discovery
+- Add auto-approve workflow for Renovate PRs
+- Propagate agent name to backends and clear resume marker on respawn
+- Configure Renovate with GHA grouping, pinDigests, minimumReleaseAge, and automerge
+
+## Bug Fixes
+- Use array instead of xargs for portable empty-result handling
+- Replace `hmarr/auto-approve-action` with `gh` CLI
+- Move resume marker cleanup from `spawn.sh` to Worker (self-cleanup)
+- Always use fresh temp dir in `run-tests.sh` to prevent production IPC deletion
+- Update `backend-adapter.sh` default to headless for consistency
+- Add `helpers:pinGitHubActionDigests` preset to Renovate config
+
+## Documentation
+- Add ADR-0013: transcript-based post-mortem analysis
+- Add transcript discovery section to `internals.md`
+- Update README for v1.7.0 changes
+- Convert issue references to explicit markdown links
+- Translate Japanese descriptions to English in `envs/README.md`
+
+## Other Changes
+- Remove headless backend stdout redirect in favor of transcript-based analysis
+- Remove `script` command wrapping from runner, rename `script-capture.sh` to `runner.sh`
+- Reorganize env profiles (default to headless, add wezterm/tmux, remove ci)
+
+## What's Changed
+* chore: v1.7.0 release prep — add postmortem symlink and update docs by @clonable-eden in https://github.com/clonable-eden/cekernel/pull/363
+* feat: add /postmortem skill for transcript-based analysis by @clonable-eden in https://github.com/clonable-eden/cekernel/pull/361
+* feat: add postmortem-patterns.md derived from transcript analysis by @clonable-eden in https://github.com/clonable-eden/cekernel/pull/360
+* feat: persist Claude Code session ID for transcript discovery by @clonable-eden in https://github.com/clonable-eden/cekernel/pull/359
+* feat: add transcript-locator.sh for post-mortem transcript discovery by @clonable-eden in https://github.com/clonable-eden/cekernel/pull/357
+* docs: add ADR-0013 transcript-based post-mortem analysis by @clonable-eden in https://github.com/clonable-eden/cekernel/pull/353
+* fix: replace hmarr/auto-approve-action with gh CLI by @clonable-eden in https://github.com/clonable-eden/cekernel/pull/352
+* refactor: remove headless backend stdout redirect by @clonable-eden in https://github.com/clonable-eden/cekernel/pull/350
+* refactor: remove script command wrapping from runner by @clonable-eden in https://github.com/clonable-eden/cekernel/pull/348
+* feat: add auto-approve workflow for Renovate PRs by @clonable-eden in https://github.com/clonable-eden/cekernel/pull/345
+* feat: propagate agent name to backends and clear resume marker on respawn by @clonable-eden in https://github.com/clonable-eden/cekernel/pull/343
+* fix: run-tests.sh deletes production IPC directory when CEKERNEL_VAR_DIR is inherited by @clonable-eden in https://github.com/clonable-eden/cekernel/pull/341
+* refactor: reorganize env profiles (default to headless, add wezterm/tmux, remove ci) by @clonable-eden in https://github.com/clonable-eden/cekernel/pull/338
+* chore: update .gitignore pattern from .cekernel-env to .cekernel* by @clonable-eden in https://github.com/clonable-eden/cekernel/pull/337
+* docs: translate Japanese descriptions to English in envs/README.md by @clonable-eden in https://github.com/clonable-eden/cekernel/pull/334
+* fix: add helpers:pinGitHubActionDigests preset to Renovate config by @clonable-eden in https://github.com/clonable-eden/cekernel/pull/332
+* chore(deps): pin dependencies by @app/renovate in https://github.com/clonable-eden/cekernel/pull/331
+* feat: configure Renovate GHA grouping, pinDigests, minimumReleaseAge, automerge by @clonable-eden in https://github.com/clonable-eden/cekernel/pull/330
+* chore(deps): update dorny/paths-filter action to v4 by @app/renovate in https://github.com/clonable-eden/cekernel/pull/327
+* chore: Configure Renovate by @app/renovate in https://github.com/clonable-eden/cekernel/pull/326
+
+**Full Changelog**: https://github.com/clonable-eden/cekernel/compare/cekernel-v1.6.0...cekernel-v1.7.0
+
+---
+
 # cekernel-v1.6.0
 
 ## Highlights
