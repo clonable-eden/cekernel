@@ -77,6 +77,9 @@ fi
 # ── Test 11: Runner script uses exec claude directly ──
 assert_match "runner uses exec claude" "exec claude -p --agent" "$RUNNER_CONTENT"
 
+# ── Test 16: Runner script sources .cekernel-env ──
+assert_match "runner sources .cekernel-env" "source .cekernel-env" "$RUNNER_CONTENT"
+
 # ── Test 12: Prompt with double quotes ──
 write_runner_script "43" "/tmp/wt" "s" "worker" 'Resolve "issue"' >/dev/null
 PROMPT_43=$(cat "${CEKERNEL_IPC_DIR}/prompt-43.txt")

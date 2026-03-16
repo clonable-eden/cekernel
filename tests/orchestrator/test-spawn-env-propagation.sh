@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # test-spawn-env-propagation.sh — Tests that spawn.sh writes .cekernel-env
-# and uses a short BASH_PREFIX ("source .cekernel-env")
+# and that PATH is propagated via runner script (not via LLM PROMPT prefix).
 #
 # Verifies:
 # 1. .cekernel-env is written to the worktree with all env vars
-# 2. BASH_PREFIX is "source .cekernel-env" (not the full export string)
-# 3. Both PROMPT strings use the short BASH_PREFIX
+# 2. BASH_PREFIX removed: spawn.sh does not embed prefix instruction in PROMPT
+# 3. PROMPT strings do not include "When executing Bash" prefix instruction
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -38,31 +38,32 @@ else
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-# ── Test 3: BASH_PREFIX uses "source .cekernel-env" (short form) ──
-if [[ "$SCRIPT_CONTENT" == *'BASH_PREFIX="source .cekernel-env"'* ]]; then
-  echo "  PASS: BASH_PREFIX is short form (source .cekernel-env)"
+# ── Test 3: BASH_PREFIX removed — spawn.sh must not define BASH_PREFIX ──
+# PATH is now propagated via .cekernel-env sourced by the runner script.
+if [[ "$SCRIPT_CONTENT" != *'BASH_PREFIX='* ]]; then
+  echo "  PASS: BASH_PREFIX removed from spawn.sh (PATH via runner script)"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
-  echo "  FAIL: BASH_PREFIX is not 'source .cekernel-env'"
+  echo "  FAIL: BASH_PREFIX still present in spawn.sh"
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-# ── Test 4: BASH_PREFIX does NOT contain the long export string ──
-if [[ "$SCRIPT_CONTENT" != *'BASH_PREFIX="export CEKERNEL_SESSION_ID='* ]]; then
-  echo "  PASS: BASH_PREFIX does not contain long export string"
+# ── Test 4: PROMPT strings do NOT contain the "When executing Bash" prefix instruction ──
+if [[ "$SCRIPT_CONTENT" != *'When executing Bash'* ]]; then
+  echo "  PASS: PROMPT does not contain 'When executing Bash' prefix instruction"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
-  echo "  FAIL: BASH_PREFIX still contains long export string"
+  echo "  FAIL: PROMPT still contains 'When executing Bash' prefix instruction"
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-# ── Test 5: Both PROMPT strings use BASH_PREFIX ──
-PROMPT_COUNT=$(grep -c '${BASH_PREFIX}' "$SPAWN_SCRIPT" || true)
-if [[ "$PROMPT_COUNT" -ge 2 ]]; then
-  echo "  PASS: Both PROMPT strings use BASH_PREFIX (count=$PROMPT_COUNT)"
+# ── Test 5: runner.sh sources .cekernel-env in generated script ──
+RUNNER_SCRIPT="${CEKERNEL_DIR}/scripts/shared/runner.sh"
+if grep -q 'source .cekernel-env' "$RUNNER_SCRIPT"; then
+  echo "  PASS: runner.sh generates scripts that source .cekernel-env"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
-  echo "  FAIL: Expected BASH_PREFIX in both PROMPT strings, found $PROMPT_COUNT"
+  echo "  FAIL: runner.sh does not source .cekernel-env"
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
@@ -90,11 +91,11 @@ SHARED_SCRIPTS_DIR="${CEKERNEL_DIR}/scripts/shared"
 assert_dir_exists "scripts/process directory exists" "$WORKER_SCRIPTS_DIR"
 assert_dir_exists "scripts/shared directory exists" "$SHARED_SCRIPTS_DIR"
 
-# ── Test 9: .cekernel-env is written for both normal and resume modes ──
-# The env file must be generated in both code paths (not just normal mode)
+# ── Test 9: .cekernel-env is referenced in spawn.sh (write + comments) ──
+# The env file write is the key reference; comments confirm intent.
 ENV_WRITE_COUNT=$(grep -c 'cekernel-env' "$SPAWN_SCRIPT" || true)
 if [[ "$ENV_WRITE_COUNT" -ge 3 ]]; then
-  echo "  PASS: .cekernel-env referenced multiple times (write + BASH_PREFIX + PROMPT or more)"
+  echo "  PASS: .cekernel-env referenced multiple times in spawn.sh (count=$ENV_WRITE_COUNT)"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
   echo "  FAIL: Expected .cekernel-env to be referenced at least 3 times, found $ENV_WRITE_COUNT"

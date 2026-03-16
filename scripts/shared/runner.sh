@@ -31,6 +31,7 @@ write_runner_script() {
 #!/usr/bin/env bash
 cd '${worktree}'
 unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ACCESS_TOKEN
+source .cekernel-env
 export CEKERNEL_SESSION_ID='${session_id}'
 
 PROMPT=\$(cat '${prompt_file}')
