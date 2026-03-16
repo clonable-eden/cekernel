@@ -47,14 +47,14 @@ cekernel defines only the lifecycle skeleton for Workers:
 3. **Determine startup mode** by checking the following in order:
    1. `.cekernel-task.md` contains `## Resume Reason: changes-requested` →
       - Read the marker content and determine the processing approach
-      - **Clear the marker from the task file** (`source task-file.sh && task_file_clear_resume_marker "$PWD"`) — this prevents stale markers from causing incorrect behavior on subsequent respawns
+      - **Clear the marker from the task file** (`clear-resume-marker.sh "$PWD"`) — this prevents stale markers from causing incorrect behavior on subsequent respawns
       - Read PR review comments (`gh pr view <pr> --comments`), fix issues, push, and wait for CI
    2. `.cekernel-checkpoint.md` exists → SUSPEND resume (read it to understand previous progress and continue from where the last Worker left off)
    3. Neither → fresh start
 4. Read issue content from `.cekernel-task.md` in the worktree (pre-extracted at spawn time)
    - If `.cekernel-task.md` does not exist, fall back to `gh issue view`
 5. Understand the issue requirements
-6. Write state: `source worker-state.sh && worker_state_write <issue-number> RUNNING "phase0:plan"`
+6. Write state: `worker-state-write.sh <issue-number> RUNNING "phase0:plan"`
 7. Post Execution Plan as a comment on the issue (or a Resume Plan if resuming)
 
 ```bash
@@ -99,11 +99,8 @@ fi
 2. Write a checkpoint file to the worktree:
 
 ```bash
-# Source the checkpoint helper (checkpoint-file.sh in scripts/shared/)
-source checkpoint-file.sh
-
 # Save current progress
-create_checkpoint_file "$WORKTREE" \
+create-checkpoint.sh "$WORKTREE" \
   "Phase 1 (Implementation)" \
   "tests written, 2/5 files implemented" \
   "implement remaining 3 files" \
@@ -135,7 +132,7 @@ Phase 4 (Notify)
 Workers report their state at each phase boundary using `worker_state_write`. This makes Worker activity visible to `process-status.sh`, `health-check.sh`, and the Orchestrator.
 
 ```bash
-source worker-state.sh && worker_state_write <issue-number> RUNNING "phase1:implement"
+worker-state-write.sh <issue-number> RUNNING "phase1:implement"
 ```
 
 Write state at the **start** of each phase:
@@ -153,7 +150,7 @@ Write state at the **start** of each phase:
 
 ### Phase 1: Implementation
 
-> State: `source worker-state.sh && worker_state_write <issue> RUNNING "phase1:implement"`
+> State: `worker-state-write.sh <issue> RUNNING "phase1:implement"`
 
 Implement **following the target repository's rules**.
 
@@ -168,7 +165,7 @@ For issues involving code changes, follow [TDD](../docs/tdd.md) with test-first 
 
 ### Phase 2: Create PR
 
-> State: `source worker-state.sh && worker_state_write <issue> RUNNING "phase2:create-pr"`
+> State: `worker-state-write.sh <issue> RUNNING "phase2:create-pr"`
 
 ```bash
 git push -u origin HEAD
@@ -195,8 +192,8 @@ EOF
 
 ### Phase 3: CI Verification
 
-> State: `source worker-state.sh && worker_state_write <issue> WAITING "phase3:ci-waiting"` (before CI wait)
-> On CI fix: `source worker-state.sh && worker_state_write <issue> RUNNING "phase3:ci-fixing"`
+> State: `worker-state-write.sh <issue> WAITING "phase3:ci-waiting"` (before CI wait)
+> On CI fix: `worker-state-write.sh <issue> RUNNING "phase3:ci-fixing"`
 
 #### Load environment profile
 

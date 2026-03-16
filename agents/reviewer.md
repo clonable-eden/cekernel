@@ -29,7 +29,7 @@ The Orchestrator spawns the Reviewer with the following context (via spawn promp
 Reviewers report their state at each workflow step using `worker_state_write`. This makes Reviewer activity visible to `process-status.sh`, `health-check.sh`, and the Orchestrator.
 
 ```bash
-source worker-state.sh && worker_state_write <issue-number> RUNNING "phase1:reading-conventions"
+worker-state-write.sh <issue-number> RUNNING "phase1:reading-conventions"
 ```
 
 Write state at the **start** of each step:
@@ -46,7 +46,7 @@ Write state at the **start** of each step:
 
 ### 1. Understand Conventions
 
-> State: `source worker-state.sh && worker_state_write <issue-number> RUNNING "phase1:reading-conventions"`
+> State: `worker-state-write.sh <issue-number> RUNNING "phase1:reading-conventions"`
 
 Read the target repository's CLAUDE.md and any referenced documents to understand:
 
@@ -64,7 +64,7 @@ If CLAUDE.md references other documents, read those as well.
 
 ### 2. Understand Intent
 
-> State: `source worker-state.sh && worker_state_write <issue-number> RUNNING "phase2:reading-issue"`
+> State: `worker-state-write.sh <issue-number> RUNNING "phase2:reading-issue"`
 
 Read the issue body to understand what the changes are meant to accomplish:
 
@@ -74,7 +74,7 @@ gh issue view <issue-number>
 
 ### 3. Review the Diff
 
-> State: `source worker-state.sh && worker_state_write <issue-number> RUNNING "phase3:reviewing-diff"`
+> State: `worker-state-write.sh <issue-number> RUNNING "phase3:reviewing-diff"`
 
 Read the PR diff and PR description:
 
@@ -94,7 +94,7 @@ Assess the changes against:
 
 ### 5. Submit Review
 
-> State: `source worker-state.sh && worker_state_write <issue-number> RUNNING "phase4:submitting-review"`
+> State: `worker-state-write.sh <issue-number> RUNNING "phase4:submitting-review"`
 
 Based on the evaluation, submit one of two verdicts:
 
