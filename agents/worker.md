@@ -161,7 +161,11 @@ Implement **following the target repository's rules**.
 
 #### Development Method: TDD (Red-Green-Refactor)
 
-For issues involving code changes, follow [TDD](../docs/tdd.md) with test-first development.
+For issues involving code changes, follow [TDD](../docs/tdd.md) with test-first development. Commit at each step:
+
+1. **RED**: Write a failing test, verify it fails, commit with `(RED)` suffix
+2. **GREEN**: Write minimum code to pass, verify it passes, commit with `(GREEN)` suffix
+3. **REFACTOR**: Improve design with tests passing, commit with `(REFACTOR)` suffix
 
 ### Phase 2: Create PR
 
