@@ -51,6 +51,8 @@ export PATH="${MOCK_BIN}:${PATH}"
 ISSUE="500"
 WORKTREE="${TEST_TMP}/worktree"
 mkdir -p "$WORKTREE"
+# Create .cekernel-env required by headless backend (always present in production)
+touch "${WORKTREE}/.cekernel-env"
 
 backend_spawn_worker "$ISSUE" "worker" "$WORKTREE" "test prompt" "worker"
 
@@ -118,6 +120,8 @@ assert_eq "kill_worker for non-existent handle exits cleanly" "0" "$EXIT_CODE"
 # ── Test 9: Second worker spawn creates handle file ──
 ISSUE2="501"
 backend_spawn_worker "$ISSUE2" "worker" "$WORKTREE" "test prompt 2" "worker"
+
+# (WORKTREE already has .cekernel-env from setup above)
 sleep 0.2
 
 # Verify handle file exists
@@ -126,6 +130,31 @@ assert_file_exists "Handle file created for second worker" "$HANDLE_FILE2"
 
 # Clean up process
 backend_kill_worker "$ISSUE2" 2>/dev/null || true
+sleep 0.2
+
+# ── Test 10: headless backend sources .cekernel-env from worktree ──
+# Verify that the spawned process inherits PATH via .cekernel-env sourcing.
+# .cekernel-env writes a marker file when sourced — detectable from outside.
+ISSUE_ENV="502"
+WORKTREE_ENV="${TEST_TMP}/worktree-env"
+mkdir -p "$WORKTREE_ENV"
+ENV_MARKER="${TEST_TMP}/env-sourced.marker"
+cat > "${WORKTREE_ENV}/.cekernel-env" <<ENVEOF
+touch '${ENV_MARKER}'
+ENVEOF
+
+backend_spawn_worker "$ISSUE_ENV" "worker" "$WORKTREE_ENV" "test prompt" "worker"
+sleep 0.5
+
+if [[ -f "$ENV_MARKER" ]]; then
+  echo "  PASS: .cekernel-env sourced by headless backend"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+else
+  echo "  FAIL: .cekernel-env was not sourced by headless backend"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+
+backend_kill_worker "$ISSUE_ENV" 2>/dev/null || true
 sleep 0.2
 
 # ── Restore PATH ──

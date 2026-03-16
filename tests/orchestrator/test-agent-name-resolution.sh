@@ -69,6 +69,8 @@ source "${CEKERNEL_DIR}/scripts/shared/backend-adapter.sh"
 ISSUE="600"
 WORKTREE="${TEST_TMP}/worktree"
 mkdir -p "$WORKTREE"
+# Create .cekernel-env required by headless backend (always present in production)
+touch "${WORKTREE}/.cekernel-env"
 
 # Pass agent name as 5th parameter (spawn.sh resolves this from env var)
 backend_spawn_worker "$ISSUE" "worker" "$WORKTREE" "test prompt" "cekernel:worker"
