@@ -44,8 +44,14 @@ assert_eq "prompt file content" "hello world" "$PROMPT_CONTENT"
 # ── Test 5: Runner script contains cd to worktree ──
 assert_match "runner contains cd" "cd '/tmp/worktree'" "$(cat "$RUNNER")"
 
-# ── Test 6: Runner script contains session ID export ──
-assert_match "runner contains session ID" "CEKERNEL_SESSION_ID='test-session'" "$(cat "$RUNNER")"
+# ── Test 6: Runner script does not explicitly export session ID (handled by .cekernel-env) ──
+if ! grep -q "export CEKERNEL_SESSION_ID" "$RUNNER"; then
+  echo "  PASS: runner does not explicitly export SESSION_ID (delegated to .cekernel-env)"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+else
+  echo "  FAIL: runner still explicitly exports SESSION_ID"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
 
 # ── Test 7: Runner script contains agent name ──
 assert_match "runner contains agent name" "agent worker" "$(cat "$RUNNER")"
@@ -77,25 +83,25 @@ fi
 # ── Test 11: Runner script uses exec claude directly ──
 assert_match "runner uses exec claude" "exec claude -p --agent" "$RUNNER_CONTENT"
 
-# ── Test 16: Runner script sources .cekernel-env ──
+# ── Test 12: Runner script sources .cekernel-env ──
 assert_match "runner sources .cekernel-env" "source .cekernel-env" "$RUNNER_CONTENT"
 
-# ── Test 12: Prompt with double quotes ──
+# ── Test 13: Prompt with double quotes ──
 write_runner_script "43" "/tmp/wt" "s" "worker" 'Resolve "issue"' >/dev/null
 PROMPT_43=$(cat "${CEKERNEL_IPC_DIR}/prompt-43.txt")
 assert_eq "double quotes preserved" 'Resolve "issue"' "$PROMPT_43"
 
-# ── Test 13: Prompt with single quotes ──
+# ── Test 14: Prompt with single quotes ──
 write_runner_script "44" "/tmp/wt" "s" "worker" "It's a test" >/dev/null
 PROMPT_44=$(cat "${CEKERNEL_IPC_DIR}/prompt-44.txt")
 assert_eq "single quotes preserved" "It's a test" "$PROMPT_44"
 
-# ── Test 14: Prompt with shell metacharacters ──
+# ── Test 15: Prompt with shell metacharacters ──
 write_runner_script "45" "/tmp/wt" "s" "worker" 'Value is $(whoami) && $HOME | `cmd`' >/dev/null
 PROMPT_45=$(cat "${CEKERNEL_IPC_DIR}/prompt-45.txt")
 assert_eq "metacharacters preserved" 'Value is $(whoami) && $HOME | `cmd`' "$PROMPT_45"
 
-# ── Test 15: prompt survives file → cat → variable → argument pipeline ──
+# ── Test 16: prompt survives file → cat → variable → argument pipeline ──
 # Verifies the critical security property: special characters in prompt
 # are not interpreted when passed through the file-based pipeline.
 # Does not require TTY (tests the pipeline, not the `script` command).
