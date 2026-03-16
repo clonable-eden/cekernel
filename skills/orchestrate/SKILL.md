@@ -40,9 +40,11 @@ Detect whether cekernel is running as a plugin or locally using file-based detec
 
 Store these values for use in subsequent steps.
 
-Also resolve the cekernel scripts path for lock checking:
-- If `CEKERNEL_NS=local`: `CEKERNEL_SCRIPTS="$(git rev-parse --show-toplevel)/scripts"`
-- If `CEKERNEL_NS=plugin`: `CEKERNEL_SCRIPTS="$(dirname "$(which spawn-worker.sh 2>/dev/null)")/../.."/scripts`
+Also resolve the cekernel scripts path for lock checking and Orchestrator propagation:
+
+```bash
+CEKERNEL_SCRIPTS="$(cd "${CLAUDE_SKILL_DIR}/../../scripts" && pwd)"
+```
 
 ### Step 1: Lock Filter and Triage
 
@@ -81,19 +83,7 @@ Launch the Orchestrator subagent via the Task tool:
 
 - `subagent_type`: Use `CEKERNEL_AGENT_ORCHESTRATOR` determined in Step 0
 - `run_in_background`: `true`
-- `prompt`: Include issue numbers, base branch (if specified), execution order (if determined in Step 1), `CEKERNEL_SESSION_ID` value, `CEKERNEL_ENV` value, `CEKERNEL_AGENT_WORKER` value, and `CEKERNEL_AGENT_REVIEWER` value. Instruct the Orchestrator to pass `export CEKERNEL_ENV=<profile>` in **all script invocations** (not just `spawn-worker.sh`, but also `watch.sh`, `process-status.sh`, `cleanup-worktree.sh`, `spawn-reviewer.sh`, etc.), `export CEKERNEL_AGENT_WORKER=<agent-name>` in all `spawn-worker.sh` invocations, and `export CEKERNEL_AGENT_REVIEWER=<agent-name>` in all `spawn-reviewer.sh` invocations.
-
-Example prompt fragment:
-
-```
-Use CEKERNEL_ENV=headless, CEKERNEL_AGENT_WORKER=cekernel:worker, and CEKERNEL_AGENT_REVIEWER=cekernel:reviewer.
-Pass CEKERNEL_ENV to ALL script calls (spawn-worker.sh, watch.sh, process-status.sh, cleanup-worktree.sh, spawn-reviewer.sh, etc.):
-export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=headless && export CEKERNEL_AGENT_WORKER=cekernel:worker && spawn-worker.sh 108
-export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=headless && watch.sh 108
-When a Worker completes with ci-passed, spawn the Reviewer via:
-export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=headless && export CEKERNEL_AGENT_REVIEWER=cekernel:reviewer && spawn-reviewer.sh 108
-export CEKERNEL_SESSION_ID=<ID> && export CEKERNEL_ENV=headless && watch.sh 108  # run_in_background: true
-```
+- `prompt`: Include issue numbers, base branch (if specified), execution order (if determined in Step 1), `CEKERNEL_SESSION_ID` value, `CEKERNEL_ENV` value, `CEKERNEL_SCRIPTS` value, `CEKERNEL_AGENT_WORKER` value, and `CEKERNEL_AGENT_REVIEWER` value. Instruct the Orchestrator to use `CEKERNEL_SCRIPTS` as prefix for all script calls, pass `export CEKERNEL_ENV=<profile>` in **all script invocations** (not just `spawn-worker.sh`, but also `watch.sh`, `process-status.sh`, `cleanup-worktree.sh`, `spawn-reviewer.sh`, etc.), `export CEKERNEL_AGENT_WORKER=<agent-name>` in all `spawn-worker.sh` invocations, and `export CEKERNEL_AGENT_REVIEWER=<agent-name>` in all `spawn-reviewer.sh` invocations.
 
 **MUST NOT**: Do not include Agent tool language (`subagent_type`, `Agent(worker)`, `Agent(reviewer)`, etc.) in the Orchestrator prompt. Workers and Reviewers are spawned by the Orchestrator via `spawn-worker.sh` / `spawn-reviewer.sh` (Bash), following its own agent definition. The skill must not dictate how the Orchestrator launches subprocesses.
 
