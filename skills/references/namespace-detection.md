@@ -28,12 +28,26 @@ Based on the detection result, set agent names:
 | local | `orchestrator` | `worker` | `probe` |
 | plugin | `cekernel:orchestrator` | `cekernel:worker` | `cekernel:probe` |
 
+## Scripts Path Resolution
+
+Skills resolve the cekernel scripts absolute path using `${CLAUDE_SKILL_DIR}`:
+
+```bash
+CEKERNEL_SCRIPTS="$(cd "${CLAUDE_SKILL_DIR}/../../scripts" && pwd)"
+```
+
+- local: `.claude/skills/<skill>/../../scripts` → `<repo>/scripts`
+- plugin: `<plugin-root>/skills/<skill>/../../scripts` → `<plugin-root>/scripts`
+
+The resolved `CEKERNEL_SCRIPTS` must be included in the Orchestrator prompt for propagation.
+
 ## Usage from SKILL.md
 
 Each SKILL.md that needs namespace detection should include a step like:
 
 > Read `namespace-detection.md` (this file) and execute the detection Bash snippet via the Bash tool.
 > Use the detected mode to set agent names for subsequent steps.
+> Also resolve `CEKERNEL_SCRIPTS` using `${CLAUDE_SKILL_DIR}` as described in Scripts Path Resolution.
 
 ### Path Resolution
 
