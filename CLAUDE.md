@@ -25,6 +25,9 @@ cekernel's design is rooted in UNIX philosophy and TDD.
 - [UNIX Philosophy](./docs/unix-philosophy.md) — Eric S. Raymond's 17 principles
 - [TDD](./docs/tdd.md) — Red-Green-Refactor cycle and testing principles
 
+These documents are symlinked in `.claude/rules/` for automatic loading by Claude Code.
+This ensures Worker/Reviewer agents read the content without requiring explicit `Read` calls.
+
 ## Scripts
 
 ### Basic Rules
