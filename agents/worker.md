@@ -54,7 +54,7 @@ cekernel defines only the lifecycle skeleton for Workers:
 4. Read issue content from `.cekernel-task.md` in the worktree (pre-extracted at spawn time)
    - If `.cekernel-task.md` does not exist, fall back to `gh issue view`
 5. Understand the issue requirements
-6. Write state: `worker-state-write.sh <issue-number> RUNNING "phase0:plan"`
+6. Transition to Phase 0: `phase-transition.sh <issue-number> RUNNING "phase0:plan"`
 7. Post Execution Plan as a comment on the issue (or a Resume Plan if resuming)
 
 ```bash
@@ -73,18 +73,23 @@ EOF
 
 The Plan must be posted before starting implementation, so the Orchestrator or humans can review the approach in advance.
 
-## Signal Handling
+## Phase Transition
 
-Workers check for signals at **phase boundaries** — between each lifecycle phase. This enables cooperative cancellation by the Orchestrator or user.
+Workers use `phase-transition.sh` at **phase boundaries** to atomically check for signals and write state. This ensures signal checks are never forgotten, since the script combines both operations into a single call.
 
-### How to check
+### How to use
 
 ```bash
-SIGNAL=$(check-signal.sh <issue-number>) || true
-if [[ -n "$SIGNAL" ]]; then
-  # Handle signal
+SIGNAL=$(phase-transition.sh <issue-number> <state> <detail>) || EXIT=$?
+if [[ "${EXIT:-0}" -eq 3 ]]; then
+  # Handle signal (TERM or SUSPEND)
 fi
 ```
+
+`phase-transition.sh` performs:
+1. `check-signal.sh` — check for pending signal
+2. If signal found → output signal name to stdout, **exit 3**
+3. If no signal → `worker-state-write.sh` to write state, **exit 0**
 
 ### On receiving `TERM`
 
@@ -113,29 +118,19 @@ create-checkpoint.sh "$WORKTREE" \
 
 ### When to check
 
-Check for signals at the boundary **before** each phase:
+Call `phase-transition.sh` at the **start** of each phase:
 
 ```
-Phase 0 (Plan)
-  ← CHECK SIGNAL
-Phase 1 (Implement)
-  ← CHECK SIGNAL
-Phase 2 (Create PR)
-  ← CHECK SIGNAL
-Phase 3 (CI verify)
-  ← CHECK SIGNAL
-Phase 4 (Notify)
+phase-transition.sh <issue> RUNNING "phase0:plan"
+  Phase 0 (Plan)
+phase-transition.sh <issue> RUNNING "phase1:implement"
+  Phase 1 (Implement)
+phase-transition.sh <issue> RUNNING "phase2:create-pr"
+  Phase 2 (Create PR)
+phase-transition.sh <issue> WAITING "phase3:ci-waiting"
+  Phase 3 (CI verify)
+  Phase 4 (Notify)
 ```
-
-## State Reporting
-
-Workers report their state at each phase boundary using `worker_state_write`. This makes Worker activity visible to `process-status.sh`, `health-check.sh`, and the Orchestrator.
-
-```bash
-worker-state-write.sh <issue-number> RUNNING "phase1:implement"
-```
-
-Write state at the **start** of each phase:
 
 | Phase | State | Detail | When |
 |---|---|---|---|
@@ -150,7 +145,7 @@ Write state at the **start** of each phase:
 
 ### Phase 1: Implementation
 
-> State: `worker-state-write.sh <issue> RUNNING "phase1:implement"`
+> Transition: `phase-transition.sh <issue> RUNNING "phase1:implement"`
 
 Implement **following the target repository's rules**.
 
@@ -169,7 +164,7 @@ For issues involving code changes, follow [TDD](../docs/tdd.md) with test-first 
 
 ### Phase 2: Create PR
 
-> State: `worker-state-write.sh <issue> RUNNING "phase2:create-pr"`
+> Transition: `phase-transition.sh <issue> RUNNING "phase2:create-pr"`
 
 ```bash
 git push -u origin HEAD
@@ -196,8 +191,8 @@ EOF
 
 ### Phase 3: CI Verification
 
-> State: `worker-state-write.sh <issue> WAITING "phase3:ci-waiting"` (before CI wait)
-> On CI fix: `worker-state-write.sh <issue> RUNNING "phase3:ci-fixing"`
+> Transition: `phase-transition.sh <issue> WAITING "phase3:ci-waiting"` (before CI wait)
+> On CI fix: `phase-transition.sh <issue> RUNNING "phase3:ci-fixing"`
 
 #### Load environment profile
 
