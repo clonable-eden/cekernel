@@ -70,6 +70,10 @@ rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.type"
 rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.signal"
 # Handle file cleanup (in case not already removed)
 rm -f "${CEKERNEL_IPC_DIR}"/handle-"${ISSUE_NUMBER}".*
+# Backend file cleanup
+rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.backend"
+# Priority file cleanup
+rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.priority"
 # Payload file cleanup (wezterm backend: avoids send-text 1024-byte limit)
 rm -f "${CEKERNEL_IPC_DIR}/payload-${ISSUE_NUMBER}.b64"
 
