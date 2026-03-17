@@ -54,12 +54,14 @@ echo '{"state":"RUNNING"}' > "${CEKERNEL_IPC_DIR}/worker-${ISSUE}.state"
 echo "wezterm" > "${CEKERNEL_IPC_DIR}/worker-${ISSUE}.backend"
 echo '{"priority":50}' > "${CEKERNEL_IPC_DIR}/worker-${ISSUE}.priority"
 
-# Simulate the IPC cleanup portion of cleanup-worktree.sh (lines 64-79)
+# Simulate the IPC cleanup portion of cleanup-worktree.sh (lines 64-81)
 rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
 rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE}.state"
 rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE}.type"
 rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE}.signal"
 rm -f "${CEKERNEL_IPC_DIR}"/handle-"${ISSUE}".*
+rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE}.backend"
+rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE}.priority"
 rm -f "${CEKERNEL_IPC_DIR}/payload-${ISSUE}.b64"
 
 assert_not_exists ".backend file removed" "${CEKERNEL_IPC_DIR}/worker-${ISSUE}.backend"
