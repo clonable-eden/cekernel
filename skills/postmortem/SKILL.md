@@ -1,20 +1,20 @@
 ---
 description: "Analyze Orchestrator/Worker/Reviewer transcripts for a given issue to detect problems and propose fixes"
-argument-hint: "<issue-number>"
+argument-hint: "<issue-number> [issue-number...]"
 allowed-tools: Bash, Read, Agent
 ---
 
 # /postmortem
 
-Analyzes Claude Code conversation transcripts associated with a given issue to detect structural problems, protocol deviations, and anti-patterns. Based on [ADR-0013](../../docs/adr/0013-transcript-based-postmortem-analysis.md).
+Analyzes Claude Code conversation transcripts associated with given issues to detect structural problems, protocol deviations, and anti-patterns. Based on [ADR-0013](../../docs/adr/0013-transcript-based-postmortem-analysis.md).
 
 ## Usage
 
 ```
-/postmortem <issue-number>
+/postmortem <issue-number> [issue-number...]
 ```
 
-The issue number identifies which Worker/Reviewer transcripts to locate. Orchestrator transcripts are discovered via the persisted Claude Code session ID in the IPC directory, or can be skipped if unavailable.
+One or more issue numbers can be specified. Each issue is analyzed independently and results are compiled into a single report. Orchestrator transcripts are discovered via `.spawned` files in the IPC directory (session reverse lookup), or can be skipped if unavailable.
 
 Note: In plugin mode, `/cekernel:postmortem` also works.
 
@@ -32,17 +32,19 @@ Detect whether cekernel is running as a plugin or locally using file-based detec
 
 ### Step 1: Discover Transcripts
 
-Use `transcript-locator.sh` to find all transcripts associated with the issue.
+Use `transcript-locator.sh` to find all transcripts associated with the issues. **Loop over each issue number** provided in the arguments.
 
 ```bash
 source "${CEKERNEL_SCRIPTS}/shared/transcript-locator.sh"
-source "${CEKERNEL_SCRIPTS}/shared/session-id.sh"
 
-# Discover Worker/Reviewer transcripts (always available by issue number)
-WORKER_TRANSCRIPTS=$(transcript_locate_worker <issue-number> 2>/dev/null) || true
+# For each issue number:
+for ISSUE in <issue-numbers...>; do
+  # Discover Worker/Reviewer transcripts (always available by issue number)
+  WORKER_TRANSCRIPTS=$(transcript_locate_worker "$ISSUE" 2>/dev/null) || true
 
-# Discover Orchestrator transcripts (via IPC-persisted session ID)
-ORCH_TRANSCRIPTS=$(transcript_locate_orchestrator_by_ipc 2>/dev/null) || true
+  # Discover Orchestrator transcripts (via .spawned file session reverse lookup)
+  ORCH_TRANSCRIPTS=$(transcript_locate_orchestrator_by_issue "$ISSUE" 2>/dev/null) || true
+done
 ```
 
 Report what was found:
@@ -50,6 +52,7 @@ Report what was found:
 ```
 ## Transcript Discovery
 
+- Issues: #N, #M, ...
 - Worker/Reviewer: N transcript(s) found
 - Orchestrator: N transcript(s) found
 - Total: N transcript(s) to analyze
@@ -116,7 +119,7 @@ For each finding:
 After all subagents complete, compile their findings into a unified report:
 
 ```
-## Post-Mortem Report: Issue #<number>
+## Post-Mortem Report: Issue #<number> [, #<number>, ...]
 
 ### Summary
 - Transcripts analyzed: N
