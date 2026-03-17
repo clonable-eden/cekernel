@@ -45,4 +45,24 @@ rmdir "$CEKERNEL_IPC_DIR" 2>/dev/null || true
 assert_dir_exists "Session dir remains (other FIFOs exist)" "$CEKERNEL_IPC_DIR"
 assert_fifo_exists "worker-52 still exists" "${CEKERNEL_IPC_DIR}/worker-52"
 
+# ── Test 3: .backend and .priority files are cleaned up ──
+cleanup
+mkdir -p "$CEKERNEL_IPC_DIR"
+ISSUE=53
+mkfifo "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
+echo '{"state":"RUNNING"}' > "${CEKERNEL_IPC_DIR}/worker-${ISSUE}.state"
+echo "wezterm" > "${CEKERNEL_IPC_DIR}/worker-${ISSUE}.backend"
+echo '{"priority":50}' > "${CEKERNEL_IPC_DIR}/worker-${ISSUE}.priority"
+
+# Simulate the IPC cleanup portion of cleanup-worktree.sh (lines 64-79)
+rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
+rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE}.state"
+rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE}.type"
+rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE}.signal"
+rm -f "${CEKERNEL_IPC_DIR}"/handle-"${ISSUE}".*
+rm -f "${CEKERNEL_IPC_DIR}/payload-${ISSUE}.b64"
+
+assert_not_exists ".backend file removed" "${CEKERNEL_IPC_DIR}/worker-${ISSUE}.backend"
+assert_not_exists ".priority file removed" "${CEKERNEL_IPC_DIR}/worker-${ISSUE}.priority"
+
 report_results
