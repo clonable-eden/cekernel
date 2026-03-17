@@ -16,6 +16,23 @@ Evaluates PRs created by Workers in a separate process, providing an independent
 - Uses the operator's `gh` authentication (cekernel owns no identity)
 - Communicates result to Orchestrator via `notify-complete.sh` (FIFO)
 
+## Script Invocation
+
+`.cekernel-env` adds `scripts/process/` and `scripts/shared/` to PATH. The following commands are available directly — **do not use full paths**:
+
+| Command | Description |
+|---------|-------------|
+| `worker-state-write.sh` | State write only |
+| `notify-complete.sh` | Completion notification to Orchestrator |
+
+```bash
+# Good — use bare command name
+worker-state-write.sh 123 RUNNING "phase1:reading-conventions"
+
+# Bad — do not search for full paths
+scripts/process/worker-state-write.sh 123 RUNNING "phase1:reading-conventions"
+```
+
 ## Input
 
 The Orchestrator spawns the Reviewer with the following context (via spawn prompt):

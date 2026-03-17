@@ -38,6 +38,29 @@ cekernel defines only the lifecycle skeleton for Workers:
 
 **It does not concern itself with implementation details, format, or conventions.**
 
+## Script Invocation
+
+`.cekernel-env` adds `scripts/process/` and `scripts/shared/` to PATH. The following commands are available directly — **do not use full paths**:
+
+| Command | Description |
+|---------|-------------|
+| `phase-transition.sh` | Signal check + state write (atomic) |
+| `worker-state-write.sh` | State write only |
+| `notify-complete.sh` | Completion notification to Orchestrator |
+| `check-signal.sh` | Signal check only |
+| `create-checkpoint.sh` | Write checkpoint file for SUSPEND resume |
+| `clear-resume-marker.sh` | Clear resume marker from task file |
+| `load-env.sh` | Load environment profile (sourced, not executed) |
+
+```bash
+# Good — use bare command name
+phase-transition.sh 123 RUNNING "phase0:plan"
+
+# Bad — do not search for full paths
+scripts/process/phase-transition.sh 123 RUNNING "phase0:plan"
+scripts/shared/phase-transition.sh 123 RUNNING "phase0:plan"  # wrong dir anyway
+```
+
 ## On Startup
 
 1. Confirm the current directory is within the worktree
