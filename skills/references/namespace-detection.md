@@ -33,7 +33,7 @@ Based on the detection result, set agent names:
 Skills resolve the cekernel scripts absolute path using `${CLAUDE_SKILL_DIR}`:
 
 ```bash
-CEKERNEL_SCRIPTS="$(cd "${CLAUDE_SKILL_DIR}/../../scripts" && pwd)"
+CEKERNEL_SCRIPTS="$(cd -P "${CLAUDE_SKILL_DIR}/../../scripts" && pwd)"
 ```
 
 - local: `.claude/skills/<skill>/../../scripts` → `<repo>/scripts`

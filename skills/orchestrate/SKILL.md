@@ -43,7 +43,7 @@ Store these values for use in subsequent steps.
 Also resolve the cekernel scripts path for lock checking and Orchestrator propagation:
 
 ```bash
-CEKERNEL_SCRIPTS="$(cd "${CLAUDE_SKILL_DIR}/../../scripts" && pwd)"
+CEKERNEL_SCRIPTS="$(cd -P "${CLAUDE_SKILL_DIR}/../../scripts" && pwd)"
 ```
 
 ### Step 1: Lock Filter and Triage
