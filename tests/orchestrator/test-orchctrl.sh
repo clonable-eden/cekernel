@@ -272,6 +272,41 @@ assert_match "inspect backend metadata: headless" '"backend":"headless"' "$OUTPU
 rm -f "${IPC_A}/worker-10.backend"
 
 # ══════════════════════════════════════════════
+# repo metadata file
+# ══════════════════════════════════════════════
+
+# ── Test 30: ls repo field reads from metadata file ──
+echo "clonable-eden/test-repo" > "${IPC_A}/repo"
+echo "RUNNING:2026-02-28T10:00:00Z:phase1:implement" > "${IPC_A}/worker-10.state"
+OUTPUT=$(bash "$ORCHCTRL" ls 2>/dev/null | grep '"issue":10')
+assert_match "ls repo from metadata file" '"repo":"clonable-eden/test-repo"' "$OUTPUT"
+rm -f "${IPC_A}/repo"
+
+# ── Test 31: ls repo field falls back to session ID prefix without metadata file ──
+OUTPUT=$(bash "$ORCHCTRL" ls 2>/dev/null | grep '"issue":10')
+assert_match "ls repo fallback to session ID prefix" '"repo":"test-orchctrl-repo1"' "$OUTPUT"
+
+# ── Test 32: ls repo field from metadata file with whitespace trimmed ──
+printf "  clonable-eden/another-repo  \n" > "${IPC_A}/repo"
+OUTPUT=$(bash "$ORCHCTRL" ls 2>/dev/null | grep '"issue":10')
+assert_match "ls repo metadata trims whitespace" '"repo":"clonable-eden/another-repo"' "$OUTPUT"
+rm -f "${IPC_A}/repo"
+
+# ── Test 33: resolve_target repo filter matches org/repo from metadata ──
+echo "clonable-eden/test-repo" > "${IPC_A}/repo"
+EXIT_CODE=0
+OUTPUT=$(bash "$ORCHCTRL" inspect "clonable-eden/test-repo:10" 2>/dev/null) || EXIT_CODE=$?
+assert_eq "resolve_target org/repo filter: exit 0" "0" "$EXIT_CODE"
+assert_match "resolve_target org/repo filter" '"issue":10' "$OUTPUT"
+rm -f "${IPC_A}/repo"
+
+# ── Test 34: resolve_target repo filter still works with short name (backward compat) ──
+EXIT_CODE=0
+OUTPUT=$(bash "$ORCHCTRL" inspect "test-orchctrl-repo1:10" 2>/dev/null) || EXIT_CODE=$?
+assert_eq "resolve_target short repo filter (backward compat): exit 0" "0" "$EXIT_CODE"
+assert_match "resolve_target short repo filter (backward compat)" '"issue":10' "$OUTPUT"
+
+# ══════════════════════════════════════════════
 # usage / no command
 # ══════════════════════════════════════════════
 

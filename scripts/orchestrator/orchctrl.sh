@@ -101,9 +101,14 @@ resolve_target() {
       local sid
       sid=$(basename "$session_dir")
 
-      # Apply repo filter: match repo prefix (session ID format: {repo}-{hex8})
+      # Apply repo filter: match repo name from metadata file or session ID prefix
       if [[ -n "$repo_prefix" ]]; then
-        local sid_repo="${sid%-*}"
+        local sid_repo
+        if [[ -f "${session_dir}repo" ]]; then
+          sid_repo=$(tr -d '[:space:]' < "${session_dir}repo")
+        else
+          sid_repo="${sid%-*}"
+        fi
         [[ "$sid_repo" == "$repo_prefix" ]] || continue
       fi
 
@@ -211,7 +216,12 @@ cmd_ls() {
     [[ -d "$session_dir" ]] || continue
     local sid
     sid=$(basename "$session_dir")
-    local sid_repo="${sid%-*}"
+    local sid_repo
+    if [[ -f "${session_dir}repo" ]]; then
+      sid_repo=$(tr -d '[:space:]' < "${session_dir}repo")
+    else
+      sid_repo="${sid%-*}"
+    fi
 
     for fifo in "$session_dir"worker-*; do
       [[ -p "$fifo" ]] || continue
