@@ -23,7 +23,7 @@
 
 CEKERNEL_ENV="${CEKERNEL_ENV:-default}"
 
-_LOAD_ENV_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_LOAD_ENV_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
 
 # _cekernel_load_env <env-file>
 # Reads KEY=VALUE lines from a file, exporting only variables not already set.
@@ -36,7 +36,8 @@ _cekernel_load_env() {
       [[ "$key" =~ ^[[:space:]]*# ]] && continue
       [[ -z "$key" ]] && continue
       # Only set if not already in environment
-      if [[ -z "${!key:-}" ]]; then
+      # Use printenv for bash/zsh portability (${!key} is bash-only)
+      if [[ -z "$(printenv "$key" 2>/dev/null)" ]]; then
         export "$key=$value"
       fi
     done < "$env_file"

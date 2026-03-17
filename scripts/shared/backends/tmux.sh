@@ -8,7 +8,7 @@
 # (e.g., "session:window.pane").
 
 # ── Dependencies ──
-_TMUX_BACKEND_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_TMUX_BACKEND_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
 source "${_TMUX_BACKEND_DIR}/../runner.sh"
 
 # ── External API ──

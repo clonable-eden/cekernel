@@ -20,7 +20,7 @@
 # Callers pass only the issue number — never raw pane IDs or PIDs.
 
 # Resolve the directory where this script lives
-_BACKEND_ADAPTER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_BACKEND_ADAPTER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
 
 # Select backend (default: headless)
 CEKERNEL_ACTIVE_BACKEND="${CEKERNEL_BACKEND:-headless}"

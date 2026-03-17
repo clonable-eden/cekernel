@@ -7,7 +7,7 @@
 # Handle file: ${CEKERNEL_IPC_DIR}/handle-{issue}.{type} contains WezTerm pane ID (numeric).
 
 # ── Dependencies ──
-_WEZTERM_BACKEND_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_WEZTERM_BACKEND_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
 source "${_WEZTERM_BACKEND_DIR}/../runner.sh"
 
 # ── External API ──
