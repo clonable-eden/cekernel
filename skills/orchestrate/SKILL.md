@@ -75,7 +75,9 @@ source "${CEKERNEL_SCRIPTS}/shared/session-id.sh"
 mkdir -p "$CEKERNEL_IPC_DIR"
 
 # 2. Write repo metadata for orchctrl (org/repo format)
-_REPO_SLUG="$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || basename "$(git rev-parse --show-toplevel)")"
+_url="$(git config --get remote.origin.url)"
+_path="${_url#*:}"; _path="${_path#*//}"; _path="${_path%.git}"
+_REPO_SLUG="${_path#*/}"
 echo "$_REPO_SLUG" > "${CEKERNEL_IPC_DIR}/repo"
 
 # 3. Persist Claude Code session ID (UUID — separate from CEKERNEL_SESSION_ID)
