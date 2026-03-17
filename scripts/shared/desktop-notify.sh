@@ -17,7 +17,7 @@
 # Environment:
 #   CEKERNEL_NOTIFY_MACOS_ACTION — macOS URL action mode (none|open|pbcopy, default: none)
 
-_DESKTOP_NOTIFY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_DESKTOP_NOTIFY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
 
 # Detect platform and source the appropriate backend
 _desktop_notify_platform() {

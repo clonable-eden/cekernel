@@ -75,14 +75,31 @@ grep -qxF "key" "$seen_file"
 rm -f "$seen_file"
 ```
 
+`BASH_SOURCE[0]` does not resolve correctly in zsh. Claude Code's Bash tool runs
+in zsh, so scripts that are `source`d by Orchestrator/Worker subagents need the
+zsh fallback `${(%):-%x}`. Scripts with a `#!/usr/bin/env bash` shebang that are
+executed directly (not sourced) are unaffected because bash is invoked explicitly:
+
+```bash
+# BAD: BASH_SOURCE[0] is empty/wrong when sourced in zsh
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# OK: bash/zsh both work — fallback only evaluated in zsh
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
+```
+
 ### Environment Variables
 
 Use the `CEKERNEL_` prefix. Use `${VAR:-default}` pattern for default values. See [`envs/README.md`](./envs/README.md) for the full variable catalog.
 
-Use `BASH_SOURCE[0]`-based path resolution for locating files relative to the script:
+Use `BASH_SOURCE[0]`-based path resolution for locating files relative to the script.
+For scripts that may be `source`d in zsh, use the zsh-compatible fallback (see Known Pitfalls):
 
 ```bash
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# If the script may be sourced in zsh (e.g., shared helpers):
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
 ```
 
 ### Flag Parsing
