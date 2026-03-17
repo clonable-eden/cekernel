@@ -18,15 +18,15 @@
 #     — Outputs one path per line to stdout
 #     — Returns 1 if no transcripts found (error on stderr)
 #
-#   transcript_locate_orchestrator_by_ipc [claude-home] [project-slug]
-#     — Find Orchestrator transcripts using session ID persisted in IPC dir
-#     — Reads ${CEKERNEL_IPC_DIR}/claude-session-id (written by /orchestrate)
+#   transcript_locate_orchestrator_by_issue <issue-number> [var-dir] [claude-home] [project-slug]
+#     — Find Orchestrator transcripts by scanning .spawned files for session reverse lookup
+#     — Scans ${var-dir}/ipc/*/{worker,reviewer}-{N}.spawned to find session IDs
 #     — Outputs one path per line to stdout
-#     — Returns 1 if no persisted session ID or no transcripts found
+#     — Returns 1 if no .spawned files or no transcripts found
 #
-#   transcript_locate_all <issue-number> [session-id] [claude-home] [project-slug]
+#   transcript_locate_all <issue-number> [session-id] [claude-home] [project-slug] [var-dir]
 #     — Combine worker + orchestrator transcript discovery
-#     — Falls back to IPC-persisted session ID when session-id is empty
+#     — Falls back to .spawned-based session lookup when session-id is empty
 #     — Outputs one path per line to stdout
 #     — Returns partial results when only some transcripts are found
 #
@@ -98,37 +98,82 @@ transcript_locate_orchestrator() {
   fi
 }
 
-# transcript_locate_orchestrator_by_ipc [claude-home] [project-slug]
-# Finds Orchestrator transcripts using the session ID persisted in IPC dir.
-# Reads ${CEKERNEL_IPC_DIR}/claude-session-id (written by claude-session-id.sh).
-# This enables transcript discovery without requiring the user to provide the
-# Claude Code session ID manually.
-transcript_locate_orchestrator_by_ipc() {
-  local claude_home="${1:-${HOME}/.claude}"
-  local project_slug="${2:-}"
+# transcript_locate_orchestrator_by_issue <issue-number> [var-dir] [claude-home] [project-slug]
+# Finds Orchestrator transcripts by scanning .spawned files for session reverse lookup.
+# spawn.sh creates {agent-type}-{N}.spawned in the IPC directory on successful spawn.
+# This function scans ${var-dir}/ipc/*/{worker,reviewer}-{N}.spawned to discover
+# which session(s) handled the given issue, then locates orchestrator transcripts
+# for those sessions. This avoids the need to source session-id.sh (which would
+# generate a new session ID) or depend on CEKERNEL_IPC_DIR.
+transcript_locate_orchestrator_by_issue() {
+  local issue_number="${1:?Usage: transcript_locate_orchestrator_by_issue <issue-number> [var-dir] [claude-home] [project-slug]}"
+  local var_dir="${2:-${CEKERNEL_VAR_DIR:-/usr/local/var/cekernel}}"
+  local claude_home="${3:-${HOME}/.claude}"
+  local project_slug="${4:-}"
 
-  # Source claude-session-id.sh if claude_session_id_read is not available
-  if ! type claude_session_id_read &>/dev/null; then
-    local script_dir
-    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    source "${script_dir}/claude-session-id.sh"
+  # Validate issue number is numeric
+  if ! [[ "$issue_number" =~ ^[0-9]+$ ]]; then
+    echo "transcript_locate_orchestrator_by_issue: issue number must be numeric: ${issue_number}" >&2
+    return 1
   fi
 
-  local session_id
-  session_id=$(claude_session_id_read) || return 1
+  local ipc_base="${var_dir}/ipc"
+  if [[ ! -d "$ipc_base" ]]; then
+    echo "No IPC directory found: ${ipc_base}" >&2
+    return 1
+  fi
 
-  transcript_locate_orchestrator "$session_id" "$claude_home" "$project_slug"
+  # Scan for .spawned files matching the issue number
+  # Pattern: ${ipc_base}/*/{worker,reviewer}-{issue_number}.spawned
+  local seen_file
+  seen_file=$(mktemp /tmp/cekernel-seen-sessions.XXXXXX)
+  local found_spawned=0
+
+  while IFS= read -r -d '' spawned_file; do
+    found_spawned=$((found_spawned + 1))
+    # Extract session ID from path: .../ipc/{session-id}/{type}-{N}.spawned
+    local session_dir
+    session_dir=$(dirname "$spawned_file")
+    local session_id
+    session_id=$(basename "$session_dir")
+    # Deduplicate sessions (multiple agent types for same issue in same session)
+    if ! grep -qxF "$session_id" "$seen_file" 2>/dev/null; then
+      echo "$session_id" >> "$seen_file"
+    fi
+  done < <(find "$ipc_base" -maxdepth 2 \( -name "worker-${issue_number}.spawned" -o -name "reviewer-${issue_number}.spawned" \) -print0 2>/dev/null)
+
+  if [[ "$found_spawned" -eq 0 ]]; then
+    rm -f "$seen_file"
+    echo "No .spawned files found for issue #${issue_number}" >&2
+    return 1
+  fi
+
+  # For each discovered session, locate orchestrator transcripts
+  local any_found=0
+  while IFS= read -r session_id; do
+    if transcript_locate_orchestrator "$session_id" "$claude_home" "$project_slug" 2>/dev/null; then
+      any_found=1
+    fi
+  done < "$seen_file"
+
+  rm -f "$seen_file"
+
+  if [[ "$any_found" -eq 0 ]]; then
+    echo "No Orchestrator transcripts found for issue #${issue_number} (sessions checked from .spawned files)" >&2
+    return 1
+  fi
 }
 
-# transcript_locate_all <issue-number> [session-id] [claude-home] [project-slug]
+# transcript_locate_all <issue-number> [session-id] [claude-home] [project-slug] [var-dir]
 # Combines worker + orchestrator transcript discovery.
-# When session-id is empty, falls back to IPC-persisted Claude Code session ID.
+# When session-id is empty, falls back to .spawned-based session reverse lookup.
 # Partial success is allowed: returns whatever is found, warns about missing.
 transcript_locate_all() {
-  local issue_number="${1:?Usage: transcript_locate_all <issue-number> [session-id] [claude-home] [project-slug]}"
+  local issue_number="${1:?Usage: transcript_locate_all <issue-number> [session-id] [claude-home] [project-slug] [var-dir]}"
   local session_id="${2:-}"
   local claude_home="${3:-${HOME}/.claude}"
   local project_slug="${4:-}"
+  local var_dir="${5:-${CEKERNEL_VAR_DIR:-/usr/local/var/cekernel}}"
 
   local any_found=0
 
@@ -139,7 +184,7 @@ transcript_locate_all() {
     echo "Warning: No Worker/Reviewer transcripts found for issue #${issue_number}" >&2
   fi
 
-  # Orchestrator transcripts (explicit session ID or IPC fallback)
+  # Orchestrator transcripts (explicit session ID or .spawned fallback)
   if [[ -n "$session_id" ]]; then
     if transcript_locate_orchestrator "$session_id" "$claude_home" "$project_slug" 2>/dev/null; then
       any_found=1
@@ -147,8 +192,8 @@ transcript_locate_all() {
       echo "Warning: No Orchestrator transcripts found for session ${session_id}" >&2
     fi
   else
-    # Fallback: try IPC-persisted Claude Code session ID
-    if transcript_locate_orchestrator_by_ipc "$claude_home" "$project_slug" 2>/dev/null; then
+    # Fallback: scan .spawned files for session reverse lookup
+    if transcript_locate_orchestrator_by_issue "$issue_number" "$var_dir" "$claude_home" "$project_slug" 2>/dev/null; then
       any_found=1
     fi
   fi
