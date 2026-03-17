@@ -54,7 +54,7 @@ transcript_locate_worker() {
   local found=0
 
   # Glob: *-issue-{number}-* matches worktree project directories
-  # e.g., -Users-alice-git-repo-.worktrees-issue-42-feat-add-widget
+  # e.g., -Users-alice-git-repo--worktrees-issue-42-feat-add-widget
   local pattern="${projects_dir}/*-issue-${issue_number}-*/*.jsonl"
 
   # Use nullglob behavior via find to avoid literal glob in output

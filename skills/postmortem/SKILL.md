@@ -37,15 +37,28 @@ Use `transcript-locator.sh` to find all transcripts associated with the issues. 
 ```bash
 source "${CEKERNEL_SCRIPTS}/shared/transcript-locator.sh"
 
-# For each issue number:
+ALL_TRANSCRIPTS=""
 for ISSUE in <issue-numbers...>; do
-  # Discover Worker/Reviewer transcripts (always available by issue number)
-  WORKER_TRANSCRIPTS=$(transcript_locate_worker "$ISSUE" 2>/dev/null) || true
+  FOUND=$(transcript_locate_worker "$ISSUE" 2>/dev/null) || true
+  ALL_TRANSCRIPTS="${ALL_TRANSCRIPTS:+${ALL_TRANSCRIPTS}$'\n'}${FOUND}"
 
-  # Discover Orchestrator transcripts (via .spawned file session reverse lookup)
-  ORCH_TRANSCRIPTS=$(transcript_locate_orchestrator_by_issue "$ISSUE" 2>/dev/null) || true
+  FOUND=$(transcript_locate_orchestrator_by_issue "$ISSUE" 2>/dev/null) || true
+  ALL_TRANSCRIPTS="${ALL_TRANSCRIPTS:+${ALL_TRANSCRIPTS}$'\n'}${FOUND}"
 done
 ```
+
+#### Worker/Reviewer Identification
+
+`transcript_locate_worker` returns both Worker and Reviewer transcripts (they share the same worktree). File names alone cannot distinguish them. Use the first line's `agentSetting` field in the JSONL to identify the type:
+
+```json
+{"type":"agent-setting","agentSetting":"reviewer","sessionId":"6fe286bd-..."}
+{"type":"agent-setting","agentSetting":"worker","sessionId":"82bbd747-..."}
+```
+
+- `agentSetting` contains `worker` → Worker (matches both `worker` and `cekernel:worker`)
+- `agentSetting` contains `reviewer` → Reviewer (matches both `reviewer` and `cekernel:reviewer`)
+- `agentSetting` line missing or no match → Other (still analyze; pass as "unknown type transcript" to subagent)
 
 Report what was found:
 
@@ -68,7 +81,7 @@ If no transcripts are found at all, report the failure to the user and stop.
 Read the detection patterns checklist:
 
 ```
-$(git rev-parse --show-toplevel)/skills/references/postmortem-patterns.md
+${CEKERNEL_SCRIPTS}/../skills/references/postmortem-patterns.md
 ```
 
 This file defines all detection categories, heuristics, and severities. The full content of this file will be included in each analysis subagent's prompt.
