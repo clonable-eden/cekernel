@@ -15,7 +15,7 @@
 # Environment variables (overridable for testing):
 #   CEKERNEL_VAR_DIR — Base directory (default: /usr/local/var/cekernel)
 
-_ISSUE_LOCK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ISSUE_LOCK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
 # Fallback: when BASH_SOURCE[0] does not resolve correctly (e.g., plugin mode
 # zsh eval context), use CEKERNEL_SCRIPTS if available.
 if [[ ! -f "${_ISSUE_LOCK_DIR}/load-env.sh" && -n "${CEKERNEL_SCRIPTS:-}" ]]; then
