@@ -272,7 +272,7 @@ The skill analyzes git log and recommends a bump level. After confirmation:
 - RELEASE_NOTES.md is written in English (What's Changed section uses PR titles as-is)
 - Never commit directly to main. Always create a feature branch and open a PR
 - Use regular merge (not squash) for PRs unless explicitly told otherwise
-- Worktrees are created under `.worktrees/` (already in .gitignore)
+- Worktrees are created under `.worktrees/` (already in .gitignore). See [Worktree Naming](#worktree-naming) for details
 - Commit messages follow conventional commits:
   - `feat:` New feature
   - `fix:` Bug fix
@@ -280,6 +280,30 @@ The skill analyzes git log and recommends a bump level. After confirmation:
   - `test:` Tests only
   - `refactor:` Refactoring
   - `release:` Version bump (CI auto-generated)
+
+### Worktree Naming
+
+`spawn.sh` creates worktrees deterministically from the issue number and title:
+
+```
+.worktrees/issue/{N}-{slug}/
+```
+
+- `{N}` — Issue number
+- `{slug}` — Title converted to lowercase, non-alphanumeric characters replaced with `-`, truncated to 40 characters
+
+Example: issue #42 "Add widget support" → `.worktrees/issue/42-add-widget-support/`
+
+#### Claude Code Project Directory Mapping
+
+Claude Code stores per-project data under `~/.claude/projects/`, using the worktree's absolute path with `/` replaced by `-`:
+
+```
+Worktree:  /Users/alice/git/repo/.worktrees/issue/42-add-widget-support/
+Project:   ~/.claude/projects/-Users-alice-git-repo-.worktrees-issue-42-add-widget-support/
+```
+
+`transcript-locator.sh` uses this mapping to discover transcripts. The glob pattern `*-issue-{N}-*` matches project directories for a given issue number, regardless of host path or slug content.
 
 ## Issue Management
 
