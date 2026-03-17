@@ -36,8 +36,10 @@
 
 # transcript_locate_worker <issue-number> [claude-home]
 # Finds Worker/Reviewer transcripts matching the issue number.
-# Workers and Reviewers run in worktrees whose directory names contain
-# the issue number, so the glob pattern matches directly.
+# Workers and Reviewers run in worktrees named .worktrees/issue/{N}-{slug}/
+# (see CLAUDE.md "Worktree Naming" for the full convention).
+# Claude Code maps worktree paths to project directories by replacing / with -,
+# so the glob *-issue-{N}-* matches any worktree for a given issue number.
 transcript_locate_worker() {
   local issue_number="${1:?Usage: transcript_locate_worker <issue-number> [claude-home]}"
   local claude_home="${2:-${HOME}/.claude}"
