@@ -16,13 +16,14 @@ source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
 # ── Setup ──
 TMPDIR_TEST=$(mktemp -d)
 MOCK_CLAUDE_HOME="${TMPDIR_TEST}/claude-home"
+MOCK_VAR_DIR="${TMPDIR_TEST}/var"
 
 cleanup() {
   rm -rf "$TMPDIR_TEST" 2>/dev/null || true
 }
 trap cleanup EXIT
 
-# Source the transcript-locator helper (override CLAUDE_PROJECTS_DIR)
+# Source the transcript-locator helper
 source "${CEKERNEL_DIR}/scripts/shared/transcript-locator.sh"
 
 # ── Test 1: Worker transcript discovery — single file ──
@@ -95,30 +96,52 @@ ERR_OUTPUT=$(transcript_locate_worker "abc" "$MOCK_CLAUDE_HOME" 2>&1 1>/dev/null
 assert_match "Non-numeric issue number produces error" "numeric" "$ERR_OUTPUT"
 assert_eq "Non-numeric issue number returns exit code 1" "1" "$EXIT_CODE"
 
-# ── Test 12: Orchestrator discovery via IPC-persisted session ID ──
-# Persist a Claude Code session ID to the IPC dir, then use transcript_locate_orchestrator_by_ipc
-ORIG_IPC_DIR="$CEKERNEL_IPC_DIR"
-export CEKERNEL_IPC_DIR="${TMPDIR_TEST}/ipc"
-mkdir -p "$CEKERNEL_IPC_DIR"
+# ── Test 12: Orchestrator discovery via .spawned files (by issue number) ──
+# Create mock .spawned files in session IPC directories
+MOCK_SESSION="mock-session-orch1"
+MOCK_IPC_SESSION="${MOCK_VAR_DIR}/ipc/${MOCK_SESSION}"
+mkdir -p "$MOCK_IPC_SESSION"
+touch "${MOCK_IPC_SESSION}/worker-42.spawned"
 
-source "${CEKERNEL_DIR}/scripts/shared/claude-session-id.sh"
-claude_session_id_persist "session-orch1"
+# Create orchestrator transcripts for this session
+ORCH_SESSION_DIR2="${MOCK_CLAUDE_HOME}/projects/-Users-test-git-repo/${MOCK_SESSION}/subagents"
+mkdir -p "$ORCH_SESSION_DIR2"
+touch "${ORCH_SESSION_DIR2}/agent-orch-010.jsonl"
 
-RESULT=$(transcript_locate_orchestrator_by_ipc "$MOCK_CLAUDE_HOME" "-Users-test-git-repo" | sort)
-EXPECTED=$(printf '%s\n%s' "${ORCH_SESSION_DIR}/agent-orch-001.jsonl" "${ORCH_SESSION_DIR}/agent-orch-002.jsonl" | sort)
-assert_eq "Orchestrator found via IPC-persisted session ID" "$EXPECTED" "$RESULT"
+RESULT=$(transcript_locate_orchestrator_by_issue 42 "$MOCK_VAR_DIR" "$MOCK_CLAUDE_HOME" "-Users-test-git-repo")
+assert_eq "Orchestrator found via .spawned file reverse lookup" "${ORCH_SESSION_DIR2}/agent-orch-010.jsonl" "$RESULT"
 
-# ── Test 13: Orchestrator via IPC — no persisted session ID ──
-rm -f "${CEKERNEL_IPC_DIR}/claude-session-id"
+# ── Test 13: _by_issue — reviewer .spawned file also matches ──
+MOCK_SESSION2="mock-session-orch2"
+MOCK_IPC_SESSION2="${MOCK_VAR_DIR}/ipc/${MOCK_SESSION2}"
+mkdir -p "$MOCK_IPC_SESSION2"
+touch "${MOCK_IPC_SESSION2}/reviewer-42.spawned"
+
+ORCH_SESSION_DIR3="${MOCK_CLAUDE_HOME}/projects/-Users-test-git-repo/${MOCK_SESSION2}/subagents"
+mkdir -p "$ORCH_SESSION_DIR3"
+touch "${ORCH_SESSION_DIR3}/agent-orch-020.jsonl"
+
+# Should find transcripts from both sessions
+RESULT=$(transcript_locate_orchestrator_by_issue 42 "$MOCK_VAR_DIR" "$MOCK_CLAUDE_HOME" "-Users-test-git-repo" | wc -l | tr -d ' ')
+assert_eq "Finds orchestrator transcripts from multiple sessions via .spawned" "2" "$RESULT"
+
+# ── Test 14: _by_issue — no .spawned files for issue ──
 EXIT_CODE=0
-RESULT=$(transcript_locate_orchestrator_by_ipc "$MOCK_CLAUDE_HOME" "-Users-test-git-repo" 2>/dev/null) || EXIT_CODE=$?
-assert_eq "Returns exit 1 when no persisted session ID" "1" "$EXIT_CODE"
+RESULT=$(transcript_locate_orchestrator_by_issue 777 "$MOCK_VAR_DIR" "$MOCK_CLAUDE_HOME" "-Users-test-git-repo" 2>/dev/null) || EXIT_CODE=$?
+assert_eq "Returns exit 1 when no .spawned files for issue" "1" "$EXIT_CODE"
 
-# ── Test 14: transcript_locate_all uses IPC session ID when no explicit session given ──
-claude_session_id_persist "session-orch1"
-RESULT=$(transcript_locate_all 42 "" "$MOCK_CLAUDE_HOME" "-Users-test-git-repo" 2>/dev/null | wc -l | tr -d ' ')
-assert_eq "transcript_locate_all uses IPC session ID as fallback" "5" "$RESULT"
+# ── Test 15: _by_issue — .spawned file exists but no orchestrator transcripts ──
+MOCK_SESSION3="mock-session-no-orch"
+MOCK_IPC_SESSION3="${MOCK_VAR_DIR}/ipc/${MOCK_SESSION3}"
+mkdir -p "$MOCK_IPC_SESSION3"
+touch "${MOCK_IPC_SESSION3}/worker-99.spawned"
 
-export CEKERNEL_IPC_DIR="$ORIG_IPC_DIR"
+EXIT_CODE=0
+RESULT=$(transcript_locate_orchestrator_by_issue 99 "$MOCK_VAR_DIR" "$MOCK_CLAUDE_HOME" "-Users-test-git-repo" 2>/dev/null) || EXIT_CODE=$?
+assert_eq "Returns exit 1 when .spawned exists but no orchestrator transcripts" "1" "$EXIT_CODE"
+
+# ── Test 16: transcript_locate_all uses _by_issue for orchestrator discovery ──
+RESULT=$(transcript_locate_all 42 "" "$MOCK_CLAUDE_HOME" "-Users-test-git-repo" "$MOCK_VAR_DIR" 2>/dev/null | wc -l | tr -d ' ')
+assert_eq "transcript_locate_all uses _by_issue as fallback" "5" "$RESULT"
 
 report_results
