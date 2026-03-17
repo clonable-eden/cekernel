@@ -6,9 +6,9 @@
 > unimplementable in practice.
 >
 > **Staleness warning**: Claude Code is actively evolving. Constraints listed
-> here reflect the platform as of early 2025. When making architectural
-> decisions, verify that constraints still hold — especially those marked
-> with a confidence level below "Stable".
+> here reflect the platform as observed through early 2026. When making
+> architectural decisions, verify that constraints still hold — especially
+> those marked with a confidence level below "Stable".
 
 ## Execution Model
 
@@ -107,6 +107,28 @@ failures, and unexpected behavior become common at nesting depth ≥ 2.
   independent process, communicating via FIFO instead of subagent return values
 - Design preference: independent processes with FIFO IPC over nested subagents
 
+### Subagent Information Propagation
+
+**Confidence: Stable**
+
+The `prompt` text is the only channel for passing information to a subagent.
+There is no mechanism to:
+- Set environment variables in the subagent's session
+- Specify the subagent's working directory
+- Pass structured data outside the prompt string
+
+The subagent also has no built-in self-identification: there is no
+`CLAUDE_AGENT_NAME` or equivalent variable that tells the subagent what
+role it was spawned for.
+
+**Reference**: [anthropics/claude-code#6885](https://github.com/anthropics/claude-code/issues/6885)
+
+**Implications for cekernel**:
+- All context (issue number, session ID, env profile name, worktree path)
+  must be serialized into the prompt string
+- Workers determine their worktree path from `pwd` rather than a passed variable
+- Role identification relies on the agent markdown preamble, not runtime metadata
+
 ### Context Window Limits
 
 **Confidence: Stable**
@@ -122,6 +144,90 @@ across sessions beyond what is written to files.
   state to the filesystem
 - Task files (`.cekernel-task.md`) correctly pre-cache issue data to avoid
   re-fetching within the context window
+
+## Shell Environment
+
+### Bash Tool Shell Selection
+
+**Confidence: Stable**
+
+Claude Code's Bash tool uses its own shell detection logic to determine which
+shell to use — it does not simply invoke `$SHELL`. On macOS, the default shell
+is zsh, so zsh is typically selected. This means:
+
+- `BASH_SOURCE[0]` does not resolve correctly when scripts are `source`d in zsh
+  (it is empty or wrong)
+- Bash-specific syntax like `${!key:-}` (indirect expansion) is unavailable
+- Arithmetic expressions with `(( ))` follow zsh semantics
+
+The shell can be overridden via the `CLAUDE_CODE_SHELL` environment variable.
+
+**Implications for cekernel**:
+- Scripts that are `source`d (not executed with a shebang) must use the
+  zsh-compatible `BASH_SOURCE` fallback: `${BASH_SOURCE[0]:-${(%):-%x}}`
+- Scripts executed directly with `#!/usr/bin/env bash` are unaffected because
+  bash is invoked explicitly by the shebang
+- See CLAUDE.md "Known Pitfalls" for the canonical fallback pattern
+
+**Reference**: #403 — BASH_SOURCE zsh 互換
+
+## Plugin and Skill Variables
+
+### `${CLAUDE_PLUGIN_ROOT}` Expansion Scope
+
+**Confidence: Stable**
+
+The `${CLAUDE_PLUGIN_ROOT}` variable is expanded only in:
+- `hooks.json` — hook command definitions
+- `.mcp.json` — MCP server configuration
+
+It is **not** expanded in:
+- `SKILL.md` files
+- Agent markdown files (`agents/*.md`)
+- `CLAUDE.md` or `.claude/rules/` files
+
+**Implications for cekernel**:
+- Skills and agents cannot use `${CLAUDE_PLUGIN_ROOT}` to locate plugin files
+- Path resolution in skills must use alternative strategies (e.g., `Read` tool
+  with relative paths from `${CLAUDE_SKILL_DIR}`, or `BASH_SOURCE`-based resolution)
+
+### `${CLAUDE_SKILL_DIR}` Expansion Scope
+
+**Confidence: Stable**
+
+The `${CLAUDE_SKILL_DIR}` variable resolves to the directory containing the
+current skill's `SKILL.md`. It is expanded **only** in bash injection blocks
+(`` !`cmd` ``) within `SKILL.md`.
+
+It is **not** expanded in:
+- Regular markdown text in `SKILL.md`
+- Agent markdown files
+- Hook definitions or MCP configuration
+
+**Implications for cekernel**:
+- Skills that need to read reference files use bash injection to resolve paths:
+  `` !`cat ${CLAUDE_SKILL_DIR}/../references/some-file.md` ``
+- Agent markdown files cannot use `${CLAUDE_SKILL_DIR}` and must use other
+  path resolution strategies
+
+### `.claude/rules/` Auto-Loading
+
+**Confidence: Evolving**
+
+Files placed in `.claude/rules/` are automatically loaded into the agent's
+context without requiring user approval. Symlinks are supported. These rules
+function as additional project-level instructions alongside `CLAUDE.md`.
+
+Current limitation: plugins cannot distribute files into `.claude/rules/` —
+there is no plugin mechanism to install rules into the target project.
+
+**Reference**: [anthropics/claude-code#14200](https://github.com/anthropics/claude-code/issues/14200)
+
+**Implications for cekernel**:
+- `.claude/rules/` is useful for project-specific agent instructions that
+  should always be active
+- cekernel cannot automatically install rules into target repositories via the
+  plugin system — rules must be manually set up per project
 
 ## Tool Execution
 
@@ -162,22 +268,27 @@ in-process state. Each session is fully independent. Coordination must
 occur through the filesystem or external services.
 
 **Implications for cekernel**:
-- The session IPC directory (`/usr/local/var/cekernel/ipc/{SESSION_ID}`) is the
-  correct coordination point
-- Workers in separate terminal panes correctly communicate via files and FIFOs
+- The session IPC directory (`${CEKERNEL_VAR_DIR}/ipc/{SESSION_ID}`) is the
+  correct coordination point. The base path defaults to `/usr/local/var/cekernel`
+  but is user-configurable via env profiles (e.g., `~/.config/cekernel/envs/default.env`
+  can set `CEKERNEL_VAR_DIR=~/.local/var/cekernel`)
+- Workers in separate sessions correctly communicate via files and FIFOs
 - There is no "shared memory" shortcut between agents
 
-### Terminal Backend Dependency
+### Worker Process Backend
 
 **Confidence: Stable**
 
-cekernel spawns Worker sessions by sending commands to terminal panes.
-The terminal multiplexer (WezTerm, tmux, etc.) is an external dependency
-that cekernel does not control.
+cekernel spawns Worker sessions via a pluggable backend. Available backends
+include terminal multiplexers (WezTerm, tmux) that send commands to terminal
+panes, and a headless backend (ADR-0005) that spawns `claude` CLI processes
+directly without a terminal.
 
 **Implications for cekernel**:
-- Terminal pane state (alive/dead) must be actively monitored
-- Pane death detection (`health-check.sh`) is essential because there is
-  no callback mechanism from the terminal to cekernel
-- The terminal backend is swappable (ADR-0001, ADR-0005) — designs should
-  not assume a specific terminal
+- Worker process state (alive/dead) must be actively monitored
+- Health detection (`health-check.sh`) is essential because there is
+  no callback mechanism from the backend to cekernel
+- The backend is swappable via `CEKERNEL_BACKEND` (ADR-0001, ADR-0005) —
+  designs should not assume a specific backend
+- The headless backend enables fully automated pipelines (CI, cron jobs)
+  without terminal infrastructure
