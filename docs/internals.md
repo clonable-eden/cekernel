@@ -50,6 +50,20 @@ Functions:
 - `claude_session_id_persist <uuid>` — write UUID to `${CEKERNEL_IPC_DIR}/claude-session-id`
 - `claude_session_id_read` — read the persisted UUID
 
+### Spawn Markers (`.spawned` files)
+
+`spawn.sh` creates `{agent-type}-{N}.spawned` in the IPC directory on successful spawn. These files are **not cleaned up** by `cleanup-worktree.sh` — they persist across the session for post-mortem transcript discovery.
+
+```
+$CEKERNEL_VAR_DIR/ipc/{CEKERNEL_SESSION_ID}/
+├── worker-42.spawned     # Worker spawn marker
+├── reviewer-42.spawned   # Reviewer spawn marker
+├── worker-42             # FIFO (cleaned up)
+└── ...
+```
+
+`transcript_locate_orchestrator_by_issue` scans these files to reverse-lookup which session handled a given issue.
+
 ### Transcript Locator (`transcript-locator.sh`)
 
 Locates `.jsonl` transcript files by issue number or session ID.
@@ -58,7 +72,7 @@ Locates `.jsonl` transcript files by issue number or session ID.
 |----------|-------|-----------------|
 | `transcript_locate_worker` | issue number | Glob `~/.claude/projects/*-issue-{N}-*/*.jsonl` |
 | `transcript_locate_orchestrator` | session UUID | Glob `~/.claude/projects/*/{uuid}/subagents/*.jsonl` |
-| `transcript_locate_orchestrator_by_ipc` | (none) | Read `claude-session-id` from IPC, then call above |
+| `transcript_locate_orchestrator_by_issue` | issue number | Scan `${CEKERNEL_VAR_DIR}/ipc/*/{worker,reviewer}-{N}.spawned` for session reverse lookup |
 | `transcript_locate_all` | issue number + optional session UUID | Combine worker + orchestrator discovery |
 
 > **Note**: Transcript paths depend on Claude Code's internal storage layout. All path resolution is centralized in these two scripts to localize the impact of upstream changes.
