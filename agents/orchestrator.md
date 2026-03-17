@@ -356,6 +356,26 @@ During background monitoring (while `watch.sh` runs via `run_in_background`), pe
 - When exceeding `CEKERNEL_MAX_PROCESSES`, use queuing (wait for completion, then spawn next)
 - On Worker failure: check PR status and retry or escalate
 
+### Merge-Dependent Scheduling
+
+When a subsequent issue depends on a preceding issue's PR being merged (e.g., "#413 must be merged before spawning #414"), the Orchestrator must **not** poll for merge status using background tasks. Background-task polling generates excessive completion notifications that flood the parent session.
+
+Instead, follow this protocol:
+
+1. Complete the preceding issue's lifecycle (Worker → CI → Reviewer → approved)
+2. Clean up the worktree and release the lock (as per the `approved` flow)
+3. Inform the user that the next issue is blocked on merge:
+
+```
+Issue #414 is ready to start but depends on PR #N (from issue #413) being merged.
+Please merge the PR and let me know when done, and I will spawn the Worker for #414.
+```
+
+4. **Wait for the user's message** — the Orchestrator is an LLM agent and can receive user messages directly. No shell-based polling is needed.
+5. When the user confirms merge, spawn the next Worker
+
+**IMPORTANT**: Never use `run_in_background` with `gh pr view` or similar commands in a loop to detect merge status. This is the primary cause of notification noise. The Orchestrator should remain idle and responsive to user input while waiting.
+
 ## Worker and Target Repository Relationship
 
 Workers fully follow the target repository's CLAUDE.md and project conventions.
@@ -467,22 +487,26 @@ The Reviewer notifies via `notify-complete.sh` with one of: `approved`, `changes
 
 #### approved
 
-```bash
-# If CEKERNEL_AUTO_MERGE=true (default: false):
-gh pr merge <pr-number> --delete-branch
+**If `CEKERNEL_AUTO_MERGE=true`:**
 
-# Always:
+```bash
+gh pr merge <pr-number> --delete-branch
 export CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID} && export CEKERNEL_ENV=${CEKERNEL_ENV} && ${CEKERNEL_SCRIPTS}/orchestrator/cleanup-worktree.sh <issue>
 source ${CEKERNEL_SCRIPTS}/shared/desktop-notify.sh && desktop_notify "cekernel" "Issue #<issue> approved and merged" "$(gh pr view <pr-number> --json url -q .url)"
-# Release issue lock (Orchestrator's responsibility for ci-passed lifecycle)
 source ${CEKERNEL_SCRIPTS}/shared/issue-lock.sh && issue_lock_release "$(git rev-parse --show-toplevel)" <issue>
 ```
 
-If `CEKERNEL_AUTO_MERGE=false`, skip `gh pr merge` and notify the human instead:
+**If `CEKERNEL_AUTO_MERGE=false` (default):**
+
+Do NOT poll or wait for the human to merge. The Orchestrator's job is done once the Reviewer approves. Clean up the worktree, release the lock, notify the human, and move on.
 
 ```bash
+export CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID} && export CEKERNEL_ENV=${CEKERNEL_ENV} && ${CEKERNEL_SCRIPTS}/orchestrator/cleanup-worktree.sh <issue>
 source ${CEKERNEL_SCRIPTS}/shared/desktop-notify.sh && desktop_notify "cekernel" "Issue #<issue> approved — waiting for human merge" "$(gh pr view <pr-number> --json url -q .url)"
+source ${CEKERNEL_SCRIPTS}/shared/issue-lock.sh && issue_lock_release "$(git rev-parse --show-toplevel)" <issue>
 ```
+
+In both cases, the Orchestrator performs cleanup and lock release immediately after approval. The branch and PR exist on the remote for the human to merge at their convenience. **The Orchestrator must not start a polling loop to wait for merge.**
 
 #### changes-requested
 
