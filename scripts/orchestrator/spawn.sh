@@ -276,6 +276,11 @@ fi
 # ── State: READY (Worktree ready, Claude agent starting) ──
 worker_state_write "$ISSUE_NUMBER" READY "agent-starting"
 
+# ── Record spawn marker (.spawned file) ──
+# Persists across cleanup for post-mortem transcript discovery.
+# transcript-locator.sh scans these to reverse-lookup which session handled an issue.
+touch "${CEKERNEL_IPC_DIR}/${AGENT_TYPE}-${ISSUE_NUMBER}.spawned"
+
 # ── Record lifecycle event in log ──
 if [[ "$RESUME" -eq 1 ]]; then
   echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] RESUME issue=#${ISSUE_NUMBER} branch=${BRANCH} priority=${PRIORITY} type=${AGENT_TYPE}" >> "$LOG_FILE"
