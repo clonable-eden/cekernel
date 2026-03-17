@@ -300,7 +300,7 @@ Claude Code stores per-project data under `~/.claude/projects/`, using the workt
 
 ```
 Worktree:  /Users/alice/git/repo/.worktrees/issue/42-add-widget-support/
-Project:   ~/.claude/projects/-Users-alice-git-repo-.worktrees-issue-42-add-widget-support/
+Project:   ~/.claude/projects/-Users-alice-git-repo--worktrees-issue-42-add-widget-support/
 ```
 
 `transcript-locator.sh` uses this mapping to discover transcripts. The glob pattern `*-issue-{N}-*` matches project directories for a given issue number, regardless of host path or slug content.
