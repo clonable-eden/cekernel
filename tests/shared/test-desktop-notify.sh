@@ -181,7 +181,7 @@ chmod +x "${MOCK_BIN_EMPTY}/uname"
 unset -f desktop_notify 2>/dev/null || true
 unset _DESKTOP_NOTIFY_PLATFORM 2>/dev/null || true
 PATH="${MOCK_BIN_EMPTY}:${ORIG_PATH}" source "${CEKERNEL_DIR}/scripts/shared/desktop-notify.sh"
-PATH="${MOCK_BIN_EMPTY}:${ORIG_PATH}"
+PATH="${MOCK_BIN_EMPTY}"
 
 if desktop_notify "Title" "Message"; then
   echo "  PASS: desktop_notify does not fail when notification tool is missing"
@@ -190,6 +190,7 @@ else
   echo "  FAIL: desktop_notify should not fail when notification tool is missing"
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
+PATH="$ORIG_PATH"
 rm -rf "$MOCK_BIN_EMPTY"
 
 # ── Test 12: URL is optional — no error when omitted ──
