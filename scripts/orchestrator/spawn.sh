@@ -279,7 +279,8 @@ worker_state_write "$ISSUE_NUMBER" READY "agent-starting"
 # ── Record spawn marker (.spawned file) ──
 # Persists across cleanup for post-mortem transcript discovery.
 # transcript-locator.sh scans these to reverse-lookup which session handled an issue.
-touch "${CEKERNEL_IPC_DIR}/${AGENT_TYPE}-${ISSUE_NUMBER}.spawned"
+# Also stores the epoch timestamp used for uptime calculation.
+date +%s > "${CEKERNEL_IPC_DIR}/${AGENT_TYPE}-${ISSUE_NUMBER}.spawned"
 
 # ── Record lifecycle event in log ──
 if [[ "$RESUME" -eq 1 ]]; then

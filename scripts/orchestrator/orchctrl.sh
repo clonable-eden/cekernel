@@ -140,28 +140,35 @@ set_ipc_context() {
   export CEKERNEL_IPC_DIR="${IPC_BASE}/${RESOLVED_SESSION}"
 }
 
-# ── Helper: compute elapsed time from FIFO ──
+# ── Helper: compute elapsed time from .spawned file ──
 compute_elapsed() {
   local fifo="$1"
-  local created=""
+  local ipc_dir
+  ipc_dir=$(dirname "$fifo")
+  local issue
+  issue=$(basename "$fifo" | sed 's/^worker-//')
 
-  if stat -f '%m' "$fifo" &>/dev/null; then
-    created=$(stat -f '%m' "$fifo")
-  elif stat -c '%Y' "$fifo" &>/dev/null; then
-    created=$(stat -c '%Y' "$fifo")
+  # Read process type to locate the right .spawned file
+  local process_type="worker"
+  local type_file="${ipc_dir}/worker-${issue}.type"
+  if [[ -f "$type_file" ]]; then
+    process_type=$(tr -d '[:space:]' < "$type_file")
   fi
 
-  if [[ -n "$created" ]]; then
-    local now elapsed
-    now=$(date +%s)
-    elapsed=$((now - created))
-    if [[ $elapsed -ge 3600 ]]; then
-      echo "$((elapsed / 3600))h$((elapsed % 3600 / 60))m"
-    elif [[ $elapsed -ge 60 ]]; then
-      echo "$((elapsed / 60))m"
-    else
-      echo "${elapsed}s"
-    fi
+  # Read spawn epoch from .spawned file (backward compat: empty file falls back to now)
+  local spawned_at
+  spawned_at=$(cat "${ipc_dir}/${process_type}-${issue}.spawned" 2>/dev/null || true)
+  spawned_at="${spawned_at:-$(date +%s)}"
+
+  local now elapsed
+  now=$(date +%s)
+  elapsed=$((now - spawned_at))
+  if [[ $elapsed -ge 3600 ]]; then
+    echo "$((elapsed / 3600))h$((elapsed % 3600 / 60))m"
+  elif [[ $elapsed -ge 60 ]]; then
+    echo "$((elapsed / 60))m"
+  else
+    echo "${elapsed}s"
   fi
 }
 
@@ -566,21 +573,23 @@ cmd_gc() {
       return 0
     fi
 
-    # No handle, state is NEW/READY → check timeout
+    # No handle, state is NEW/READY → check timeout via .spawned file
     if [[ "$state" == "NEW" || "$state" == "READY" ]]; then
-      local created=""
-      if stat -f '%m' "$fifo" &>/dev/null; then
-        created=$(stat -f '%m' "$fifo")
-      elif stat -c '%Y' "$fifo" &>/dev/null; then
-        created=$(stat -c '%Y' "$fifo")
+      # Read process type to locate the right .spawned file
+      local gc_type="worker"
+      local gc_type_file="${sdir}worker-${issue}.type"
+      if [[ -f "$gc_type_file" ]]; then
+        gc_type=$(tr -d '[:space:]' < "$gc_type_file")
       fi
-      if [[ -n "$created" ]]; then
-        local now elapsed
-        now=$(date +%s)
-        elapsed=$((now - created))
-        if [[ "$elapsed" -ge "$timeout" ]]; then
-          return 0
-        fi
+      # Read spawn epoch (backward compat: empty file falls back to now)
+      local spawned_at
+      spawned_at=$(cat "${sdir}${gc_type}-${issue}.spawned" 2>/dev/null || true)
+      spawned_at="${spawned_at:-$(date +%s)}"
+      local now elapsed
+      now=$(date +%s)
+      elapsed=$((now - spawned_at))
+      if [[ "$elapsed" -ge "$timeout" ]]; then
+        return 0
       fi
       # Within timeout — still active
       return 1

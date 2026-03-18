@@ -73,6 +73,20 @@ mkfifo "${CEKERNEL_IPC_DIR}/worker-52"
 OUTPUT=$(bash "$STATUS_SCRIPT" | grep '"issue":52')
 assert_match "Missing type file shows unknown" '"type":"unknown"' "$OUTPUT"
 
+# ── Test 11: Uptime reads from .spawned file (not FIFO stat) ──
+export CEKERNEL_SESSION_ID="test-pstatus-00000001"
+source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
+rm -rf "$CEKERNEL_IPC_DIR"
+mkdir -p "$CEKERNEL_IPC_DIR"
+mkfifo "${CEKERNEL_IPC_DIR}/worker-60"
+echo "worker" > "${CEKERNEL_IPC_DIR}/worker-60.type"
+# Write epoch 0 to .spawned — forces a very large uptime (many hours)
+echo "0" > "${CEKERNEL_IPC_DIR}/worker-60.spawned"
+OUTPUT=$(bash "$STATUS_SCRIPT" | grep '"issue":60')
+# New code reads .spawned (epoch 0) → uptime in hours
+# Old code reads FIFO mtime (just created) → uptime in seconds "Xs"
+assert_match "Uptime reads from .spawned file (epoch 0 → hours)" '"uptime":"[0-9]+h' "$OUTPUT"
+
 # ── Cleanup ──
 rm -rf "$CEKERNEL_IPC_DIR"
 

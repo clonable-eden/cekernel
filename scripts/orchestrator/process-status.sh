@@ -47,28 +47,18 @@ find "$CEKERNEL_IPC_DIR" -maxdepth 1 -name 'worker-*' -type p 2>/dev/null | sort
       | head -1 || true)
   fi
 
-  # Elapsed time since FIFO creation
-  if stat -f '%m' "$fifo" &>/dev/null; then
-    # macOS stat
-    created=$(stat -f '%m' "$fifo")
-  elif stat -c '%Y' "$fifo" &>/dev/null; then
-    # GNU/Linux stat
-    created=$(stat -c '%Y' "$fifo")
+  # Elapsed time from .spawned file (backward compat: empty file falls back to now)
+  spawned_file="${CEKERNEL_IPC_DIR}/${process_type}-${issue}.spawned"
+  spawned_at=$(cat "$spawned_file" 2>/dev/null || true)
+  spawned_at="${spawned_at:-$(date +%s)}"
+  now=$(date +%s)
+  elapsed=$((now - spawned_at))
+  if [[ $elapsed -ge 3600 ]]; then
+    uptime="$((elapsed / 3600))h$((elapsed % 3600 / 60))m"
+  elif [[ $elapsed -ge 60 ]]; then
+    uptime="$((elapsed / 60))m"
   else
-    created=""
-  fi
-
-  uptime=""
-  if [[ -n "$created" ]]; then
-    now=$(date +%s)
-    elapsed=$((now - created))
-    if [[ $elapsed -ge 3600 ]]; then
-      uptime="$((elapsed / 3600))h$((elapsed % 3600 / 60))m"
-    elif [[ $elapsed -ge 60 ]]; then
-      uptime="$((elapsed / 60))m"
-    else
-      uptime="${elapsed}s"
-    fi
+    uptime="${elapsed}s"
   fi
 
   # Read worker state
