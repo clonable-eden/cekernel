@@ -209,6 +209,19 @@ assert_match "powershell.exe called on WSL" "powershell called:" "$MOCK_OUTPUT"
 assert_match "WSL toast XML contains title" "WSL Title" "$MOCK_OUTPUT"
 assert_match "WSL toast XML contains message" "WSL Message" "$MOCK_OUTPUT"
 
+# ── Test 11: WSL — PowerShell AppId used instead of 'cekernel' ──
+> "$MOCK_LOG"
+desktop_notify "WSL Title" "WSL Message"
+MOCK_OUTPUT=$(cat "$MOCK_LOG" 2>/dev/null || echo "")
+assert_match "WSL uses registered PowerShell AppId" "1AC14E77-02E7-4E5D-B744-2EB1AE5198B7" "$MOCK_OUTPUT"
+if [[ "$MOCK_OUTPUT" == *"CreateToastNotifier('cekernel')"* ]]; then
+  echo "  FAIL: WSL should not use unregistered 'cekernel' AppId"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+else
+  echo "  PASS: WSL does not use unregistered 'cekernel' AppId"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+fi
+
 # ═══════════════════════════════════════
 # General tests
 # ═══════════════════════════════════════
