@@ -135,25 +135,30 @@ The review body must clearly describe what needs to be fixed so that the Worker 
 
 #### Self-Review Fallback
 
-GitHub does not allow approving or requesting changes on your own PR (`"Can not approve your own pull request"`). When this error occurs, fall back to `--comment` to preserve the review body:
+GitHub does not allow approving or requesting changes on your own PR (HTTP 422: `"Can not approve your own pull request"`). Use `gh api` (not `gh pr review`) to avoid duplicate postings — `gh pr review --approve` posts the body as COMMENTED even on failure, while `gh api` with event=APPROVE returns 422 without posting anything.
 
 ```bash
-# 1. First attempt --approve (or --request-changes)
-if ! gh pr review <pr-number> --approve --body "..."; then
-  # 2. On self-review error, fall back to --comment
-  gh pr review <pr-number> --comment --body "..."
+OWNER_REPO="$(gh repo view --json nameWithOwner -q .nameWithOwner)"
+
+# 1. Attempt APPROVE via REST API (422 = nothing posted)
+if ! gh api "repos/${OWNER_REPO}/pulls/<pr-number>/reviews" \
+  -f event=APPROVE -f body="..." 2>/dev/null; then
+  # 2. Self-review error → COMMENT fallback (single posting)
+  gh api "repos/${OWNER_REPO}/pulls/<pr-number>/reviews" \
+    -f event=COMMENT -f body="..."
 fi
 
 # 3. notify-complete.sh uses the actual review verdict, not the GitHub submission method
-#    --comment fallback is a GitHub constraint; the review judgment itself is unchanged
 notify-complete.sh <issue-number> approved <pr-number>
 ```
 
-The same fallback applies for `--request-changes`:
+The same fallback applies for `REQUEST_CHANGES`:
 
 ```bash
-if ! gh pr review <pr-number> --request-changes --body "..."; then
-  gh pr review <pr-number> --comment --body "..."
+if ! gh api "repos/${OWNER_REPO}/pulls/<pr-number>/reviews" \
+  -f event=REQUEST_CHANGES -f body="..." 2>/dev/null; then
+  gh api "repos/${OWNER_REPO}/pulls/<pr-number>/reviews" \
+    -f event=COMMENT -f body="..."
 fi
 notify-complete.sh <issue-number> changes-requested <pr-number>
 ```
