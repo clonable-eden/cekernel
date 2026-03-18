@@ -35,20 +35,29 @@ Detect whether cekernel is running as a plugin or locally using file-based detec
 Use `transcript-locator.sh` to find all transcripts associated with the issues. **Loop over each issue number** provided in the arguments.
 
 ```bash
+source "${CEKERNEL_SCRIPTS}/shared/load-env.sh"
 source "${CEKERNEL_SCRIPTS}/shared/transcript-locator.sh"
 
-ALL_TRANSCRIPTS=""
+WORKER_TRANSCRIPTS=""
+ORCHESTRATOR_TRANSCRIPTS=""
 for ISSUE in <issue-numbers...>; do
   FOUND=$(transcript_locate_worker "$ISSUE" 2>/dev/null) || true
-  ALL_TRANSCRIPTS="${ALL_TRANSCRIPTS:+${ALL_TRANSCRIPTS}$'\n'}${FOUND}"
+  WORKER_TRANSCRIPTS="${WORKER_TRANSCRIPTS:+${WORKER_TRANSCRIPTS}$'\n'}${FOUND}"
 
   FOUND=$(transcript_locate_orchestrator_by_issue "$ISSUE" 2>/dev/null) || true
-  ALL_TRANSCRIPTS="${ALL_TRANSCRIPTS:+${ALL_TRANSCRIPTS}$'\n'}${FOUND}"
+  ORCHESTRATOR_TRANSCRIPTS="${ORCHESTRATOR_TRANSCRIPTS:+${ORCHESTRATOR_TRANSCRIPTS}$'\n'}${FOUND}"
 done
+ALL_TRANSCRIPTS="${WORKER_TRANSCRIPTS}${WORKER_TRANSCRIPTS:+$'\n'}${ORCHESTRATOR_TRANSCRIPTS}"
 ```
 
-#### Worker/Reviewer Identification
+#### Transcript Identification
 
+Transcripts discovered by each locator function are treated as follows:
+
+**Orchestrator** (`ORCHESTRATOR_TRANSCRIPTS`):
+Transcripts found via `transcript_locate_orchestrator_by_issue` are already identified as Orchestrator (session reverse-lookup via IPC `.spawned` files confirms this). No further inspection is needed.
+
+**Worker/Reviewer** (`WORKER_TRANSCRIPTS`):
 `transcript_locate_worker` returns both Worker and Reviewer transcripts (they share the same worktree). File names alone cannot distinguish them. Use the first line's `agentSetting` field in the JSONL to identify the type:
 
 ```json
@@ -56,9 +65,10 @@ done
 {"type":"agent-setting","agentSetting":"worker","sessionId":"82bbd747-..."}
 ```
 
-- `agentSetting` contains `worker` → Worker (matches both `worker` and `cekernel:worker`)
-- `agentSetting` contains `reviewer` → Reviewer (matches both `reviewer` and `cekernel:reviewer`)
-- `agentSetting` line missing or no match → Other (still analyze; pass as "unknown type transcript" to subagent)
+- Found via `transcript_locate_orchestrator_by_issue` → **Orchestrator**
+- `agentSetting` contains `worker` → **Worker** (matches both `worker` and `cekernel:worker`)
+- `agentSetting` contains `reviewer` → **Reviewer** (matches both `reviewer` and `cekernel:reviewer`)
+- `agentSetting` line missing or no match → **unknown** (still analyze; pass as "unknown type transcript" to subagent)
 
 Report what was found:
 
