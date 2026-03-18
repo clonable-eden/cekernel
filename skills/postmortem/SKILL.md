@@ -123,7 +123,8 @@ too large to read at once (use the offset/limit parameters of the Read tool).
 ## Instructions
 1. Read through the transcript systematically
 2. For each detection pattern, check whether the transcript contains matching evidence
-3. Report ALL matches found, not just the first
+3. If you find a problem that does not match any existing pattern, still report it — infer the most appropriate Class (1-4) based on the root cause
+4. Report ALL matches found, not just the first
 
 ## Output Format
 Report findings as a structured list. If no problems are found, report "No issues detected."
@@ -132,6 +133,7 @@ For each finding:
 - **Category**: <pattern category from the checklist>
 - **Pattern**: <specific pattern name>
 - **Severity**: critical / warning / info
+- **Class**: <1 / 2 / 3 / 4 — from the pattern's Class field>
 - **Evidence**: <relevant excerpt or description of what was found in the transcript>
 - **Location**: <approximate position in the transcript — e.g., "early in session", "during CI retry phase", or line range if known>
 - **Recommendation**: <suggested action or fix>
@@ -139,7 +141,7 @@ For each finding:
 
 ### Step 4: Compile Results
 
-After all subagents complete, compile their findings into a unified report:
+After all subagents complete, compile their findings into a unified report. Group findings by their **Class** (root-cause classification):
 
 ```
 ## Post-Mortem Report: Issue #<number> [, #<number>, ...]
@@ -147,36 +149,64 @@ After all subagents complete, compile their findings into a unified report:
 ### Summary
 - Transcripts analyzed: N
 - Issues found: N (X critical, Y warning, Z info)
+  - Class 1 (cekernel defect): N
+  - Class 2 (project CLAUDE.md/rules): N
+  - Class 3 (external constraint): N
+  - Class 4 (Claude Code defect): N
 
-### Critical Issues
-<list critical findings with evidence>
+### Class 1: cekernel defects / configuration issues
+> Action: consider creating issue(s) in cekernel repository
+<list findings with severity, evidence, recommendation>
 
-### Warnings
-<list warning findings with evidence>
+### Class 2: project CLAUDE.md / rule gaps
+> Action: recommend creating issue(s) in target repository
+<list findings with severity, evidence, recommendation>
 
-### Informational
-<list info findings>
+### Class 3: external constraints (GitHub API / Anthropic API etc.)
+> Action: investigate whether this is a known constraint
+<list findings with severity, evidence, recommendation>
 
-### Proposed Issues
-For each critical or warning finding that is actionable, propose a GitHub issue:
-1. **Title**: <short title>
-   **Body**: <description with evidence and suggested fix>
-2. ...
+### Class 4: Claude Code defects
+> Action: investigate whether this is a known constraint
+<list findings with severity, evidence, recommendation>
 ```
+
+Omit sections for classes with no findings.
 
 Present this report to the user.
 
-### Step 5: Create Issues (User Approval Required)
+### Step 5: Propose Actions by Class (User Approval Required)
 
-After presenting the report, ask the user which proposed issues to create.
+After presenting the report, propose actions for each class that has findings.
 
-**Do not create issues without explicit user approval.**
-
-For each approved issue, create it via:
-
+**Class 1 — create issues in cekernel repository:**
+For each actionable Class 1 finding (critical or warning), propose a GitHub issue in cekernel:
+```
+1. **Title**: <short title>
+   **Body**: <description with evidence and suggested fix>
+```
+Ask the user which issues to create. For approved issues:
 ```bash
 gh issue create --title "<title>" --body "<body>"
 ```
+
+**Class 2 — create issues in target repository:**
+For each actionable Class 2 finding (critical or warning), propose a GitHub issue in the target repository.
+Creating these issues is recommended. Ask the user for approval before proceeding.
+```bash
+gh issue create --repo <owner>/<repo> --title "<title>" --body "<body>"
+```
+
+**Class 3 & 4 — investigate known constraints:**
+For Class 3 (external) and Class 4 (Claude Code) findings, do not propose issue creation.
+Instead, summarize the finding as a known constraint:
+```
+- **Finding**: <pattern name>
+  **Status**: known constraint / needs investigation
+  **Note**: <brief description of what is known and where to track it>
+```
+
+**Do not create any issues without explicit user approval.**
 
 Report the created issue numbers back to the user.
 

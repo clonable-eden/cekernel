@@ -269,7 +269,8 @@ The skill analyzes git log and recommends a bump level. After confirmation:
 - Commit message titles in English, body preferably in English
 - PR body must include `closes #{issue-number}`
 - GitHub issues, issue comments, and PR descriptions are written in Japanese by default
-- RELEASE_NOTES.md is written in English (What's Changed section uses PR titles as-is)
+- Project documentation files (`docs/`, `skills/`, `agents/`, `README.md`, `RELEASE_NOTES.md`, `CLAUDE.md`, etc.) are written in English
+- RELEASE_NOTES.md is written in English (What's Changed section uses PR titles as-is; Japanese PR titles are kept verbatim)
 - Never commit directly to main. Always create a feature branch and open a PR
 - Use regular merge (not squash) for PRs unless explicitly told otherwise
 - Worktrees are created under `.worktrees/` (already in .gitignore). See [Worktree Naming](#worktree-naming) for details
