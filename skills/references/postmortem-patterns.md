@@ -32,10 +32,10 @@ Patterns are organized by category. Each has:
 
 | Class | Root Cause | Recommended Action |
 |-------|-----------|-------------------|
-| 1 | cekernel の動作/設定不備 | cekernel リポジトリに issue 作成（ユーザー選択） |
-| 2 | プロジェクトの CLAUDE.md/ルール不備 | ターゲットリポジトリに issue 作成（推奨） |
-| 3 | 外部起因（GitHub API, Anthropic API 等） | 既知の制約かどうか事例調査 |
-| 4 | Claude Code 自体の不備 | 既知の制約かどうか事例調査 |
+| 1 | cekernel defect / configuration issue | Create issue in cekernel repository (user choice) |
+| 2 | Project CLAUDE.md / rule gap | Create issue in target repository (recommended) |
+| 3 | External constraint (GitHub API, Anthropic API, etc.) | Investigate whether known constraint |
+| 4 | Claude Code defect | Investigate whether known constraint |
 
 ---
 

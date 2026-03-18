@@ -148,25 +148,25 @@ After all subagents complete, compile their findings into a unified report. Grou
 ### Summary
 - Transcripts analyzed: N
 - Issues found: N (X critical, Y warning, Z info)
-  - Class 1 (cekernel 不備): N
-  - Class 2 (プロジェクト CLAUDE.md/ルール): N
-  - Class 3 (外部起因): N
-  - Class 4 (Claude Code 不備): N
+  - Class 1 (cekernel defect): N
+  - Class 2 (project CLAUDE.md/rules): N
+  - Class 3 (external constraint): N
+  - Class 4 (Claude Code defect): N
 
-### Class 1: cekernel の動作/設定不備
-> Action: cekernel リポジトリへの issue 作成を検討
+### Class 1: cekernel defects / configuration issues
+> Action: consider creating issue(s) in cekernel repository
 <list findings with severity, evidence, recommendation>
 
-### Class 2: プロジェクトの CLAUDE.md/ルール不備
-> Action: ターゲットリポジトリへの issue 作成を推奨
+### Class 2: project CLAUDE.md / rule gaps
+> Action: recommend creating issue(s) in target repository
 <list findings with severity, evidence, recommendation>
 
-### Class 3: 外部起因（GitHub API / Anthropic API 等）
-> Action: 既知の制約かどうか事例調査
+### Class 3: external constraints (GitHub API / Anthropic API etc.)
+> Action: investigate whether this is a known constraint
 <list findings with severity, evidence, recommendation>
 
-### Class 4: Claude Code 自体の不備
-> Action: 既知の制約かどうか事例調査
+### Class 4: Claude Code defects
+> Action: investigate whether this is a known constraint
 <list findings with severity, evidence, recommendation>
 ```
 
@@ -178,7 +178,7 @@ Present this report to the user.
 
 After presenting the report, propose actions for each class that has findings.
 
-**Class 1 — cekernel リポジトリへの issue 作成:**
+**Class 1 — create issues in cekernel repository:**
 For each actionable Class 1 finding (critical or warning), propose a GitHub issue in cekernel:
 ```
 1. **Title**: <short title>
@@ -189,19 +189,19 @@ Ask the user which issues to create. For approved issues:
 gh issue create --title "<title>" --body "<body>"
 ```
 
-**Class 2 — ターゲットリポジトリへの issue 作成:**
+**Class 2 — create issues in target repository:**
 For each actionable Class 2 finding (critical or warning), propose a GitHub issue in the target repository.
 Creating these issues is recommended. Ask the user for approval before proceeding.
 ```bash
 gh issue create --repo <owner>/<repo> --title "<title>" --body "<body>"
 ```
 
-**Class 3 & 4 — 事例調査:**
+**Class 3 & 4 — investigate known constraints:**
 For Class 3 (external) and Class 4 (Claude Code) findings, do not propose issue creation.
 Instead, summarize the finding as a known constraint:
 ```
 - **Finding**: <pattern name>
-  **Status**: 既知の制約 / 要調査
+  **Status**: known constraint / needs investigation
   **Note**: <brief description of what is known and where to track it>
 ```
 
