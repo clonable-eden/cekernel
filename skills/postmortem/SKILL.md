@@ -132,6 +132,7 @@ For each finding:
 - **Category**: <pattern category from the checklist>
 - **Pattern**: <specific pattern name>
 - **Severity**: critical / warning / info
+- **Class**: <1 / 2 / 3 / 4 — from the pattern's Class field>
 - **Evidence**: <relevant excerpt or description of what was found in the transcript>
 - **Location**: <approximate position in the transcript — e.g., "early in session", "during CI retry phase", or line range if known>
 - **Recommendation**: <suggested action or fix>
@@ -139,7 +140,7 @@ For each finding:
 
 ### Step 4: Compile Results
 
-After all subagents complete, compile their findings into a unified report:
+After all subagents complete, compile their findings into a unified report. Group findings by their **Class** (root-cause classification):
 
 ```
 ## Post-Mortem Report: Issue #<number> [, #<number>, ...]
@@ -147,36 +148,64 @@ After all subagents complete, compile their findings into a unified report:
 ### Summary
 - Transcripts analyzed: N
 - Issues found: N (X critical, Y warning, Z info)
+  - Class 1 (cekernel 不備): N
+  - Class 2 (プロジェクト CLAUDE.md/ルール): N
+  - Class 3 (外部起因): N
+  - Class 4 (Claude Code 不備): N
 
-### Critical Issues
-<list critical findings with evidence>
+### Class 1: cekernel の動作/設定不備
+> Action: cekernel リポジトリへの issue 作成を検討
+<list findings with severity, evidence, recommendation>
 
-### Warnings
-<list warning findings with evidence>
+### Class 2: プロジェクトの CLAUDE.md/ルール不備
+> Action: ターゲットリポジトリへの issue 作成を推奨
+<list findings with severity, evidence, recommendation>
 
-### Informational
-<list info findings>
+### Class 3: 外部起因（GitHub API / Anthropic API 等）
+> Action: 既知の制約かどうか事例調査
+<list findings with severity, evidence, recommendation>
 
-### Proposed Issues
-For each critical or warning finding that is actionable, propose a GitHub issue:
-1. **Title**: <short title>
-   **Body**: <description with evidence and suggested fix>
-2. ...
+### Class 4: Claude Code 自体の不備
+> Action: 既知の制約かどうか事例調査
+<list findings with severity, evidence, recommendation>
 ```
+
+Omit sections for classes with no findings.
 
 Present this report to the user.
 
-### Step 5: Create Issues (User Approval Required)
+### Step 5: Propose Actions by Class (User Approval Required)
 
-After presenting the report, ask the user which proposed issues to create.
+After presenting the report, propose actions for each class that has findings.
 
-**Do not create issues without explicit user approval.**
-
-For each approved issue, create it via:
-
+**Class 1 — cekernel リポジトリへの issue 作成:**
+For each actionable Class 1 finding (critical or warning), propose a GitHub issue in cekernel:
+```
+1. **Title**: <short title>
+   **Body**: <description with evidence and suggested fix>
+```
+Ask the user which issues to create. For approved issues:
 ```bash
 gh issue create --title "<title>" --body "<body>"
 ```
+
+**Class 2 — ターゲットリポジトリへの issue 作成:**
+For each actionable Class 2 finding (critical or warning), propose a GitHub issue in the target repository.
+Creating these issues is recommended. Ask the user for approval before proceeding.
+```bash
+gh issue create --repo <owner>/<repo> --title "<title>" --body "<body>"
+```
+
+**Class 3 & 4 — 事例調査:**
+For Class 3 (external) and Class 4 (Claude Code) findings, do not propose issue creation.
+Instead, summarize the finding as a known constraint:
+```
+- **Finding**: <pattern name>
+  **Status**: 既知の制約 / 要調査
+  **Note**: <brief description of what is known and where to track it>
+```
+
+**Do not create any issues without explicit user approval.**
 
 Report the created issue numbers back to the user.
 
