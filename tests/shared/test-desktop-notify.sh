@@ -123,6 +123,41 @@ assert_match "pbcopy called for URL" "pbcopy called" "$PBCOPY_OUTPUT"
 rm -f "$MOCK_PBCOPY_LOG"
 
 # ═══════════════════════════════════════
+# macOS alerter tests
+# ═══════════════════════════════════════
+
+# ── Test 8: macOS — alerter preferred over osascript when both available ──
+create_mock "uname" 'echo "Darwin"'
+create_mock "alerter" 'echo "alerter called: $*" >> "${DESKTOP_NOTIFY_MOCK_LOG}"'
+create_mock "osascript" 'echo "osascript called: $*" >> "${DESKTOP_NOTIFY_MOCK_LOG}"'
+setup_platform
+
+> "$MOCK_LOG"
+desktop_notify "Alerter Title" "Alerter Message"
+MOCK_OUTPUT=$(cat "$MOCK_LOG" 2>/dev/null || echo "")
+assert_match "alerter preferred over osascript" "alerter called:" "$MOCK_OUTPUT"
+if [[ "$MOCK_OUTPUT" == *"osascript called:"* ]]; then
+  echo "  FAIL: osascript should not be called when alerter is available"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+else
+  echo "  PASS: osascript not called when alerter is available"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+fi
+
+# ── Test 9: macOS — alerter + URL calls open after alerter exits (simulating click) ──
+MOCK_OPEN_LOG=$(mktemp)
+create_mock "alerter" 'echo "alerter called: $*" >> "${DESKTOP_NOTIFY_MOCK_LOG}"; exit 0'
+create_mock "open" 'echo "open called: $*" >> "'"${MOCK_OPEN_LOG}"'"'
+setup_platform
+
+> "$MOCK_LOG"
+desktop_notify "Test Title" "Test Message" "https://example.com"
+wait
+OPEN_OUTPUT=$(cat "$MOCK_OPEN_LOG" 2>/dev/null || echo "")
+assert_match "open called with URL after alerter click" "open called:.*https://example.com" "$OPEN_OUTPUT"
+rm -f "$MOCK_OPEN_LOG"
+
+# ═══════════════════════════════════════
 # Linux tests
 # ═══════════════════════════════════════
 
