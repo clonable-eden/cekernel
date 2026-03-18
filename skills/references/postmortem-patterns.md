@@ -54,6 +54,11 @@ Patterns are organized by category. Each has:
 - **Example**: All 5 analyzed issues. Reviewer falls back to `--comment`, losing formal GitHub review status
 - **Note**: This is an infrastructure constraint, not a bug. Track frequency but do not create issues unless the fallback also fails.
 
+### Reviewer self-review fallback missing
+- **Detect**: `gh pr review --approve` or `gh pr review --request-changes` failing with self-review error, followed by `notify-complete.sh failed` without a `--comment` fallback attempt
+- **Severity**: warning
+- **Example**: #428 — Reviewer exited with `failed` without posting the review body to the PR; review content was lost and had to be manually salvaged from the transcript
+
 ### Agent definition mismatch
 - **Detect**: Reviewer transcript showing Worker-like behavior (implementation, commits), or Worker showing review-only behavior
 - **Severity**: critical

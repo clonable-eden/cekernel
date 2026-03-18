@@ -133,6 +133,31 @@ gh pr review <pr-number> --request-changes --body "Review comment explaining req
 
 The review body must clearly describe what needs to be fixed so that the Worker can address the feedback upon re-spawn.
 
+#### Self-Review Fallback
+
+GitHub does not allow approving or requesting changes on your own PR (`"Can not approve your own pull request"`). When this error occurs, fall back to `--comment` to preserve the review body:
+
+```bash
+# 1. First attempt --approve (or --request-changes)
+if ! gh pr review <pr-number> --approve --body "..."; then
+  # 2. On self-review error, fall back to --comment
+  gh pr review <pr-number> --comment --body "..."
+fi
+
+# 3. notify-complete.sh uses the actual review verdict, not the GitHub submission method
+#    --comment fallback is a GitHub constraint; the review judgment itself is unchanged
+notify-complete.sh <issue-number> approved <pr-number>
+```
+
+The same fallback applies for `--request-changes`:
+
+```bash
+if ! gh pr review <pr-number> --request-changes --body "..."; then
+  gh pr review <pr-number> --comment --body "..."
+fi
+notify-complete.sh <issue-number> changes-requested <pr-number>
+```
+
 ### 6. Notify Orchestrator via FIFO
 
 After submitting the review, notify the Orchestrator of the result using `notify-complete.sh`:
