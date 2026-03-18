@@ -180,6 +180,7 @@ tests/
 | [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | Runtime for Worker agents | Yes |
 | [jq](https://jqlang.github.io/jq/) | `~/.claude.json` trust entry manipulation, JSON parsing | Yes |
 | [gh](https://cli.github.com/) | Issue retrieval, PR creation/merge | Yes |
+| [alerter](https://github.com/vjeantet/alerter) | macOS desktop notifications (richer than osascript) | No |
 | [WezTerm](https://wezfurlong.org/wezterm/) | Worker window launch/management (wezterm backend) | No* |
 | [tmux](https://github.com/tmux/tmux) | Worker pane management (tmux backend) | No* |
 | git | Worktree creation/management | Yes |

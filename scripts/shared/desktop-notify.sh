@@ -5,7 +5,7 @@
 # Detects the platform and delegates to the appropriate backend adapter.
 #
 # Backends:
-#   macos.sh  — osascript (display notification + sound)
+#   macos.sh  — alerter (preferred, brew install alerter) or osascript (fallback)
 #   linux.sh  — notify-send + canberra-gtk-play
 #   wsl.sh    — powershell.exe toast notification
 #

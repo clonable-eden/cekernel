@@ -34,12 +34,16 @@ MOCK
 }
 
 # Helper: re-source desktop-notify.sh with mocked PATH.
-# Platform detection happens at source time. Sets PATH for the rest of the test block.
+# Platform detection happens at source time; uses MOCK_BIN + system dirs only during source
+# so only explicitly mocked tools are detected (prevents brew-installed alerter etc. from
+# interfering with osascript-only tests). After sourcing, PATH is restored to
+# MOCK_BIN:ORIG_PATH for function execution.
+_SYSTEM_PATH="/usr/bin:/bin:/usr/sbin:/sbin"
 setup_platform() {
   unset -f desktop_notify 2>/dev/null || true
   unset _DESKTOP_NOTIFY_PLATFORM 2>/dev/null || true
+  PATH="${MOCK_BIN}:${_SYSTEM_PATH}" source "${CEKERNEL_DIR}/scripts/shared/desktop-notify.sh"
   PATH="${MOCK_BIN}:${ORIG_PATH}"
-  source "${CEKERNEL_DIR}/scripts/shared/desktop-notify.sh"
 }
 
 # ── Test 1: desktop_notify function exists after sourcing ──
@@ -121,6 +125,45 @@ CEKERNEL_NOTIFY_MACOS_ACTION=pbcopy desktop_notify "Title" "Message" "https://ex
 PBCOPY_OUTPUT=$(cat "$MOCK_PBCOPY_LOG" 2>/dev/null || echo "")
 assert_match "pbcopy called for URL" "pbcopy called" "$PBCOPY_OUTPUT"
 rm -f "$MOCK_PBCOPY_LOG"
+
+# ═══════════════════════════════════════
+# macOS alerter tests
+# ═══════════════════════════════════════
+
+# ── Test 8: macOS — alerter preferred over osascript when both available ──
+create_mock "uname" 'echo "Darwin"'
+create_mock "alerter" 'echo "alerter called: $*" >> "${DESKTOP_NOTIFY_MOCK_LOG}"'
+create_mock "osascript" 'echo "osascript called: $*" >> "${DESKTOP_NOTIFY_MOCK_LOG}"'
+setup_platform
+
+> "$MOCK_LOG"
+desktop_notify "Alerter Title" "Alerter Message"
+wait  # alerter runs in background (&)
+MOCK_OUTPUT=$(cat "$MOCK_LOG" 2>/dev/null || echo "")
+assert_match "alerter preferred over osascript" "alerter called:" "$MOCK_OUTPUT"
+if [[ "$MOCK_OUTPUT" == *"osascript called:"* ]]; then
+  echo "  FAIL: osascript should not be called when alerter is available"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+else
+  echo "  PASS: osascript not called when alerter is available"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+fi
+
+# ── Test 9: macOS — alerter + URL calls open after alerter exits (simulating click) ──
+MOCK_OPEN_LOG=$(mktemp)
+create_mock "alerter" 'echo "alerter called: $*" >> "${DESKTOP_NOTIFY_MOCK_LOG}"; exit 0'
+create_mock "open" 'echo "open called: $*" >> "'"${MOCK_OPEN_LOG}"'"'
+setup_platform
+
+> "$MOCK_LOG"
+desktop_notify "Test Title" "Test Message" "https://example.com"
+wait
+OPEN_OUTPUT=$(cat "$MOCK_OPEN_LOG" 2>/dev/null || echo "")
+assert_match "open called with URL after alerter click" "open called:.*https://example.com" "$OPEN_OUTPUT"
+rm -f "$MOCK_OPEN_LOG"
+
+# Remove alerter mock so subsequent tests use osascript (default fallback)
+rm -f "${MOCK_BIN}/alerter"
 
 # ═══════════════════════════════════════
 # Linux tests
