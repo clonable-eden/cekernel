@@ -54,6 +54,11 @@ Patterns are organized by category. Each has:
 - **Example**: All 5 analyzed issues. Reviewer falls back to `--comment`, losing formal GitHub review status
 - **Note**: This is an infrastructure constraint, not a bug. Track frequency but do not create issues unless the fallback also fails.
 
+### Reviewer self-review fallback missing
+- **Detect**: `gh pr review --approve` or `gh pr review --request-changes` failing with self-review error, followed by `notify-complete.sh failed` without a `--comment` fallback attempt; OR duplicate COMMENTED reviews (same body posted twice within seconds) caused by `gh pr review` CLI posting body even on failure
+- **Severity**: warning
+- **Example**: #428 — Reviewer exited with `failed` without posting the review body; #430 — `gh pr review --approve` posted body as COMMENTED on failure, then `--comment` fallback posted it again (duplicate). Fix: use `gh api` with `event=APPROVE` which returns 422 without posting on self-review error
+
 ### Agent definition mismatch
 - **Detect**: Reviewer transcript showing Worker-like behavior (implementation, commits), or Worker showing review-only behavior
 - **Severity**: critical

@@ -133,6 +133,36 @@ gh pr review <pr-number> --request-changes --body "Review comment explaining req
 
 The review body must clearly describe what needs to be fixed so that the Worker can address the feedback upon re-spawn.
 
+#### Self-Review Fallback
+
+GitHub does not allow approving or requesting changes on your own PR (HTTP 422: `"Can not approve your own pull request"`). Use `gh api` (not `gh pr review`) to avoid duplicate postings — `gh pr review --approve` posts the body as COMMENTED even on failure, while `gh api` with event=APPROVE returns 422 without posting anything.
+
+```bash
+OWNER_REPO="$(gh repo view --json nameWithOwner -q .nameWithOwner)"
+
+# 1. Attempt APPROVE via REST API (422 = nothing posted)
+if ! gh api "repos/${OWNER_REPO}/pulls/<pr-number>/reviews" \
+  -f event=APPROVE -f body="..." 2>/dev/null; then
+  # 2. Self-review error → COMMENT fallback (single posting)
+  gh api "repos/${OWNER_REPO}/pulls/<pr-number>/reviews" \
+    -f event=COMMENT -f body="..."
+fi
+
+# 3. notify-complete.sh uses the actual review verdict, not the GitHub submission method
+notify-complete.sh <issue-number> approved <pr-number>
+```
+
+The same fallback applies for `REQUEST_CHANGES`:
+
+```bash
+if ! gh api "repos/${OWNER_REPO}/pulls/<pr-number>/reviews" \
+  -f event=REQUEST_CHANGES -f body="..." 2>/dev/null; then
+  gh api "repos/${OWNER_REPO}/pulls/<pr-number>/reviews" \
+    -f event=COMMENT -f body="..."
+fi
+notify-complete.sh <issue-number> changes-requested <pr-number>
+```
+
 ### 6. Notify Orchestrator via FIFO
 
 After submitting the review, notify the Orchestrator of the result using `notify-complete.sh`:
