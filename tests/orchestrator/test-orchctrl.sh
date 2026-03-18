@@ -307,6 +307,27 @@ assert_eq "resolve_target short repo filter (backward compat): exit 0" "0" "$EXI
 assert_match "resolve_target short repo filter (backward compat)" '"issue":10' "$OUTPUT"
 
 # ══════════════════════════════════════════════
+# elapsed from .spawned file
+# ══════════════════════════════════════════════
+
+# ── Test 35: ls elapsed uses .spawned file ──
+echo "worker" > "${IPC_A}/worker-10.type"
+# Write epoch 0 to .spawned — forces very large elapsed (many hours)
+echo "0" > "${IPC_A}/worker-10.spawned"
+echo "RUNNING:2026-02-28T10:00:00Z:phase1:implement" > "${IPC_A}/worker-10.state"
+OUTPUT=$(bash "$ORCHCTRL" ls 2>/dev/null | grep '"issue":10')
+# New code reads .spawned (epoch 0) → elapsed in hours
+# Old code reads FIFO mtime (just created) → elapsed in seconds "Xs"
+assert_match "ls elapsed reads from .spawned (epoch 0 → hours)" '"elapsed":"[0-9]+h' "$OUTPUT"
+
+# ── Test 36: inspect elapsed uses .spawned file ──
+OUTPUT=$(bash "$ORCHCTRL" inspect 10 --session "$SESSION_A" 2>/dev/null)
+assert_match "inspect elapsed reads from .spawned (epoch 0 → hours)" '"elapsed":"[0-9]+h' "$OUTPUT"
+
+# Cleanup .spawned file for subsequent tests
+rm -f "${IPC_A}/worker-10.spawned"
+
+# ══════════════════════════════════════════════
 # usage / no command
 # ══════════════════════════════════════════════
 
