@@ -123,7 +123,8 @@ too large to read at once (use the offset/limit parameters of the Read tool).
 ## Instructions
 1. Read through the transcript systematically
 2. For each detection pattern, check whether the transcript contains matching evidence
-3. Report ALL matches found, not just the first
+3. If you find a problem that does not match any existing pattern, still report it — infer the most appropriate Class (1-4) based on the root cause
+4. Report ALL matches found, not just the first
 
 ## Output Format
 Report findings as a structured list. If no problems are found, report "No issues detected."
