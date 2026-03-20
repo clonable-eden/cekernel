@@ -15,6 +15,7 @@ Worker control interface for cekernel. Like `systemctl` / `supervisorctl`, provi
 /orchctrl inspect <target>
 /orchctrl suspend <target>
 /orchctrl resume <target>
+/orchctrl recover <target>
 /orchctrl term <target>
 /orchctrl kill <target>
 /orchctrl nice <target> <priority>
@@ -85,19 +86,36 @@ bash "$ORCHCTRL" suspend <target>
 
 Sends a SUSPEND signal. Only works for Workers in RUNNING, WAITING, or READY state. The Worker will checkpoint its progress and stop at the next phase boundary.
 
-#### resume — Resume a suspended Worker
+#### resume — Resume a suspended or crashed Worker
 
 ```bash
 bash "$ORCHCTRL" resume <target>
 ```
 
-Only works for Workers in SUSPENDED state. Changes state to READY and outputs the command to restart:
+Works for Workers in SUSPENDED state or TERMINATED state with `crashed*` detail. Changes state to READY and outputs the command to restart:
 
 ```bash
 export CEKERNEL_SESSION_ID=<session-id> && spawn-worker.sh --resume <issue>
 ```
 
 After orchctrl confirms the state change, run `spawn-worker.sh --resume` to actually restart the Worker process.
+
+#### recover — Mark a dead RUNNING worker as crashed
+
+```bash
+bash "$ORCHCTRL" recover <target>
+```
+
+Checks if a RUNNING or WAITING Worker's process is actually dead (zombie). If the process is dead, transitions the state to `TERMINATED` with detail `crashed:detected-by-recover`. If the process is still alive, returns an error suggesting `term` or `kill` instead.
+
+Typical workflow after a Worker process crashes:
+
+```
+health-check.sh → detect zombie
+orchctrl recover <issue> → RUNNING → TERMINATED/crashed
+orchctrl resume <issue> → TERMINATED/crashed → READY
+spawn-worker.sh --resume <issue> → restart
+```
 
 #### term — Graceful shutdown
 
@@ -127,5 +145,6 @@ Changes the Worker's priority. Priority values: `critical` (0), `high` (5), `nor
 
 - For `ls`: Format as a table
 - For `inspect`: Format as a structured summary
-- For action commands (`suspend`, `resume`, `term`, `kill`, `nice`): Confirm the action was taken
+- For action commands (`suspend`, `resume`, `recover`, `term`, `kill`, `nice`): Confirm the action was taken
 - For `resume`: Also show the follow-up `spawn-worker.sh --resume` command for the user to execute
+- For `recover`: Confirm the state transition, then suggest running `orchctrl resume` next

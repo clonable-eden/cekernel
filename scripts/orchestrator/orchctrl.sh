@@ -7,7 +7,8 @@
 #   ls                          List all workers across all sessions
 #   inspect <target>            Detailed worker view
 #   suspend <target>            Suspend a worker (send SUSPEND signal)
-#   resume <target>             Resume a suspended worker
+#   resume <target>             Resume a suspended or crashed worker
+#   recover <target>            Mark a dead RUNNING worker as crashed
 #   term <target>               Send TERM signal (graceful shutdown)
 #   kill <target>               Force kill worker
 #   nice <target> <priority>    Change worker priority
@@ -41,7 +42,8 @@ Commands:
   ls                          List all workers
   inspect <target>            Detailed worker view
   suspend <target>            Suspend a worker
-  resume <target>             Resume a suspended worker
+  resume <target>             Resume a suspended or crashed worker
+  recover <target>            Mark a dead RUNNING worker as crashed
   term <target>               Send TERM signal
   kill <target>               Force kill worker
   nice <target> <priority>    Change priority
@@ -377,18 +379,69 @@ cmd_suspend() {
   esac
 }
 
-# ── resume: Resume a SUSPENDED worker ──
+# ── recover: Transition dead RUNNING worker to TERMINATED/crashed ──
+cmd_recover() {
+  resolve_target "$@" || return 1
+  set_ipc_context
+
+  # Check current state — only RUNNING or WAITING can be recovered
+  local state_json state
+  state_json=$(worker_state_read "$RESOLVED_ISSUE")
+  state=$(echo "$state_json" | jq -r '.state')
+
+  case "$state" in
+    RUNNING|WAITING) ;;
+    *)
+      echo "Error: cannot recover worker #${RESOLVED_ISSUE} in state ${state} (must be RUNNING or WAITING)" >&2
+      return 1
+      ;;
+  esac
+
+  # Check if Worker process is alive
+  local backend is_alive=0
+  backend=$(detect_backend "$CEKERNEL_IPC_DIR" "$RESOLVED_ISSUE")
+
+  if [[ "$backend" != "unknown" ]]; then
+    # Source backend adapter to get backend_worker_alive
+    export CEKERNEL_BACKEND="$backend"
+    source "${SCRIPT_DIR}/../shared/backend-adapter.sh"
+    if backend_worker_alive "$RESOLVED_ISSUE" 2>/dev/null; then
+      is_alive=1
+    fi
+  fi
+  # If backend is "unknown" (no handle, no metadata), worker is dead (is_alive stays 0)
+
+  if [[ "$is_alive" -eq 1 ]]; then
+    echo "Error: worker #${RESOLVED_ISSUE} is still alive. Use 'term' or 'kill' instead." >&2
+    return 1
+  fi
+
+  # Worker is dead — transition state to TERMINATED (crashed)
+  worker_state_write "$RESOLVED_ISSUE" TERMINATED "crashed:detected-by-recover"
+  echo "Worker #${RESOLVED_ISSUE} recovered: state changed to TERMINATED (crashed:detected-by-recover)." >&2
+  echo "Run: orchctrl resume ${RESOLVED_ISSUE}" >&2
+}
+
+# ── resume: Resume a SUSPENDED or TERMINATED/crashed worker ──
 cmd_resume() {
   resolve_target "$@" || return 1
   set_ipc_context
 
   # Check current state
-  local state_json state
+  local state_json state detail
   state_json=$(worker_state_read "$RESOLVED_ISSUE")
   state=$(echo "$state_json" | jq -r '.state')
+  detail=$(echo "$state_json" | jq -r '.detail')
 
-  if [[ "$state" != "SUSPENDED" ]]; then
-    echo "Error: cannot resume worker #${RESOLVED_ISSUE} in state ${state} (must be SUSPENDED)" >&2
+  local can_resume=0
+  if [[ "$state" == "SUSPENDED" ]]; then
+    can_resume=1
+  elif [[ "$state" == "TERMINATED" && "$detail" == crashed* ]]; then
+    can_resume=1
+  fi
+
+  if [[ "$can_resume" -eq 0 ]]; then
+    echo "Error: cannot resume worker #${RESOLVED_ISSUE} in state ${state} (must be SUSPENDED or TERMINATED/crashed)" >&2
     return 1
   fi
 
@@ -759,6 +812,7 @@ case "$COMMAND" in
   inspect) cmd_inspect "$@" ;;
   suspend) cmd_suspend "$@" ;;
   resume)  cmd_resume "$@" ;;
+  recover) cmd_recover "$@" ;;
   term)    cmd_term "$@" ;;
   kill)    cmd_kill "$@" ;;
   nice)    cmd_nice "$@" ;;

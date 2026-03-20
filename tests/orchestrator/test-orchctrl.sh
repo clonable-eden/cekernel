@@ -341,4 +341,83 @@ EXIT_CODE=0
 bash "$ORCHCTRL" foobar 2>/dev/null || EXIT_CODE=$?
 assert_eq "unknown command: exit 1" "1" "$EXIT_CODE"
 
+# ══════════════════════════════════════════════
+# recover command
+# ══════════════════════════════════════════════
+
+# Setup: restore worker-10 to RUNNING state with headless backend and a dead handle
+echo "RUNNING:2026-02-28T10:00:00Z:phase1:implement" > "${IPC_A}/worker-10.state"
+echo "headless" > "${IPC_A}/worker-10.backend"
+# Use PID 99999 — virtually guaranteed to be non-existent
+echo "99999" > "${IPC_A}/handle-10.worker"
+
+# ── Test 40: recover dead RUNNING worker → TERMINATED/crashed ──
+EXIT_CODE=0
+bash "$ORCHCTRL" recover 10 --session "$SESSION_A" 2>/dev/null || EXIT_CODE=$?
+assert_eq "recover dead worker: exit 0" "0" "$EXIT_CODE"
+STATE_CONTENT=$(cat "${IPC_A}/worker-10.state")
+assert_match "recover changes state to TERMINATED" "^TERMINATED:" "$STATE_CONTENT"
+assert_match "recover detail is crashed:detected-by-recover" "crashed:detected-by-recover$" "$STATE_CONTENT"
+
+# ── Test 41: recover alive worker → error ──
+echo "RUNNING:2026-02-28T10:00:00Z:phase1:implement" > "${IPC_A}/worker-10.state"
+# Start a background sleep and use its PID as a live handle
+sleep 60 &
+ALIVE_PID=$!
+echo "$ALIVE_PID" > "${IPC_A}/handle-10.worker"
+EXIT_CODE=0
+bash "$ORCHCTRL" recover 10 --session "$SESSION_A" 2>/dev/null || EXIT_CODE=$?
+kill "$ALIVE_PID" 2>/dev/null || true
+wait "$ALIVE_PID" 2>/dev/null || true
+assert_eq "recover alive worker: error" "1" "$EXIT_CODE"
+# State should remain RUNNING (not changed)
+STATE_CONTENT=$(cat "${IPC_A}/worker-10.state")
+assert_match "recover alive worker: state unchanged" "^RUNNING:" "$STATE_CONTENT"
+
+# ── Test 42: recover non-RUNNING worker → error ──
+echo "TERMINATED:2026-02-28T10:00:00Z:done" > "${IPC_A}/worker-10.state"
+echo "99999" > "${IPC_A}/handle-10.worker"
+EXIT_CODE=0
+bash "$ORCHCTRL" recover 10 --session "$SESSION_A" 2>/dev/null || EXIT_CODE=$?
+assert_eq "recover TERMINATED worker: error" "1" "$EXIT_CODE"
+
+# ── Test 43: recover unknown backend (no handle, no .backend) → treats as dead ──
+echo "RUNNING:2026-02-28T10:00:00Z:phase1:implement" > "${IPC_A}/worker-10.state"
+rm -f "${IPC_A}/worker-10.backend" "${IPC_A}/handle-10.worker"
+EXIT_CODE=0
+bash "$ORCHCTRL" recover 10 --session "$SESSION_A" 2>/dev/null || EXIT_CODE=$?
+assert_eq "recover unknown backend (no handle): exit 0" "0" "$EXIT_CODE"
+STATE_CONTENT=$(cat "${IPC_A}/worker-10.state")
+assert_match "recover unknown backend: TERMINATED" "^TERMINATED:" "$STATE_CONTENT"
+assert_match "recover unknown backend: crashed detail" "crashed:detected-by-recover$" "$STATE_CONTENT"
+
+# Cleanup recover test state
+rm -f "${IPC_A}/worker-10.backend" "${IPC_A}/handle-10.worker"
+
+# ══════════════════════════════════════════════
+# resume command: TERMINATED/crashed relaxation
+# ══════════════════════════════════════════════
+
+# ── Test 44: resume TERMINATED/crashed → changes to READY ──
+echo "TERMINATED:2026-02-28T10:00:00Z:crashed:detected-by-recover" > "${IPC_A}/worker-10.state"
+EXIT_CODE=0
+bash "$ORCHCTRL" resume 10 --session "$SESSION_A" 2>/dev/null || EXIT_CODE=$?
+assert_eq "resume TERMINATED/crashed: exit 0" "0" "$EXIT_CODE"
+STATE_CONTENT=$(cat "${IPC_A}/worker-10.state")
+assert_match "resume TERMINATED/crashed: changes to READY" "^READY:" "$STATE_CONTENT"
+
+# ── Test 45: resume TERMINATED (non-crashed) → error ──
+echo "TERMINATED:2026-02-28T10:00:00Z:completed" > "${IPC_A}/worker-10.state"
+EXIT_CODE=0
+bash "$ORCHCTRL" resume 10 --session "$SESSION_A" 2>/dev/null || EXIT_CODE=$?
+assert_eq "resume TERMINATED/completed: error" "1" "$EXIT_CODE"
+
+# ── Test 46: resume TERMINATED with crashed variant → changes to READY ──
+echo "TERMINATED:2026-02-28T10:00:00Z:crashed:some-other-reason" > "${IPC_A}/worker-10.state"
+EXIT_CODE=0
+bash "$ORCHCTRL" resume 10 --session "$SESSION_A" 2>/dev/null || EXIT_CODE=$?
+assert_eq "resume TERMINATED/crashed variant: exit 0" "0" "$EXIT_CODE"
+STATE_CONTENT=$(cat "${IPC_A}/worker-10.state")
+assert_match "resume TERMINATED/crashed variant: changes to READY" "^READY:" "$STATE_CONTENT"
+
 report_results
