@@ -19,7 +19,7 @@
 #   1 — General error
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
 source "${SCRIPT_DIR}/../shared/load-env.sh"
 source "${SCRIPT_DIR}/../shared/session-id.sh"
 
@@ -30,6 +30,7 @@ REPO_ROOT="$(git rev-parse --show-toplevel)"
 AGENT_NAME="${CEKERNEL_AGENT_ORCHESTRATOR:-orchestrator}"
 
 # ── Compute cekernel script paths for Orchestrator PATH ──
+CEKERNEL_ORCHESTRATOR_SCRIPTS="$(cd "${SCRIPT_DIR}/../orchestrator" && pwd)"
 CEKERNEL_PROCESS_SCRIPTS="$(cd "${SCRIPT_DIR}/../process" && pwd)"
 CEKERNEL_SHARED_SCRIPTS="$(cd "${SCRIPT_DIR}/../shared" && pwd)"
 
@@ -43,7 +44,7 @@ CEKERNEL_SHARED_SCRIPTS="$(cd "${SCRIPT_DIR}/../shared" && pwd)"
   export CEKERNEL_SESSION_ID="${CEKERNEL_SESSION_ID}" && \
   export CEKERNEL_IPC_DIR="${CEKERNEL_IPC_DIR}" && \
   export CEKERNEL_ENV="${CEKERNEL_ENV}" && \
-  export PATH="${CEKERNEL_PROCESS_SCRIPTS}:${CEKERNEL_SHARED_SCRIPTS}:${PATH}" && \
+  export PATH="${CEKERNEL_ORCHESTRATOR_SCRIPTS}:${CEKERNEL_PROCESS_SCRIPTS}:${CEKERNEL_SHARED_SCRIPTS}:${PATH}" && \
   exec claude -p --agent "$AGENT_NAME" "$PROMPT"
 ) >/dev/null 2>&1 &
 PID=$!

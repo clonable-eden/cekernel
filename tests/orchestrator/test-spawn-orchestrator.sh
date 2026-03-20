@@ -5,7 +5,7 @@
 # as an independent OS process via `claude -p --agent orchestrator`.
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
 source "${SCRIPT_DIR}/../helpers.sh"
 
 CEKERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
@@ -45,7 +45,7 @@ else
 fi
 
 # ── Test 4: runs as background process ──
-if echo "$CONTENT" | grep -q '&$\|& *$'; then
+if echo "$CONTENT" | grep -Eq '&$|& *$'; then
   echo "  PASS: runs claude as background process"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
