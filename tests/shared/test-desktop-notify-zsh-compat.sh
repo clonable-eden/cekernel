@@ -56,10 +56,13 @@ RESULT=$(zsh -c "
 assert_eq "zsh: _DESKTOP_NOTIFY_DIR resolves to directory with backend" "found" "$RESULT"
 
 # ── Test 2: zsh source loads real backend (not no-op) ──
+# Exclude paths where alerter may be installed (homebrew on Apple Silicon
+# or Intel Mac) to force osascript fallback so the mock captures the call.
+_SYSTEM_PATH=$(echo "$PATH" | tr ':' '\n' | grep -v -e homebrew -e '/usr/local/bin' | tr '\n' ':')
 > "$MOCK_LOG"
 ZSH_EXIT=0
 zsh -c "
-  export PATH='${MOCK_BIN}:${PATH}'
+  export PATH='${MOCK_BIN}:${_SYSTEM_PATH}'
   export DESKTOP_NOTIFY_MOCK_LOG='${MOCK_LOG}'
   source '${CEKERNEL_DIR}/scripts/shared/desktop-notify.sh'
   desktop_notify 'ZSH Title' 'ZSH Message'
@@ -72,7 +75,7 @@ assert_match "zsh: osascript called (real backend loaded, not no-op)" "osascript
 > "$MOCK_LOG"
 BASH_EXIT=0
 bash -c "
-  export PATH='${MOCK_BIN}:${PATH}'
+  export PATH='${MOCK_BIN}:${_SYSTEM_PATH}'
   export DESKTOP_NOTIFY_MOCK_LOG='${MOCK_LOG}'
   source '${CEKERNEL_DIR}/scripts/shared/desktop-notify.sh'
   desktop_notify 'Bash Title' 'Bash Message'
