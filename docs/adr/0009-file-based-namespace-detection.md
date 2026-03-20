@@ -76,7 +76,7 @@ For file-based detection to work in local mode, Claude Code must be able to reso
 └── worker.md@       -> ../../agents/worker.md
 
 .claude/skills/
-├── orchctrl@       -> ../../skills/orchctrl
+├── orchctl@        -> ../../skills/orchctl
 ├── orchestrate@    -> ../../skills/orchestrate
 ├── probe@          -> ../../skills/probe
 └── unix-architect@ -> ../../skills/unix-architect
