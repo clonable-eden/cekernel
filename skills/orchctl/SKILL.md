@@ -4,25 +4,25 @@ argument-hint: "<command> [target] [args...]"
 allowed-tools: Bash, Read
 ---
 
-# /orchctrl
+# /orchctl
 
 Worker control interface for cekernel. Like `systemctl` / `supervisorctl`, provides commands to inspect and manage running Workers across all sessions.
 
 ## Usage
 
 ```
-/orchctrl ls
-/orchctrl ps [--session <id>]
-/orchctrl inspect <target>
-/orchctrl suspend <target>
-/orchctrl resume <target>
-/orchctrl recover <target>
-/orchctrl term <target>
-/orchctrl kill <target>
-/orchctrl nice <target> <priority>
+/orchctl ls
+/orchctl ps [--session <id>]
+/orchctl inspect <target>
+/orchctl suspend <target>
+/orchctl resume <target>
+/orchctl recover <target>
+/orchctl term <target>
+/orchctl kill <target>
+/orchctl nice <target> <priority>
 ```
 
-Note: In plugin mode, `/cekernel:orchctrl` also works.
+Note: In plugin mode, `/cekernel:orchctl` also works.
 
 ## Addressing: `<target>`
 
