@@ -186,7 +186,7 @@ RESULT=$(transcript_locate_orchestrator_by_issue 100 "$MOCK_VAR_DIR" "$MOCK_CLAU
 assert_match "Finds orchestrator JSONL via agentSetting scan" "orch-claude-p-uuid" "$RESULT"
 
 # ── Test 20: agentSetting scan excludes non-orchestrator JSONL ──
-# Worker JSONL should be excluded; only orchestrator JNSONLs are returned.
+# Worker JSONL should be excluded; only orchestrator JSONLs are returned.
 # direct-orch-uuid-1.jsonl (test 17) + orch-claude-p-uuid.jsonl (test 19) = 2
 echo '{"type":"agent-setting","agentSetting":"worker","sessionId":"worker-session-1"}' > "${MOCK_CLAUDE_HOME}/projects/-Users-test-git-repo/worker-session-1.jsonl"
 
