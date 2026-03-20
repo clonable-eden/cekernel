@@ -15,13 +15,14 @@ source "${SCRIPT_DIR}/../shared/load-env.sh"
 source "${SCRIPT_DIR}/../shared/session-id.sh"
 source "${SCRIPT_DIR}/../shared/worker-state.sh"
 source "${SCRIPT_DIR}/../shared/worker-priority.sh"
+source "${SCRIPT_DIR}/../shared/resolve-repo-root.sh"
 
 if [[ ! -d "$CEKERNEL_IPC_DIR" ]]; then
   echo "No active session: ${CEKERNEL_IPC_DIR}" >&2
   exit 1
 fi
 
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"
+REPO_ROOT="$(resolve_repo_root 2>/dev/null || echo "")"
 
 # Collect process info from FIFO list
 find "$CEKERNEL_IPC_DIR" -maxdepth 1 -name 'worker-*' -type p 2>/dev/null | sort | while read -r fifo; do

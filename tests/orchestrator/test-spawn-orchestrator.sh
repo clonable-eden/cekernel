@@ -114,12 +114,12 @@ else
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-# ── Test 12: operates from repo root (git rev-parse --show-toplevel) ──
-if echo "$CONTENT" | grep -q 'git rev-parse --show-toplevel'; then
-  echo "  PASS: resolves repo root"
+# ── Test 12: operates from repo root (resolve_repo_root) ──
+if echo "$CONTENT" | grep -q 'resolve_repo_root'; then
+  echo "  PASS: resolves repo root via resolve_repo_root"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
-  echo "  FAIL: should resolve repo root via git rev-parse --show-toplevel"
+  echo "  FAIL: should resolve repo root via resolve_repo_root"
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 

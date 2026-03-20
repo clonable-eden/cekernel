@@ -22,9 +22,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
 source "${SCRIPT_DIR}/../shared/load-env.sh"
 source "${SCRIPT_DIR}/../shared/session-id.sh"
+source "${SCRIPT_DIR}/../shared/resolve-repo-root.sh"
 
 PROMPT="${1:?Usage: spawn-orchestrator.sh <prompt>}"
-REPO_ROOT="$(git rev-parse --show-toplevel)"
+REPO_ROOT="$(resolve_repo_root)"
 
 # ── Resolve agent name ──
 AGENT_NAME="${CEKERNEL_AGENT_ORCHESTRATOR:-orchestrator}"

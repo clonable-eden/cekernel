@@ -13,6 +13,7 @@ source "${SCRIPT_DIR}/../shared/load-env.sh"
 source "${SCRIPT_DIR}/../shared/session-id.sh"
 source "${SCRIPT_DIR}/../shared/claude-json-helper.sh"
 source "${SCRIPT_DIR}/../shared/backend-adapter.sh"
+source "${SCRIPT_DIR}/../shared/resolve-repo-root.sh"
 
 # ── Option parse (backward compat: accept --force but behavior is identical) ──
 while [[ $# -gt 0 ]]; do
@@ -23,7 +24,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 ISSUE_NUMBER="${1:?Usage: cleanup-worktree.sh [--force] <issue-number>}"
-REPO_ROOT="$(git rev-parse --show-toplevel)"
+REPO_ROOT="$(resolve_repo_root)"
 WORKTREE_DIR="${REPO_ROOT}/.worktrees"
 
 # ── Kill all processes via backend (Worker + Reviewer) ──

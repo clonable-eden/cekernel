@@ -25,6 +25,7 @@ source "${SCRIPT_DIR}/../shared/worker-priority.sh"
 source "${SCRIPT_DIR}/../shared/task-file.sh"
 source "${SCRIPT_DIR}/../shared/checkpoint-file.sh"
 source "${SCRIPT_DIR}/../shared/issue-lock.sh"
+source "${SCRIPT_DIR}/../shared/resolve-repo-root.sh"
 
 # ── Flag parsing ──
 AGENT_TYPE=""
@@ -50,7 +51,7 @@ fi
 
 ISSUE_NUMBER="${1:?Usage: spawn.sh --agent <type> [--resume] [--priority <priority>] <issue-number> [base-branch]}"
 BASE_BRANCH="${2:-main}"
-REPO_ROOT="$(git rev-parse --show-toplevel)"
+REPO_ROOT="$(resolve_repo_root)"
 
 # ── Resolve agent name from environment variable ──
 # For type "worker", reads CEKERNEL_AGENT_WORKER (default: "worker")
