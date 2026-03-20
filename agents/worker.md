@@ -183,6 +183,20 @@ Implement **following the target repository's rules**.
 3. Implement following the target repository's conventions
 4. Pass tests and lint as defined by the target repository
 
+#### Test Execution Policy
+
+**Do not run the full test suite (`run-tests.sh`) locally.** Only run tests related to the scripts you changed. Full test suite execution is delegated to CI and verified via `gh pr checks` in Phase 3.
+
+Running the full suite locally wastes significant Worker time (50-60% of total execution in observed cases) due to output truncation, auto-background, and polling loops.
+
+```bash
+# Good — run only the related test file
+bash tests/shared/test-session-id.sh
+
+# Bad — never run the full suite locally
+bash tests/run-tests.sh
+```
+
 #### Development Method: TDD (Red-Green-Refactor)
 
 For issues involving code changes, follow [TDD](../docs/tdd.md) with test-first development. Update the phase detail at each TDD step and commit:
