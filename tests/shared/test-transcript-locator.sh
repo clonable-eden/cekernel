@@ -144,4 +144,73 @@ assert_eq "Returns exit 1 when .spawned exists but no orchestrator transcripts" 
 RESULT=$(transcript_locate_all 42 "" "$MOCK_CLAUDE_HOME" "-Users-test-git-repo" "$MOCK_VAR_DIR" 2>/dev/null | wc -l | tr -d ' ')
 assert_eq "transcript_locate_all uses _by_issue as fallback" "5" "$RESULT"
 
+# ══════════════════════════════════════════════════════════════════════════════
+# Tests for claude -p model (Orchestrator as independent process)
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Test 17: transcript_locate_orchestrator finds direct JSONL (claude -p model) ──
+DIRECT_SESSION="direct-orch-uuid-1"
+DIRECT_JSONL="${MOCK_CLAUDE_HOME}/projects/-Users-test-git-repo/${DIRECT_SESSION}.jsonl"
+echo '{"type":"agent-setting","agentSetting":"orchestrator","sessionId":"direct-orch-uuid-1"}' > "$DIRECT_JSONL"
+
+RESULT=$(transcript_locate_orchestrator "$DIRECT_SESSION" "$MOCK_CLAUDE_HOME" "-Users-test-git-repo")
+assert_eq "Direct JSONL found for orchestrator (claude -p)" "$DIRECT_JSONL" "$RESULT"
+
+# ── Test 18: transcript_locate_orchestrator finds both direct and subagent ──
+BOTH_SESSION="both-orch-session"
+BOTH_SUBDIR="${MOCK_CLAUDE_HOME}/projects/-Users-test-git-repo/${BOTH_SESSION}/subagents"
+mkdir -p "$BOTH_SUBDIR"
+touch "${BOTH_SUBDIR}/agent-both-001.jsonl"
+touch "${MOCK_CLAUDE_HOME}/projects/-Users-test-git-repo/${BOTH_SESSION}.jsonl"
+
+RESULT=$(transcript_locate_orchestrator "$BOTH_SESSION" "$MOCK_CLAUDE_HOME" "-Users-test-git-repo" | wc -l | tr -d ' ')
+assert_eq "Finds both direct and subagent transcripts for same session" "2" "$RESULT"
+
+# ── Test 19: _by_issue with orchestrator.spawned + agentSetting scan ──
+# Create new session with orchestrator.spawned marker
+CLAUDE_P_SESSION="mock-session-claude-p"
+CLAUDE_P_IPC="${MOCK_VAR_DIR}/ipc/${CLAUDE_P_SESSION}"
+mkdir -p "$CLAUDE_P_IPC"
+date +%s > "${CLAUDE_P_IPC}/worker-100.spawned"
+date +%s > "${CLAUDE_P_IPC}/orchestrator.spawned"
+
+# Create orchestrator JSONL with agentSetting in main project dir
+ORCH_CP_JSONL="${MOCK_CLAUDE_HOME}/projects/-Users-test-git-repo/orch-claude-p-uuid.jsonl"
+echo '{"type":"agent-setting","agentSetting":"orchestrator","sessionId":"orch-claude-p-uuid"}' > "$ORCH_CP_JSONL"
+
+# Worker project dir for issue 100 (needed for main slug derivation)
+WORKER_100="${MOCK_CLAUDE_HOME}/projects/-Users-test-git-repo-.worktrees-issue-100-test-feature"
+mkdir -p "$WORKER_100"
+
+RESULT=$(transcript_locate_orchestrator_by_issue 100 "$MOCK_VAR_DIR" "$MOCK_CLAUDE_HOME" "-Users-test-git-repo" 2>/dev/null)
+assert_match "Finds orchestrator JSONL via agentSetting scan" "orch-claude-p-uuid" "$RESULT"
+
+# ── Test 20: agentSetting scan excludes non-orchestrator JSONL ──
+echo '{"type":"agent-setting","agentSetting":"worker","sessionId":"worker-session-1"}' > "${MOCK_CLAUDE_HOME}/projects/-Users-test-git-repo/worker-session-1.jsonl"
+
+RESULT=$(transcript_locate_orchestrator_by_issue 100 "$MOCK_VAR_DIR" "$MOCK_CLAUDE_HOME" "-Users-test-git-repo" 2>/dev/null | wc -l | tr -d ' ')
+assert_eq "agentSetting scan excludes non-orchestrator JSONL" "1" "$RESULT"
+
+# ── Test 21: _by_issue without project_slug derives main slug from worker dirs ──
+RESULT=$(transcript_locate_orchestrator_by_issue 100 "$MOCK_VAR_DIR" "$MOCK_CLAUDE_HOME" "" 2>/dev/null)
+assert_match "Derives main project slug and finds orchestrator" "orch-claude-p-uuid" "$RESULT"
+
+# ── Test 22: _by_issue prefers subagent path (backward compat) ──
+# For issue 42, sessions mock-session-orch1 and mock-session-orch2 have subagent transcripts
+# The function should find those via subagent path, not fall through to agentSetting scan
+RESULT=$(transcript_locate_orchestrator_by_issue 42 "$MOCK_VAR_DIR" "$MOCK_CLAUDE_HOME" "-Users-test-git-repo" 2>/dev/null | wc -l | tr -d ' ')
+assert_eq "Backward compat: subagent path still works for issue 42" "2" "$RESULT"
+
+# ── Test 23: orchestrator.spawned absent — only subagent path used ──
+# For issue 42, sessions don't have orchestrator.spawned, so only subagent path is searched
+# (same result as test 22 — confirms no agentSetting scan runs)
+NO_ORCH_SESSION="mock-session-no-orch-spawned"
+NO_ORCH_IPC="${MOCK_VAR_DIR}/ipc/${NO_ORCH_SESSION}"
+mkdir -p "$NO_ORCH_IPC"
+date +%s > "${NO_ORCH_IPC}/worker-200.spawned"
+# No orchestrator.spawned, and no subagent transcripts for this session
+EXIT_CODE=0
+RESULT=$(transcript_locate_orchestrator_by_issue 200 "$MOCK_VAR_DIR" "$MOCK_CLAUDE_HOME" "-Users-test-git-repo" 2>/dev/null) || EXIT_CODE=$?
+assert_eq "No orchestrator.spawned and no subagent = exit 1" "1" "$EXIT_CODE"
+
 report_results
