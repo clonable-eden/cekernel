@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# orchctrl.sh — Worker control interface (systemctl for cekernel)
+# orchctl.sh — Worker control interface (systemctl for cekernel)
 #
-# Usage: orchctrl.sh <command> [args...]
+# Usage: orchctl.sh <command> [args...]
 #
 # Commands:
 #   ls                          List all workers across all sessions
@@ -37,7 +37,7 @@ IPC_BASE="${CEKERNEL_IPC_BASE:-${CEKERNEL_VAR_DIR}/ipc}"
 # ── Usage ──
 usage() {
   cat >&2 <<'USAGE'
-Usage: orchctrl.sh <command> [args...]
+Usage: orchctl.sh <command> [args...]
 
 Commands:
   ls                          List all workers
@@ -542,7 +542,7 @@ cmd_recover() {
   # Worker is dead — transition state to TERMINATED (crashed)
   worker_state_write "$RESOLVED_ISSUE" TERMINATED "crashed:detected-by-recover"
   echo "Worker #${RESOLVED_ISSUE} recovered: state changed to TERMINATED (crashed:detected-by-recover)." >&2
-  echo "Run: orchctrl resume ${RESOLVED_ISSUE}" >&2
+  echo "Run: orchctl resume ${RESOLVED_ISSUE}" >&2
 }
 
 # ── resume: Resume a SUSPENDED or TERMINATED/crashed worker ──
@@ -625,7 +625,7 @@ cmd_nice() {
   local all_args=("$@")
 
   if [[ ${#all_args[@]} -lt 2 ]]; then
-    echo "Error: usage: orchctrl.sh nice <target> <priority>" >&2
+    echo "Error: usage: orchctl.sh nice <target> <priority>" >&2
     return 1
   fi
 
@@ -644,7 +644,7 @@ cmd_nice() {
   done
 
   if [[ ${#positional[@]} -lt 2 ]]; then
-    echo "Error: usage: orchctrl.sh nice <target> <priority>" >&2
+    echo "Error: usage: orchctl.sh nice <target> <priority>" >&2
     return 1
   fi
 
