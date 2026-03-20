@@ -132,6 +132,15 @@ else
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
+# ── Test 16: writes PID to orchestrator.pid ──
+if echo "$CONTENT" | grep -q 'orchestrator\.pid'; then
+  echo "  PASS: writes PID to orchestrator.pid"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+else
+  echo "  FAIL: should write PID to orchestrator.pid"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+
 # ── Test 14: does NOT create worktree (operates in main tree) ──
 if echo "$CONTENT" | grep -q 'git worktree add'; then
   echo "  FAIL: should NOT create worktree (Orchestrator works in main tree)"
