@@ -7,19 +7,14 @@ it distributes, monitors, and reaps issues via independent Workers.
 
 ## Concept
 
-```
-Orchestrator (agent1)             Worker (agent2, 3, 4, ...)
-  main working tree                 git worktree per issue
-  +---------------+               +---------------+
-  | receive issue |               | implement     |
-  | create wktree |--spawn------->| test          |
-  | monitor FIFO  |               | create PR     |
-  |   ...waiting  |               | CI verify     |
-  |   <--signal---|<--notify------| notify done   |
-  | review (agent)|               +---------------+
-  | merge / human |
-  | cleanup       |
-  +---------------+
+```mermaid
+graph LR
+    H[Human / Scheduler] -->|/orchestrate<br/>/dispatch| O[Orchestrator<br/>main working tree]
+    O -->|spawn-worker.sh| W[Worker<br/>git worktree]
+    W -->|notify ci-passed| O
+    O -->|spawn-reviewer.sh| R[Reviewer<br/>same worktree]
+    R -->|notify approved| O
+    O -->|cleanup + notify| H
 ```
 
 ### OS Analogy
