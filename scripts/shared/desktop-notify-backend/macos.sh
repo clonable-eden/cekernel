@@ -36,10 +36,10 @@ desktop_notify() {
   if [[ "$_DESKTOP_NOTIFY_MACOS_BACKEND" == "alerter" ]]; then
     # Use alerter: run in background; open URL on click (alerter exits 0 on click)
     if [[ -n "$url" ]]; then
-      (alerter -message "$message" -title "$title" -sound "Glass" 2>/dev/null \
+      (alerter --message "$message" --title "$title" --sound "Glass" 2>/dev/null \
         && open "$url" 2>/dev/null) &
     else
-      alerter -message "$message" -title "$title" -sound "Glass" 2>/dev/null &
+      alerter --message "$message" --title "$title" --sound "Glass" 2>/dev/null &
     fi
   else
     # Fallback: osascript (always available on macOS)
