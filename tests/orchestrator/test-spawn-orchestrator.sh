@@ -132,7 +132,7 @@ else
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-# ── Test 16: writes PID to orchestrator.pid ──
+# ── Test 14: writes PID to orchestrator.pid ──
 if echo "$CONTENT" | grep -q 'orchestrator\.pid'; then
   echo "  PASS: writes PID to orchestrator.pid"
   TESTS_PASSED=$((TESTS_PASSED + 1))
@@ -141,7 +141,7 @@ else
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-# ── Test 14: does NOT create worktree (operates in main tree) ──
+# ── Test 15: does NOT create worktree (operates in main tree) ──
 if echo "$CONTENT" | grep -q 'git worktree add'; then
   echo "  FAIL: should NOT create worktree (Orchestrator works in main tree)"
   TESTS_FAILED=$((TESTS_FAILED + 1))
@@ -150,7 +150,7 @@ else
   TESTS_PASSED=$((TESTS_PASSED + 1))
 fi
 
-# ── Test 15: does NOT create FIFO (Orchestrator is not managed via FIFO) ──
+# ── Test 16: does NOT create FIFO (Orchestrator is not managed via FIFO) ──
 if echo "$CONTENT" | grep -q 'mkfifo'; then
   echo "  FAIL: should NOT create FIFO (Orchestrator manages, not managed)"
   TESTS_FAILED=$((TESTS_FAILED + 1))

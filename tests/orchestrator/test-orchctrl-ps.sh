@@ -123,7 +123,7 @@ OUTPUT=$(bash "$ORCHCTRL" ps 2>/dev/null)
 assert_match "ps parent shows orchestrator" "orchestrator" "$OUTPUT"
 # Should show child processes (tree lines with └── or ├──)
 CHILD_LINES=$(echo "$OUTPUT" | grep -cE '├──|└──' || true)
-assert_match "ps shows child processes" "^[0-9]+$" "$CHILD_LINES"
+assert_match "ps shows child processes" "^[1-9][0-9]*$" "$CHILD_LINES"
 
 # ══════════════════════════════════════════════
 # ps: --session filter
