@@ -357,9 +357,21 @@ cmd_ps() {
     # Print orchestrator header line
     echo "orchestrator  PID=${orch_pid}  session=${sid}  elapsed=${elapsed}  ${status}"
 
-    # If running, list child processes as a tree
+    # If running, list child processes and managed processes
     if [[ "$status" == "running" ]]; then
-      _ps_print_children "$orch_pid" "  "
+      # Collect all descendant PIDs to avoid duplicating managed processes
+      local child_pids_file
+      child_pids_file=$(mktemp /tmp/cekernel-ps-children.XXXXXX)
+      _ps_collect_descendants "$orch_pid" "$child_pids_file"
+
+      # Count managed processes to adjust tree connectors
+      local has_managed=0
+      _ps_has_managed "$session_dir" "$child_pids_file" && has_managed=1
+
+      _ps_print_children "$orch_pid" "  " "$has_managed"
+      _ps_print_managed "$session_dir" "$child_pids_file" "  "
+
+      rm -f "$child_pids_file"
     fi
   done
 
@@ -369,8 +381,10 @@ cmd_ps() {
 }
 
 # ── Helper: recursively print child processes ──
+# Args: parent_pid indent [has_more_after]
+#   has_more_after: if "1", the last child uses ├── instead of └── (managed entries follow)
 _ps_print_children() {
-  local parent_pid="$1" indent="$2"
+  local parent_pid="$1" indent="$2" has_more_after="${3:-0}"
 
   local children
   children=$(pgrep -P "$parent_pid" 2>/dev/null || true)
@@ -389,7 +403,13 @@ _ps_print_children() {
     idx=$((idx + 1))
     local connector="├──"
     local child_indent="${indent}│   "
+    local is_last=0
     if [[ "$idx" -eq "$total" ]]; then
+      is_last=1
+    fi
+
+    # Use └── only if truly the last entry (no managed processes follow)
+    if [[ "$is_last" -eq 1 && "$has_more_after" -eq 0 ]]; then
       connector="└──"
       child_indent="${indent}    "
     fi
@@ -406,8 +426,103 @@ _ps_print_children() {
 
     echo "${indent}${connector} ${cmd}  PID=${cpid}  ${pstate}"
 
-    # Recurse for grandchildren
+    # Recurse for grandchildren (no managed processes at deeper levels)
     _ps_print_children "$cpid" "$child_indent"
+  done
+}
+
+# ── Helper: collect all descendant PIDs recursively into a file ──
+_ps_collect_descendants() {
+  local parent_pid="$1" outfile="$2"
+
+  local children
+  children=$(pgrep -P "$parent_pid" 2>/dev/null || true)
+  [[ -n "$children" ]] || return 0
+
+  while IFS= read -r cpid; do
+    [[ -n "$cpid" ]] || continue
+    echo "$cpid" >> "$outfile"
+    _ps_collect_descendants "$cpid" "$outfile"
+  done <<< "$children"
+}
+
+# ── Helper: check if any managed processes exist (for tree connector logic) ──
+_ps_has_managed() {
+  local session_dir="$1" child_pids_file="$2"
+
+  for handle_file in "${session_dir}"handle-*.*; do
+    [[ -f "$handle_file" ]] || continue
+    local pid
+    pid=$(tr -d '[:space:]' < "$handle_file")
+    [[ -n "$pid" ]] || continue
+    kill -0 "$pid" 2>/dev/null || continue
+    if ! grep -qxF "$pid" "$child_pids_file" 2>/dev/null; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+# ── Helper: print managed processes from handle files ──
+# Reads handle-{issue}.{type} files from the session IPC directory.
+# Skips processes that are already shown as children (dedup via child_pids_file).
+# Skips dead processes (PID not alive).
+_ps_print_managed() {
+  local session_dir="$1" child_pids_file="$2" indent="$3"
+
+  # Collect managed entries: issue, type, pid
+  local managed_entries=()
+  for handle_file in "${session_dir}"handle-*.*; do
+    [[ -f "$handle_file" ]] || continue
+    local fname
+    fname=$(basename "$handle_file")
+    # Parse handle-{issue}.{type}
+    local issue_type="${fname#handle-}"
+    local issue="${issue_type%%.*}"
+    local type="${issue_type#*.}"
+
+    local pid
+    pid=$(tr -d '[:space:]' < "$handle_file")
+    [[ -n "$pid" ]] || continue
+
+    # Skip if PID is not alive
+    kill -0 "$pid" 2>/dev/null || continue
+
+    # Skip if already shown as a child process
+    if grep -qxF "$pid" "$child_pids_file" 2>/dev/null; then
+      continue
+    fi
+
+    managed_entries+=("${type}:${issue}:${pid}")
+  done
+
+  [[ ${#managed_entries[@]} -gt 0 ]] || return 0
+
+  local total=${#managed_entries[@]}
+  local idx=0
+
+  for entry in "${managed_entries[@]}"; do
+    idx=$((idx + 1))
+    local type="${entry%%:*}"
+    local rest="${entry#*:}"
+    local issue="${rest%%:*}"
+    local pid="${rest#*:}"
+
+    local connector="├──"
+    if [[ "$idx" -eq "$total" ]]; then
+      connector="└──"
+    fi
+
+    # Get actual PPID
+    local ppid
+    ppid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d '[:space:]' || echo "?")
+
+    # Get process state
+    local pstate
+    pstate=$(ps -o state= -p "$pid" 2>/dev/null || echo "?")
+    pstate="${pstate:0:1}"
+
+    echo "${indent}${connector} ${type} #${issue}  PID=${pid}  ${pstate}  (managed, PPID=${ppid})"
   done
 }
 
