@@ -4,7 +4,7 @@
 # Implements desktop_notify for macOS using alerter (preferred) or osascript (fallback).
 #
 # Tool priority:
-#   1. alerter   — if available (e.g. brew install alerter)
+#   1. alerter   — if available (e.g. brew install vjeantet/tap/alerter)
 #   2. osascript — fallback (always available on macOS)
 #
 # URL handling:
