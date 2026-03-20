@@ -1,6 +1,6 @@
 ---
 description: Batch-process open issues with the `ready` label — discover, triage, and delegate to the Orchestrator
-argument-hint: "[--env profile] [--label label]"
+argument-hint: "[--yes] [--env profile] [--label label]"
 allowed-tools: Bash, Read
 ---
 
@@ -14,6 +14,7 @@ No arguments required — by default, picks up all open issues with the `ready` 
 
 Optional flags:
 
+- `--yes`, `-y` — Skip the user confirmation step (Step 3) and proceed directly to delegation. Required for non-interactive execution (cron, at).
 - `--env <profile>` — Select an env profile (default: `default`). Available profiles: `default`, `headless`, `ci`, or any custom profile in `.cekernel/envs/`.
 - `--label <label>` — Override the target label (default: `ready`).
 
@@ -21,8 +22,8 @@ Examples:
 
 ```
 /dispatch
-/dispatch --env headless
-/dispatch --label sprint-3
+/dispatch --yes
+/dispatch -y --env headless --label sprint-3
 /dispatch --env ci --label ready
 ```
 
@@ -82,7 +83,9 @@ Read `skills/references/triage.md` from the repository root (`$(git rev-parse --
 
 ### Step 3: Confirm with User
 
-Present the triaged issue list to the user for confirmation before delegating:
+If `--yes` (or `-y`) was specified, skip the confirmation prompt and proceed directly to Step 4.
+
+Otherwise, present the triaged issue list to the user for confirmation before delegating:
 
 ```
 Found N issues with label "ready":
