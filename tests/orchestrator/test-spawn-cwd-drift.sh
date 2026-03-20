@@ -12,9 +12,21 @@ CEKERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 echo "test: spawn-cwd-drift"
 
+# Helper: grep directly from file to avoid SIGPIPE under set -euo pipefail.
+# echo "$large_var" | grep -q causes broken pipe when grep -q exits early.
+file_contains() {
+  grep -q "$1" "$2"
+}
+
+SPAWN_SH="${CEKERNEL_DIR}/scripts/orchestrator/spawn.sh"
+CLEANUP_SH="${CEKERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh"
+SPAWN_ORCH_SH="${CEKERNEL_DIR}/scripts/orchestrator/spawn-orchestrator.sh"
+PROCESS_STATUS_SH="${CEKERNEL_DIR}/scripts/orchestrator/process-status.sh"
+NOTIFY_COMPLETE_SH="${CEKERNEL_DIR}/scripts/process/notify-complete.sh"
+ORCH_MD="${CEKERNEL_DIR}/agents/orchestrator.md"
+
 # ── Test 1: spawn.sh sources resolve-repo-root.sh ──
-SPAWN_CONTENT=$(cat "${CEKERNEL_DIR}/scripts/orchestrator/spawn.sh")
-if echo "$SPAWN_CONTENT" | grep -q 'resolve-repo-root.sh'; then
+if file_contains 'resolve-repo-root.sh' "$SPAWN_SH"; then
   echo "  PASS: spawn.sh sources resolve-repo-root.sh"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
@@ -23,7 +35,7 @@ else
 fi
 
 # ── Test 2: spawn.sh uses resolve_repo_root (not raw git rev-parse) ──
-if echo "$SPAWN_CONTENT" | grep -q 'resolve_repo_root'; then
+if file_contains 'resolve_repo_root' "$SPAWN_SH"; then
   echo "  PASS: spawn.sh uses resolve_repo_root"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
@@ -32,7 +44,7 @@ else
 fi
 
 # ── Test 3: spawn.sh does NOT use raw git rev-parse --show-toplevel for REPO_ROOT ──
-if echo "$SPAWN_CONTENT" | grep -q 'REPO_ROOT=.*git rev-parse --show-toplevel'; then
+if file_contains 'REPO_ROOT=.*git rev-parse --show-toplevel' "$SPAWN_SH"; then
   echo "  FAIL: spawn.sh should not use raw git rev-parse --show-toplevel for REPO_ROOT"
   TESTS_FAILED=$((TESTS_FAILED + 1))
 else
@@ -41,8 +53,7 @@ else
 fi
 
 # ── Test 4: cleanup-worktree.sh sources resolve-repo-root.sh ──
-CLEANUP_CONTENT=$(cat "${CEKERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh")
-if echo "$CLEANUP_CONTENT" | grep -q 'resolve-repo-root.sh'; then
+if file_contains 'resolve-repo-root.sh' "$CLEANUP_SH"; then
   echo "  PASS: cleanup-worktree.sh sources resolve-repo-root.sh"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
@@ -51,7 +62,7 @@ else
 fi
 
 # ── Test 5: cleanup-worktree.sh uses resolve_repo_root ──
-if echo "$CLEANUP_CONTENT" | grep -q 'resolve_repo_root'; then
+if file_contains 'resolve_repo_root' "$CLEANUP_SH"; then
   echo "  PASS: cleanup-worktree.sh uses resolve_repo_root"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
@@ -60,8 +71,7 @@ else
 fi
 
 # ── Test 6: spawn-orchestrator.sh sources resolve-repo-root.sh ──
-SO_CONTENT=$(cat "${CEKERNEL_DIR}/scripts/orchestrator/spawn-orchestrator.sh")
-if echo "$SO_CONTENT" | grep -q 'resolve-repo-root.sh'; then
+if file_contains 'resolve-repo-root.sh' "$SPAWN_ORCH_SH"; then
   echo "  PASS: spawn-orchestrator.sh sources resolve-repo-root.sh"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
@@ -70,8 +80,7 @@ else
 fi
 
 # ── Test 7: process-status.sh sources resolve-repo-root.sh ──
-PS_CONTENT=$(cat "${CEKERNEL_DIR}/scripts/orchestrator/process-status.sh")
-if echo "$PS_CONTENT" | grep -q 'resolve-repo-root.sh'; then
+if file_contains 'resolve-repo-root.sh' "$PROCESS_STATUS_SH"; then
   echo "  PASS: process-status.sh sources resolve-repo-root.sh"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
@@ -80,8 +89,7 @@ else
 fi
 
 # ── Test 8: notify-complete.sh sources resolve-repo-root.sh ──
-NC_CONTENT=$(cat "${CEKERNEL_DIR}/scripts/process/notify-complete.sh")
-if echo "$NC_CONTENT" | grep -q 'resolve-repo-root.sh'; then
+if file_contains 'resolve-repo-root.sh' "$NOTIFY_COMPLETE_SH"; then
   echo "  PASS: notify-complete.sh sources resolve-repo-root.sh"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
@@ -90,8 +98,7 @@ else
 fi
 
 # ── Test 9: orchestrator.md documents CWD convention ──
-ORCH_MD=$(cat "${CEKERNEL_DIR}/agents/orchestrator.md")
-if echo "$ORCH_MD" | grep -q 'CWD Convention'; then
+if file_contains 'CWD Convention' "$ORCH_MD"; then
   echo "  PASS: orchestrator.md documents CWD Convention"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
@@ -100,7 +107,7 @@ else
 fi
 
 # ── Test 10: orchestrator.md recommends git -C ──
-if echo "$ORCH_MD" | grep -q 'git -C'; then
+if file_contains 'git -C' "$ORCH_MD"; then
   echo "  PASS: orchestrator.md recommends git -C"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else

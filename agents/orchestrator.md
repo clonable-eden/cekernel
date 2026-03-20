@@ -143,10 +143,9 @@ export CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID} && export CEKERNEL_ENV=${CEKER
 # 2. Monitor completion in background (Bash run_in_background: true)
 export CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID} && export CEKERNEL_ENV=${CEKERNEL_ENV} && ${CEKERNEL_SCRIPTS}/orchestrator/watch.sh 4
 
-# 3. While waiting, periodically check and report status
-export CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID} && export CEKERNEL_ENV=${CEKERNEL_ENV} && ${CEKERNEL_SCRIPTS}/orchestrator/process-status.sh
-
-# 4. When background task completes, handle by status:
+# 3. Wait for background task completion notification
+#    DO NOT poll with sleep && process-status.sh — watch.sh handles monitoring.
+#    When the notification arrives, handle by status:
 #    ci-passed → Reviewer Phase (see below)
 #    merged   → legacy flow: cleanup-worktree.sh (backward compatibility)
 #    failed   → error handling (existing)
@@ -155,7 +154,7 @@ export CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID} && export CEKERNEL_ENV=${CEKER
 
 Step 2 MUST use `run_in_background: true` on the Bash tool call. This makes `watch.sh` non-blocking, allowing the Orchestrator to remain active in the foreground.
 
-While the background task is running, periodically execute `process-status.sh` (step 3) to report progress. When the background task completion notification arrives, handle by status (step 4). For `ci-passed`, proceed to the Reviewer Phase.
+**After launching `watch.sh` in background, the Orchestrator must wait for its completion notification.** Do NOT start a `sleep && process-status.sh` polling loop — `watch.sh` already monitors the Worker via FIFO, state file fallback, and crash detection. Manual polling wastes tokens, triggers excessive background task notifications, and provides no additional information. If there are other pending tasks (e.g., spawning additional Workers, handling other completions), the Orchestrator may proceed with those. Otherwise, simply wait.
 
 ### Parallel Multi-Issue Processing
 
@@ -170,16 +169,15 @@ export CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID} && export CEKERNEL_ENV=${CEKER
 export CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID} && export CEKERNEL_ENV=${CEKERNEL_ENV} && export CEKERNEL_AGENT_WORKER=${CEKERNEL_AGENT_WORKER} && ${CEKERNEL_SCRIPTS}/orchestrator/spawn-worker.sh 6
 export CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID} && export CEKERNEL_ENV=${CEKERNEL_ENV} && ${CEKERNEL_SCRIPTS}/orchestrator/watch.sh 6  # run_in_background: true
 
-# 2. While waiting, periodically check and report status
-export CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID} && export CEKERNEL_ENV=${CEKERNEL_ENV} && ${CEKERNEL_SCRIPTS}/orchestrator/process-status.sh
-
-# 3. As each background watch completes, cleanup that Worker
+# 2. Wait for background task completion notifications
+#    DO NOT poll with sleep && process-status.sh — watch.sh handles monitoring.
+#    As each notification arrives, handle that Worker (cleanup, review, etc.)
 export CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID} && export CEKERNEL_ENV=${CEKERNEL_ENV} && ${CEKERNEL_SCRIPTS}/orchestrator/cleanup-worktree.sh 5  # Worker 5 completed first
 export CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID} && export CEKERNEL_ENV=${CEKERNEL_ENV} && ${CEKERNEL_SCRIPTS}/orchestrator/cleanup-worktree.sh 4
 export CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID} && export CEKERNEL_ENV=${CEKERNEL_ENV} && ${CEKERNEL_SCRIPTS}/orchestrator/cleanup-worktree.sh 6
 ```
 
-Each Worker is watched individually via `run_in_background: true`. Cleanup proceeds as each completion notification arrives, not after all Workers finish.
+Each Worker is watched individually via `run_in_background: true`. Cleanup proceeds as each completion notification arrives, not after all Workers finish. **Do NOT insert `sleep && process-status.sh` polling loops between spawning and completion.** The Orchestrator must rely on `watch.sh` notifications to know when each Worker finishes.
 
 ## Scheduling
 
@@ -231,8 +229,8 @@ When the number of issues exceeds `CEKERNEL_MAX_PROCESSES`, the Orchestrator use
 
 1. Sort queued issues by priority (lower nice value first). On ties (equal nice value), preserve original order (FIFO within priority class).
 2. Spawn the first `MAX_PROCESSES` issues, each with an individual `watch.sh <issue>` in background (`run_in_background: true`)
-3. When any background watch completes → cleanup that Worker (skip cleanup if SUSPENDED — preserve worktree for resume) → check Suspended Issues List, then queue, for the next issue to spawn (see Auto-Resume)
-4. Periodically report status via `process-status.sh` while waiting
+3. Wait for background task completion notifications (do NOT poll with `sleep && process-status.sh`)
+4. When any background watch completes → cleanup that Worker (skip cleanup if SUSPENDED — preserve worktree for resume) → check Suspended Issues List, then queue, for the next issue to spawn (see Auto-Resume)
 5. Repeat until the queue is empty and all Workers have completed
 
 This keeps the number of active Workers at `MAX_PROCESSES` at all times, maximizing throughput. Unlike a batch model, a fast Worker's slot is immediately backfilled without waiting for slower Workers. Priority ensures that urgent work (e.g., hotfixes) is spawned before routine tasks.
@@ -362,7 +360,19 @@ export CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID} && ${CEKERNEL_SCRIPTS}/orchest
 # {"issue":5,"worktree":"/path/.worktrees/issue/5-...","fifo":"/usr/local/var/cekernel/ipc/.../worker-5","uptime":"8m"}
 ```
 
-During background monitoring (while `watch.sh` runs via `run_in_background`), periodically call `process-status.sh` to report progress to the user. Output the status and any relevant observations about Worker progress.
+#### Usage Policy
+
+**`process-status.sh` is for on-demand status checks only.** It must NOT be called in a polling loop while waiting for `watch.sh` to complete.
+
+Allowed uses:
+- **Preemption decisions**: checking active Workers to identify suspension candidates
+- **Error handling**: diagnosing an unresponsive or crashed Worker
+- **User inquiry**: when the user explicitly asks for Worker status
+
+Prohibited use:
+- **Periodic polling loop**: `sleep N && process-status.sh` repeated while waiting for `watch.sh` completion. This wastes tokens and causes stale background task notification floods.
+
+`watch.sh` (running via `run_in_background: true`) is the sole mechanism for detecting Worker completion. The Orchestrator must wait for its background task completion notification instead of polling.
 
 ## Decision Criteria
 
