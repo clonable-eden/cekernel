@@ -596,3 +596,11 @@ If `watch.sh` returns `merged` (legacy Worker behavior), proceed with cleanup di
   # 4. If still alive, force-kill
   export CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID} && ${CEKERNEL_SCRIPTS}/orchestrator/cleanup-worktree.sh --force <issue>
   ```
+
+## Completion
+
+When all issues have been processed (all Workers completed and cleaned up), the Orchestrator must remove its PID file before exiting. Without this cleanup, `orchctl ps` continues to show the completed Orchestrator as `not-running`.
+
+```bash
+rm -f "${CEKERNEL_IPC_DIR}/orchestrator.pid"
+```
