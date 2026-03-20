@@ -157,4 +157,138 @@ fi
 OUTPUT=$(bash "$ORCHCTL" ps --session "nonexistent-session" 2>/dev/null)
 assert_eq "ps --session nonexistent" "no orchestrators." "$OUTPUT"
 
+# ══════════════════════════════════════════════
+# ps: managed processes from handle files
+# ══════════════════════════════════════════════
+
+# Clean up previous processes
+kill "$PARENT_PID" 2>/dev/null || true
+wait "$PARENT_PID" 2>/dev/null || true
+kill "$ORCH_PID_D" 2>/dev/null || true
+wait "$ORCH_PID_D" 2>/dev/null || true
+rm -rf "${IPC_BASE:?}/"*
+
+SESSION_E="test-ps-handle-00000005"
+IPC_DIR_E="${IPC_BASE}/${SESSION_E}"
+mkdir -p "$IPC_DIR_E"
+
+# Launch orchestrator process
+(sleep 300) &
+ORCH_PID_E=$!
+BGPIDS="$BGPIDS$ORCH_PID_E "
+
+echo "$ORCH_PID_E" > "${IPC_DIR_E}/orchestrator.pid"
+echo "$(date +%s)" > "${IPC_DIR_E}/orchestrator.spawned"
+
+# Launch a "managed" worker process (simulates PPID=1 reparented Worker)
+(sleep 300) &
+MANAGED_PID=$!
+BGPIDS="$BGPIDS$MANAGED_PID "
+
+# Create handle file for issue 999
+echo "$MANAGED_PID" > "${IPC_DIR_E}/handle-999.worker"
+
+# ── Test 10: ps shows managed processes from handle files ──
+# Expected output format: └── worker #999  PID=<pid>  <state>  (managed, PPID=<ppid>)
+OUTPUT=$(bash "$ORCHCTL" ps 2>/dev/null)
+assert_match "ps shows managed marker" '\(managed' "$OUTPUT"
+assert_match "ps managed shows PID" "PID=${MANAGED_PID}" "$OUTPUT"
+
+# ── Test 11: managed process shows issue number ──
+assert_match "ps managed shows issue" "#999" "$OUTPUT"
+
+# ── Test 12: managed process shows type ──
+assert_match "ps managed shows worker type" "worker #999" "$OUTPUT"
+
+# ── Test 13: managed process not duplicated with child processes ──
+# Create an orchestrator with a child that is also a handle (should not be shown twice)
+kill "$ORCH_PID_E" 2>/dev/null || true
+wait "$ORCH_PID_E" 2>/dev/null || true
+kill "$MANAGED_PID" 2>/dev/null || true
+wait "$MANAGED_PID" 2>/dev/null || true
+rm -rf "${IPC_BASE:?}/"*
+
+SESSION_F="test-ps-dedup-00000006"
+IPC_DIR_F="${IPC_BASE}/${SESSION_F}"
+mkdir -p "$IPC_DIR_F"
+
+# Launch parent that spawns a child
+bash -c 'sleep 300 & wait' &
+PARENT_PID_F=$!
+BGPIDS="$BGPIDS$PARENT_PID_F "
+sleep 0.3  # Give child time to spawn
+
+echo "$PARENT_PID_F" > "${IPC_DIR_F}/orchestrator.pid"
+echo "$(date +%s)" > "${IPC_DIR_F}/orchestrator.spawned"
+
+# Get the child PID and create a handle for it (simulate child that is also managed)
+CHILD_PID_F=$(pgrep -P "$PARENT_PID_F" 2>/dev/null | head -1)
+if [[ -n "$CHILD_PID_F" ]]; then
+  echo "$CHILD_PID_F" > "${IPC_DIR_F}/handle-888.worker"
+
+  OUTPUT=$(bash "$ORCHCTL" ps 2>/dev/null)
+  # The child should appear as a child process, NOT as managed
+  MANAGED_COUNT=$(echo "$OUTPUT" | grep -c '(managed' || true)
+  assert_eq "ps child+handle not shown as managed" "0" "$MANAGED_COUNT"
+else
+  echo "  SKIP: could not get child PID for dedup test"
+fi
+
+# ── Test 14: managed process with dead PID is not shown ──
+kill "$PARENT_PID_F" 2>/dev/null || true
+wait "$PARENT_PID_F" 2>/dev/null || true
+rm -rf "${IPC_BASE:?}/"*
+
+SESSION_G="test-ps-dead-handle-00000007"
+IPC_DIR_G="${IPC_BASE}/${SESSION_G}"
+mkdir -p "$IPC_DIR_G"
+
+(sleep 300) &
+ORCH_PID_G=$!
+BGPIDS="$BGPIDS$ORCH_PID_G "
+
+echo "$ORCH_PID_G" > "${IPC_DIR_G}/orchestrator.pid"
+echo "$(date +%s)" > "${IPC_DIR_G}/orchestrator.spawned"
+
+# Create handle file with a dead PID
+echo "99999" > "${IPC_DIR_G}/handle-777.worker"
+
+OUTPUT=$(bash "$ORCHCTL" ps 2>/dev/null)
+MANAGED_COUNT=$(echo "$OUTPUT" | grep -c '(managed' || true)
+assert_eq "ps dead managed not shown" "0" "$MANAGED_COUNT"
+
+# ── Test 15: multiple managed processes (worker + reviewer) ──
+kill "$ORCH_PID_G" 2>/dev/null || true
+wait "$ORCH_PID_G" 2>/dev/null || true
+rm -rf "${IPC_BASE:?}/"*
+
+SESSION_H="test-ps-multi-handle-00000008"
+IPC_DIR_H="${IPC_BASE}/${SESSION_H}"
+mkdir -p "$IPC_DIR_H"
+
+(sleep 300) &
+ORCH_PID_H=$!
+BGPIDS="$BGPIDS$ORCH_PID_H "
+
+echo "$ORCH_PID_H" > "${IPC_DIR_H}/orchestrator.pid"
+echo "$(date +%s)" > "${IPC_DIR_H}/orchestrator.spawned"
+
+# Two managed processes for the same issue (worker + reviewer)
+(sleep 300) &
+MANAGED_W=$!
+BGPIDS="$BGPIDS$MANAGED_W "
+
+(sleep 300) &
+MANAGED_R=$!
+BGPIDS="$BGPIDS$MANAGED_R "
+
+echo "$MANAGED_W" > "${IPC_DIR_H}/handle-555.worker"
+echo "$MANAGED_R" > "${IPC_DIR_H}/handle-555.reviewer"
+
+OUTPUT=$(bash "$ORCHCTL" ps 2>/dev/null)
+MANAGED_COUNT=$(echo "$OUTPUT" | grep -c '(managed' || true)
+assert_eq "ps shows both worker and reviewer" "2" "$MANAGED_COUNT"
+assert_match "ps multi-managed shows worker" "worker #555" "$OUTPUT"
+assert_match "ps multi-managed shows reviewer" "reviewer #555" "$OUTPUT"
+
 report_results
