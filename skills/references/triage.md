@@ -9,10 +9,16 @@ Before triaging, skip any issue that is already locked by an active Worker. The 
 
 ## Single Issue Triage
 
-For each issue, check its content with `gh issue view` and verify:
+For each issue, fetch its content **including comments** and verify:
 
-1. **Clarity of requirements**: Are the required changes specifically described?
-2. **Scope**: Can the implementation scope be identified?
+```bash
+gh issue view <N> --json number,title,body,labels,comments
+```
+
+Comments often contain critical information added after the initial issue description — such as investigation results, scope changes, clarifications, or updated requirements. Triage must consider the full conversation, not just the body.
+
+1. **Clarity of requirements**: Are the required changes specifically described? Check both the body and comments for clarifications or scope adjustments.
+2. **Scope**: Can the implementation scope be identified? Comments may narrow or expand the original scope.
 
 If any issue has ambiguous or insufficient requirements, report to the user and confirm action (fix the issue, skip, proceed, etc.). If requirements become clear through user interaction, add supplementary information as a comment on the issue via `gh issue comment` so the Worker can work accurately.
 
