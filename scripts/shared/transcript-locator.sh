@@ -123,7 +123,8 @@ _transcript_find_orchestrator_jsonl() {
     # Check first line for orchestrator agentSetting
     local first_line
     first_line=$(head -1 "$jsonl_file" 2>/dev/null) || continue
-    if echo "$first_line" | grep -q '"orchestrator"' 2>/dev/null; then
+    if echo "$first_line" | grep -q '"agentSetting"' 2>/dev/null \
+       && echo "$first_line" | grep -q '"orchestrator"' 2>/dev/null; then
       echo "$jsonl_file"
       found=$((found + 1))
     fi
