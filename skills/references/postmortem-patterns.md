@@ -88,7 +88,7 @@ Patterns are organized by category. Each has:
 - **Detect**: Test suite exit code 1 where the failing test(s) also fail on main branch; Worker spending tool calls on `git stash` / checkout-main to verify pre-existing
 - **Severity**: warning
 - **Class**: 1
-- **Example**: All 5 issues — `test-orchctrl-gc.sh` (bash 3.x `declare -A`) caused diagnostic overhead in every Worker session
+- **Example**: All 5 issues — `test-orchctl-gc.sh` (bash 3.x `declare -A`) caused diagnostic overhead in every Worker session
 
 ### Excessive CI retries
 - **Detect**: Same CI check failing 3+ times with the same error; `gh pr checks --watch` called repeatedly
