@@ -186,10 +186,12 @@ RESULT=$(transcript_locate_orchestrator_by_issue 100 "$MOCK_VAR_DIR" "$MOCK_CLAU
 assert_match "Finds orchestrator JSONL via agentSetting scan" "orch-claude-p-uuid" "$RESULT"
 
 # ── Test 20: agentSetting scan excludes non-orchestrator JSONL ──
+# Worker JSONL should be excluded; only orchestrator JNSONLs are returned.
+# direct-orch-uuid-1.jsonl (test 17) + orch-claude-p-uuid.jsonl (test 19) = 2
 echo '{"type":"agent-setting","agentSetting":"worker","sessionId":"worker-session-1"}' > "${MOCK_CLAUDE_HOME}/projects/-Users-test-git-repo/worker-session-1.jsonl"
 
 RESULT=$(transcript_locate_orchestrator_by_issue 100 "$MOCK_VAR_DIR" "$MOCK_CLAUDE_HOME" "-Users-test-git-repo" 2>/dev/null | wc -l | tr -d ' ')
-assert_eq "agentSetting scan excludes non-orchestrator JSONL" "1" "$RESULT"
+assert_eq "agentSetting scan excludes non-orchestrator JSONL" "2" "$RESULT"
 
 # ── Test 21: _by_issue without project_slug derives main slug from worker dirs ──
 RESULT=$(transcript_locate_orchestrator_by_issue 100 "$MOCK_VAR_DIR" "$MOCK_CLAUDE_HOME" "" 2>/dev/null)

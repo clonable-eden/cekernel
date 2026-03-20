@@ -14,13 +14,15 @@
 #     — Returns 1 if no transcripts found (error on stderr)
 #
 #   transcript_locate_orchestrator <session-id> [claude-home] [project-slug]
-#     — Find Orchestrator subagent transcripts by session ID
+#     — Find Orchestrator transcripts by session ID
+#     — Searches both direct JSONL (claude -p) and subagent paths (legacy)
 #     — Outputs one path per line to stdout
 #     — Returns 1 if no transcripts found (error on stderr)
 #
 #   transcript_locate_orchestrator_by_issue <issue-number> [var-dir] [claude-home] [project-slug]
 #     — Find Orchestrator transcripts by scanning .spawned files for session reverse lookup
 #     — Scans ${var-dir}/ipc/*/{worker,reviewer}-{N}.spawned to find session IDs
+#     — Supports both subagent path (legacy) and agentSetting scan (claude -p)
 #     — Outputs one path per line to stdout
 #     — Returns 1 if no .spawned files or no transcripts found
 #
@@ -32,7 +34,8 @@
 #
 # Claude Code transcript locations (as of ADR-0013):
 #   Worker/Reviewer: ~/.claude/projects/*-issue-{number}-*/*.jsonl
-#   Orchestrator:    ~/.claude/projects/<project>/<session-id>/subagents/*.jsonl
+#   Orchestrator (claude -p):  ~/.claude/projects/<project>/<session-id>.jsonl
+#   Orchestrator (legacy):     ~/.claude/projects/<project>/<session-id>/subagents/*.jsonl
 
 # transcript_locate_worker <issue-number> [claude-home]
 # Finds Worker/Reviewer transcripts matching the issue number.
@@ -70,9 +73,10 @@ transcript_locate_worker() {
 }
 
 # transcript_locate_orchestrator <session-id> [claude-home] [project-slug]
-# Finds Orchestrator subagent transcripts for a given session.
-# The Orchestrator runs as a subagent of the interactive session.
-# Transcripts are at: ~/.claude/projects/<project>/<session-id>/subagents/*.jsonl
+# Finds Orchestrator transcripts for a given session.
+# Searches two paths (claude -p model first, then legacy subagent model):
+#   1. Direct JSONL: ~/.claude/projects/<project>/<session-id>.jsonl
+#   2. Subagent JSONL: ~/.claude/projects/<project>/<session-id>/subagents/*.jsonl
 transcript_locate_orchestrator() {
   local session_id="${1:?Usage: transcript_locate_orchestrator <session-id> [claude-home] [project-slug]}"
   local claude_home="${2:-${HOME}/.claude}"
@@ -88,7 +92,15 @@ transcript_locate_orchestrator() {
     search_base="${projects_dir}"
   fi
 
-  # Look for subagent transcripts under the session directory
+  # Strategy 1 (claude -p model): Direct session JSONL file
+  # claude -p creates <project>/<session-id>.jsonl as the top-level transcript
+  while IFS= read -r -d '' file; do
+    echo "$file"
+    found=$((found + 1))
+  done < <(find "$search_base" -maxdepth 2 -name "${session_id}.jsonl" -not -path "*/subagents/*" -print0 2>/dev/null | sort -z)
+
+  # Strategy 2 (legacy subagent model): Subagent JSONL files
+  # Old model stored at <project>/<parent-session>/subagents/*.jsonl
   while IFS= read -r -d '' file; do
     echo "$file"
     found=$((found + 1))
@@ -100,13 +112,70 @@ transcript_locate_orchestrator() {
   fi
 }
 
+# _transcript_find_orchestrator_jsonl <project-dir>
+# Scans top-level JSONL files in a project directory for orchestrator agentSetting.
+# claude -p --agent orchestrator creates JSONL files whose first line contains:
+#   {"type":"agent-setting","agentSetting":"orchestrator",...}
+# Returns matching file paths to stdout. Returns 1 if none found.
+_transcript_find_orchestrator_jsonl() {
+  local project_dir="${1:?Usage: _transcript_find_orchestrator_jsonl <project-dir>}"
+  local found=0
+
+  while IFS= read -r -d '' jsonl_file; do
+    # Check first line for orchestrator agentSetting
+    local first_line
+    first_line=$(head -1 "$jsonl_file" 2>/dev/null) || continue
+    if echo "$first_line" | grep -q '"orchestrator"' 2>/dev/null; then
+      echo "$jsonl_file"
+      found=$((found + 1))
+    fi
+  done < <(find "$project_dir" -maxdepth 1 -name "*.jsonl" -print0 2>/dev/null | sort -z)
+
+  [[ "$found" -gt 0 ]]
+}
+
+# _transcript_derive_main_project_slug <issue-number> <projects-dir>
+# Derives the main project slug from worker project directories.
+# Worker projects follow the pattern: <main-slug>-.worktrees-issue-{N}-{slug}
+# Splits at -.worktrees- to extract the main project slug.
+# Returns the slug to stdout, or returns 1 if not derivable.
+_transcript_derive_main_project_slug() {
+  local issue_number="${1:?Usage: _transcript_derive_main_project_slug <issue-number> <projects-dir>}"
+  local projects_dir="$2"
+
+  # Find worker project directories matching the issue number
+  local worker_dir
+  worker_dir=$(find "$projects_dir" -maxdepth 1 -type d -name "*-issue-${issue_number}-*" -print 2>/dev/null | head -1)
+
+  if [[ -z "$worker_dir" ]]; then
+    return 1
+  fi
+
+  local worker_slug
+  worker_slug=$(basename "$worker_dir")
+  # Split at -.worktrees- to get main project slug
+  local main_slug="${worker_slug%%-.worktrees-*}"
+
+  if [[ "$main_slug" == "$worker_slug" ]]; then
+    # Pattern didn't match (no -.worktrees- found)
+    return 1
+  fi
+
+  echo "$main_slug"
+}
+
 # transcript_locate_orchestrator_by_issue <issue-number> [var-dir] [claude-home] [project-slug]
 # Finds Orchestrator transcripts by scanning .spawned files for session reverse lookup.
 # spawn.sh creates {agent-type}-{N}.spawned in the IPC directory on successful spawn.
 # This function scans ${var-dir}/ipc/*/{worker,reviewer}-{N}.spawned to discover
 # which session(s) handled the given issue, then locates orchestrator transcripts
-# for those sessions. This avoids the need to source session-id.sh (which would
-# generate a new session ID) or depend on CEKERNEL_IPC_DIR.
+# for those sessions.
+#
+# Two search strategies:
+#   1. Legacy (subagent model): Pass session ID to transcript_locate_orchestrator
+#      which searches <project>/<session>/subagents/*.jsonl
+#   2. New (claude -p model): When orchestrator.spawned exists in the session's IPC dir,
+#      scan the main project directory for JSONL files with orchestrator agentSetting
 transcript_locate_orchestrator_by_issue() {
   local issue_number="${1:?Usage: transcript_locate_orchestrator_by_issue <issue-number> [var-dir] [claude-home] [project-slug]}"
   local var_dir="${2:-${CEKERNEL_VAR_DIR:-/usr/local/var/cekernel}}"
@@ -119,6 +188,7 @@ transcript_locate_orchestrator_by_issue() {
     return 1
   fi
 
+  local projects_dir="${claude_home}/projects"
   local ipc_base="${var_dir}/ipc"
   if [[ ! -d "$ipc_base" ]]; then
     echo "No IPC directory found: ${ipc_base}" >&2
@@ -130,6 +200,7 @@ transcript_locate_orchestrator_by_issue() {
   local seen_file
   seen_file=$(mktemp /tmp/cekernel-seen-sessions.XXXXXX)
   local found_spawned=0
+  local has_orch_spawned=0
 
   while IFS= read -r -d '' spawned_file; do
     found_spawned=$((found_spawned + 1))
@@ -142,6 +213,10 @@ transcript_locate_orchestrator_by_issue() {
     if ! grep -qxF "$session_id" "$seen_file" 2>/dev/null; then
       echo "$session_id" >> "$seen_file"
     fi
+    # Check for orchestrator.spawned in the same session directory
+    if [[ -f "${session_dir}/orchestrator.spawned" ]]; then
+      has_orch_spawned=1
+    fi
   done < <(find "$ipc_base" -maxdepth 2 \( -name "worker-${issue_number}.spawned" -o -name "reviewer-${issue_number}.spawned" \) -print0 2>/dev/null)
 
   if [[ "$found_spawned" -eq 0 ]]; then
@@ -150,7 +225,8 @@ transcript_locate_orchestrator_by_issue() {
     return 1
   fi
 
-  # For each discovered session, locate orchestrator transcripts
+  # Strategy 1: Pass session IDs to transcript_locate_orchestrator
+  # (handles both direct JSONL and legacy subagent paths)
   local any_found=0
   while IFS= read -r session_id; do
     if transcript_locate_orchestrator "$session_id" "$claude_home" "$project_slug" 2>/dev/null; then
@@ -159,6 +235,23 @@ transcript_locate_orchestrator_by_issue() {
   done < "$seen_file"
 
   rm -f "$seen_file"
+
+  # Strategy 2 (claude -p model): agentSetting-based scan
+  # When orchestrator.spawned exists but no transcripts found via session ID,
+  # scan the main project directory for JSONL files with orchestrator agentSetting.
+  if [[ "$any_found" -eq 0 && "$has_orch_spawned" -eq 1 ]]; then
+    local main_slug="$project_slug"
+    if [[ -z "$main_slug" ]]; then
+      main_slug=$(_transcript_derive_main_project_slug "$issue_number" "$projects_dir") || true
+    fi
+
+    if [[ -n "$main_slug" ]]; then
+      local main_project_dir="${projects_dir}/${main_slug}"
+      if [[ -d "$main_project_dir" ]] && _transcript_find_orchestrator_jsonl "$main_project_dir"; then
+        any_found=1
+      fi
+    fi
+  fi
 
   if [[ "$any_found" -eq 0 ]]; then
     echo "No Orchestrator transcripts found for issue #${issue_number} (sessions checked from .spawned files)" >&2
