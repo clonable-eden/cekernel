@@ -5,6 +5,7 @@
 #
 # Commands:
 #   ls                          List all workers across all sessions
+#   ps [--session <id>]         Show orchestrator process trees
 #   inspect <target>            Detailed worker view
 #   suspend <target>            Suspend a worker (send SUSPEND signal)
 #   resume <target>             Resume a suspended or crashed worker
@@ -40,6 +41,7 @@ Usage: orchctrl.sh <command> [args...]
 
 Commands:
   ls                          List all workers
+  ps [--session <id>]         Show orchestrator process trees
   inspect <target>            Detailed worker view
   suspend <target>            Suspend a worker
   resume <target>             Resume a suspended or crashed worker
@@ -286,6 +288,127 @@ cmd_ls() {
   if [[ "$found" -eq 0 ]]; then
     echo "no workers."
   fi
+}
+
+# ── ps: Show orchestrator process trees ──
+cmd_ps() {
+  local session_filter=""
+
+  # Parse flags
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --session) session_filter="${2:?--session requires a value}"; shift 2 ;;
+      *) echo "Error: unknown option '$1'" >&2; return 1 ;;
+    esac
+  done
+
+  local found=0
+
+  if [[ ! -d "$IPC_BASE" ]]; then
+    echo "no orchestrators."
+    return 0
+  fi
+
+  for session_dir in "$IPC_BASE"/*/; do
+    [[ -d "$session_dir" ]] || continue
+    local sid
+    sid=$(basename "$session_dir")
+
+    # Apply --session filter
+    if [[ -n "$session_filter" && "$sid" != "$session_filter" ]]; then
+      continue
+    fi
+
+    local pid_file="${session_dir}orchestrator.pid"
+    [[ -f "$pid_file" ]] || continue
+
+    local orch_pid
+    orch_pid=$(tr -d '[:space:]' < "$pid_file")
+    [[ -n "$orch_pid" ]] || continue
+
+    # Compute elapsed from orchestrator.spawned
+    local elapsed=""
+    local spawned_file="${session_dir}orchestrator.spawned"
+    if [[ -f "$spawned_file" ]]; then
+      local spawned_at now elapsed_sec
+      spawned_at=$(tr -d '[:space:]' < "$spawned_file")
+      spawned_at="${spawned_at:-$(date +%s)}"
+      now=$(date +%s)
+      elapsed_sec=$((now - spawned_at))
+      if [[ $elapsed_sec -ge 3600 ]]; then
+        elapsed="$((elapsed_sec / 3600))h$((elapsed_sec % 3600 / 60))m"
+      elif [[ $elapsed_sec -ge 60 ]]; then
+        elapsed="$((elapsed_sec / 60))m"
+      else
+        elapsed="${elapsed_sec}s"
+      fi
+    fi
+
+    # Check if the process is alive
+    local status
+    if kill -0 "$orch_pid" 2>/dev/null; then
+      status="running"
+    else
+      status="not-running"
+    fi
+
+    found=$((found + 1))
+
+    # Print orchestrator header line
+    echo "orchestrator  PID=${orch_pid}  session=${sid}  elapsed=${elapsed}  ${status}"
+
+    # If running, list child processes as a tree
+    if [[ "$status" == "running" ]]; then
+      _ps_print_children "$orch_pid" "  "
+    fi
+  done
+
+  if [[ "$found" -eq 0 ]]; then
+    echo "no orchestrators."
+  fi
+}
+
+# ── Helper: recursively print child processes ──
+_ps_print_children() {
+  local parent_pid="$1" indent="$2"
+
+  local children
+  children=$(pgrep -P "$parent_pid" 2>/dev/null || true)
+  [[ -n "$children" ]] || return 0
+
+  # Collect children into an array for last-child detection
+  local child_pids=()
+  while IFS= read -r cpid; do
+    [[ -n "$cpid" ]] && child_pids+=("$cpid")
+  done <<< "$children"
+
+  local total=${#child_pids[@]}
+  local idx=0
+
+  for cpid in "${child_pids[@]}"; do
+    idx=$((idx + 1))
+    local connector="├──"
+    local child_indent="${indent}│   "
+    if [[ "$idx" -eq "$total" ]]; then
+      connector="└──"
+      child_indent="${indent}    "
+    fi
+
+    # Get process command
+    local cmd
+    cmd=$(ps -o command= -p "$cpid" 2>/dev/null || echo "(unknown)")
+
+    # Get process state
+    local pstate
+    pstate=$(ps -o state= -p "$cpid" 2>/dev/null || echo "?")
+    # Trim to first character for brevity
+    pstate="${pstate:0:1}"
+
+    echo "${indent}${connector} ${cmd}  PID=${cpid}  ${pstate}"
+
+    # Recurse for grandchildren
+    _ps_print_children "$cpid" "$child_indent"
+  done
 }
 
 # ── inspect: Detailed worker view ──
@@ -809,6 +932,7 @@ shift || true
 
 case "$COMMAND" in
   ls)      cmd_ls "$@" ;;
+  ps)      cmd_ps "$@" ;;
   inspect) cmd_inspect "$@" ;;
   suspend) cmd_suspend "$@" ;;
   resume)  cmd_resume "$@" ;;

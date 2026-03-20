@@ -50,6 +50,9 @@ CEKERNEL_SHARED_SCRIPTS="$(cd "${SCRIPT_DIR}/../shared" && pwd)"
 ) >/dev/null 2>&1 &
 PID=$!
 
+# Record PID for orchctrl ps to discover the orchestrator process tree.
+echo "$PID" > "${CEKERNEL_IPC_DIR}/orchestrator.pid"
+
 # Record spawn marker for post-mortem transcript discovery.
 # transcript-locator.sh checks orchestrator.spawned to decide
 # whether to use agentSetting-based scan for claude -p transcripts.

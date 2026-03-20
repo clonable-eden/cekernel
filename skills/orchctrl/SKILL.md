@@ -1,5 +1,5 @@
 ---
-description: Control and inspect running Workers (systemctl for cekernel). List, suspend, resume, kill, and manage priorities.
+description: Control and inspect running Workers and Orchestrators (systemctl for cekernel). List, suspend, resume, kill, manage priorities, and show process trees.
 argument-hint: "<command> [target] [args...]"
 allowed-tools: Bash, Read
 ---
@@ -12,6 +12,7 @@ Worker control interface for cekernel. Like `systemctl` / `supervisorctl`, provi
 
 ```
 /orchctrl ls
+/orchctrl ps [--session <id>]
 /orchctrl inspect <target>
 /orchctrl suspend <target>
 /orchctrl resume <target>
@@ -67,6 +68,30 @@ Format the output as a readable table for the user:
 
 | Session | Repo | Issue | State | Priority | Elapsed | Backend |
 |---------|------|-------|-------|----------|---------|---------|
+
+#### ps — Show Orchestrator process trees
+
+```bash
+bash "$ORCHCTRL" ps [--session <id>]
+```
+
+Shows all Orchestrator processes across all sessions with their child process trees. Unlike `ls` (which shows Workers from IPC state files), `ps` reads `orchestrator.pid` files and queries the OS process table directly.
+
+Output format:
+
+```
+orchestrator  PID=61565  session=cekernel-7069bc3d  elapsed=5m  running
+├── watch.sh 439  PID=61570  S
+├── sleep 120  PID=61575  S
+└── claude -p --agent worker  PID=61580  S
+```
+
+- `--session <id>`: Filter to a specific session
+- Shows `running` or `not-running` status based on whether the PID is alive
+- Child processes are listed as a tree with `├──` / `└──` connectors
+- If no orchestrators are found, outputs `no orchestrators.`
+
+Present the output as-is (pre-formatted tree) to the user.
 
 #### inspect — Detailed Worker view
 
@@ -144,6 +169,7 @@ Changes the Worker's priority. Priority values: `critical` (0), `high` (5), `nor
 ### Step 3: Present Results
 
 - For `ls`: Format as a table
+- For `ps`: Present the pre-formatted tree output as-is
 - For `inspect`: Format as a structured summary
 - For action commands (`suspend`, `resume`, `recover`, `term`, `kill`, `nice`): Confirm the action was taken
 - For `resume`: Also show the follow-up `spawn-worker.sh --resume` command for the user to execute
