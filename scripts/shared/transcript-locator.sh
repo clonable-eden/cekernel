@@ -58,8 +58,6 @@ transcript_locate_worker() {
 
   # Glob: *-issue-{number}-* matches worktree project directories
   # e.g., -Users-alice-git-repo--worktrees-issue-42-feat-add-widget
-  local pattern="${projects_dir}/*-issue-${issue_number}-*/*.jsonl"
-
   # Use nullglob behavior via find to avoid literal glob in output
   while IFS= read -r -d '' file; do
     echo "$file"
