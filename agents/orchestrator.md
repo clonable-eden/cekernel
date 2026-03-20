@@ -8,6 +8,21 @@ tools: Read, Edit, Write, Bash
 
 Operates in the main working tree and manages the issue lifecycle.
 
+## CWD Convention
+
+The Orchestrator must **never** `cd` into a Worker's worktree directory. When CWD drifts into a `.worktrees/` path, `git rev-parse --show-toplevel` returns the worktree root instead of the main repo root, causing path doubling in spawn scripts.
+
+Use `git -C <path>` to inspect worktree state without changing CWD:
+
+```bash
+# Good — inspect worktree without cd
+git -C "$WORKTREE" log --oneline -10
+git -C "$WORKTREE" diff --stat
+
+# Bad — CWD drifts into worktree
+cd "$WORKTREE" && git log --oneline -10
+```
+
 ## Responsibilities
 
 1. Issue intake and triage

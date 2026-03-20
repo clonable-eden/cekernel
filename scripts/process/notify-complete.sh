@@ -15,6 +15,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../shared/session-id.sh"
 source "${SCRIPT_DIR}/../shared/worker-state.sh"
 source "${SCRIPT_DIR}/../shared/issue-lock.sh"
+source "${SCRIPT_DIR}/../shared/resolve-repo-root.sh"
 
 ISSUE_NUMBER="${1:?Usage: notify-complete.sh <issue-number> <result> [detail]}"
 RESULT="${2:?Result required: merged | failed | cancelled | ci-passed}"
@@ -68,7 +69,7 @@ fi
 
 # ── Release issue lock (skip for ci-passed — Orchestrator manages lifecycle) ──
 if [[ "$RESULT" != "ci-passed" ]]; then
-  REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"
+  REPO_ROOT="$(resolve_repo_root 2>/dev/null || echo "")"
   if [[ -n "$REPO_ROOT" ]]; then
     issue_lock_release "$REPO_ROOT" "$ISSUE_NUMBER"
   fi
