@@ -364,7 +364,11 @@ cmd_ps() {
       child_pids_file=$(mktemp /tmp/cekernel-ps-children.XXXXXX)
       _ps_collect_descendants "$orch_pid" "$child_pids_file"
 
-      _ps_print_children "$orch_pid" "  "
+      # Count managed processes to adjust tree connectors
+      local has_managed=0
+      _ps_has_managed "$session_dir" "$child_pids_file" && has_managed=1
+
+      _ps_print_children "$orch_pid" "  " "$has_managed"
       _ps_print_managed "$session_dir" "$child_pids_file" "  "
 
       rm -f "$child_pids_file"
@@ -377,8 +381,10 @@ cmd_ps() {
 }
 
 # ── Helper: recursively print child processes ──
+# Args: parent_pid indent [has_more_after]
+#   has_more_after: if "1", the last child uses ├── instead of └── (managed entries follow)
 _ps_print_children() {
-  local parent_pid="$1" indent="$2"
+  local parent_pid="$1" indent="$2" has_more_after="${3:-0}"
 
   local children
   children=$(pgrep -P "$parent_pid" 2>/dev/null || true)
@@ -397,7 +403,13 @@ _ps_print_children() {
     idx=$((idx + 1))
     local connector="├──"
     local child_indent="${indent}│   "
+    local is_last=0
     if [[ "$idx" -eq "$total" ]]; then
+      is_last=1
+    fi
+
+    # Use └── only if truly the last entry (no managed processes follow)
+    if [[ "$is_last" -eq 1 && "$has_more_after" -eq 0 ]]; then
       connector="└──"
       child_indent="${indent}    "
     fi
@@ -414,7 +426,7 @@ _ps_print_children() {
 
     echo "${indent}${connector} ${cmd}  PID=${cpid}  ${pstate}"
 
-    # Recurse for grandchildren
+    # Recurse for grandchildren (no managed processes at deeper levels)
     _ps_print_children "$cpid" "$child_indent"
   done
 }
@@ -432,6 +444,23 @@ _ps_collect_descendants() {
     echo "$cpid" >> "$outfile"
     _ps_collect_descendants "$cpid" "$outfile"
   done <<< "$children"
+}
+
+# ── Helper: check if any managed processes exist (for tree connector logic) ──
+_ps_has_managed() {
+  local session_dir="$1" child_pids_file="$2"
+
+  for handle_file in "${session_dir}"handle-*.*; do
+    [[ -f "$handle_file" ]] || continue
+    local pid
+    pid=$(tr -d '[:space:]' < "$handle_file")
+    [[ -n "$pid" ]] || continue
+    kill -0 "$pid" 2>/dev/null || continue
+    if ! grep -qxF "$pid" "$child_pids_file" 2>/dev/null; then
+      return 0
+    fi
+  done
+  return 1
 }
 
 # ── Helper: print managed processes from handle files ──
