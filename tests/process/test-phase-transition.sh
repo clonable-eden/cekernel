@@ -76,6 +76,14 @@ STATE_FILE_104="${CEKERNEL_IPC_DIR}/worker-104.state"
 STATE_CONTENT_104=$(cat "$STATE_FILE_104")
 assert_match "State contains WAITING" "^WAITING:" "$STATE_CONTENT_104"
 
+# ── Test 8: TDD sub-detail with parentheses is preserved (issue #461) ──
+EXIT_CODE=0
+bash "$PHASE_TRANSITION" 105 RUNNING "phase1:implement(red)" || EXIT_CODE=$?
+assert_eq "TDD sub-detail exits 0" "0" "$EXIT_CODE"
+STATE_FILE_105="${CEKERNEL_IPC_DIR}/worker-105.state"
+STATE_CONTENT_105=$(cat "$STATE_FILE_105")
+assert_match "State contains TDD sub-detail" 'phase1:implement\(red\)' "$STATE_CONTENT_105"
+
 # ── Cleanup ──
 rm -rf "$CEKERNEL_IPC_DIR"
 
