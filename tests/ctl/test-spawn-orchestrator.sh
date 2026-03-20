@@ -12,7 +12,7 @@ CEKERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 echo "test: spawn-orchestrator"
 
-SPAWN_ORCHESTRATOR="${CEKERNEL_DIR}/scripts/orchestrator/spawn-orchestrator.sh"
+SPAWN_ORCHESTRATOR="${CEKERNEL_DIR}/scripts/ctl/spawn-orchestrator.sh"
 
 # ── Test 1: spawn-orchestrator.sh exists and is executable ──
 assert_file_exists "spawn-orchestrator.sh exists" "$SPAWN_ORCHESTRATOR"

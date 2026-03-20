@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# test-orchctrl-gc.sh — Tests for orchctrl.sh gc command
+# test-orchctl-gc.sh — Tests for orchctl.sh gc command
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../helpers.sh"
 
 CEKERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-ORCHCTRL="${CEKERNEL_DIR}/scripts/orchestrator/orchctrl.sh"
+ORCHCTL="${CEKERNEL_DIR}/scripts/ctl/orchctl.sh"
 
-echo "test: orchctrl gc"
+echo "test: orchctl gc"
 
 # ── Isolated IPC/locks base for test isolation ──
-IPC_BASE=$(mktemp -d /tmp/cekernel-test-orchctrl-gc.XXXXXX)
+IPC_BASE=$(mktemp -d /tmp/cekernel-test-orchctl-gc.XXXXXX)
 export CEKERNEL_IPC_BASE="$IPC_BASE"
 export CEKERNEL_VAR_DIR=$(mktemp -d /tmp/cekernel-test-gc-var.XXXXXX)
 
@@ -27,7 +27,7 @@ trap cleanup EXIT
 
 # ── Test 1: gc with no stale resources → exit 0, "nothing to clean" ──
 mkdir -p "${IPC_BASE}/session-gc-01"
-OUTPUT=$(bash "$ORCHCTRL" gc 2>&1)
+OUTPUT=$(bash "$ORCHCTL" gc 2>&1)
 EXIT_CODE=$?
 assert_eq "gc no stale resources: exit 0" "0" "$EXIT_CODE"
 assert_match "gc no stale: nothing to clean" "nothing to clean" "$OUTPUT"
@@ -40,14 +40,14 @@ assert_match "gc no stale: nothing to clean" "nothing to clean" "$OUTPUT"
 LOCK_DIR="${CEKERNEL_VAR_DIR}/locks/testhash123/42.lock"
 mkdir -p "$LOCK_DIR"
 echo "99999999" > "${LOCK_DIR}/pid"
-OUTPUT=$(bash "$ORCHCTRL" gc 2>&1)
+OUTPUT=$(bash "$ORCHCTL" gc 2>&1)
 assert_not_exists "gc removes stale lock dir" "$LOCK_DIR"
 
 # ── Test 3: gc preserves lock with live PID ──
 LOCK_DIR_LIVE="${CEKERNEL_VAR_DIR}/locks/testhash123/43.lock"
 mkdir -p "$LOCK_DIR_LIVE"
 echo "$$" > "${LOCK_DIR_LIVE}/pid"
-bash "$ORCHCTRL" gc >/dev/null 2>&1
+bash "$ORCHCTL" gc >/dev/null 2>&1
 assert_dir_exists "gc preserves live lock" "$LOCK_DIR_LIVE"
 # Cleanup
 rm -rf "$LOCK_DIR_LIVE"
@@ -55,7 +55,7 @@ rm -rf "$LOCK_DIR_LIVE"
 # ── Test 4: gc removes lock dir without PID file ──
 LOCK_DIR_NOPID="${CEKERNEL_VAR_DIR}/locks/testhash123/44.lock"
 mkdir -p "$LOCK_DIR_NOPID"
-bash "$ORCHCTRL" gc >/dev/null 2>&1
+bash "$ORCHCTL" gc >/dev/null 2>&1
 assert_not_exists "gc removes lock without pid" "$LOCK_DIR_NOPID"
 
 # ══════════════════════════════════════════════
@@ -66,7 +66,7 @@ assert_not_exists "gc removes lock without pid" "$LOCK_DIR_NOPID"
 SESSION_DIR="${IPC_BASE}/session-gc-02"
 mkdir -p "$SESSION_DIR"
 echo "TERMINATED:2026-02-28T10:00:00Z:done" > "${SESSION_DIR}/worker-50.state"
-bash "$ORCHCTRL" gc >/dev/null 2>&1
+bash "$ORCHCTL" gc >/dev/null 2>&1
 assert_not_exists "gc removes orphan state file" "${SESSION_DIR}/worker-50.state"
 
 # ── Test 6: gc preserves state file with active FIFO + live handle ──
@@ -78,7 +78,7 @@ echo "10" > "${SESSION_DIR2}/worker-51.priority"
 echo "worker" > "${SESSION_DIR2}/worker-51.type"
 # A live handle (our own PID) makes this an active worker
 echo "$$" > "${SESSION_DIR2}/handle-51.worker"
-bash "$ORCHCTRL" gc >/dev/null 2>&1
+bash "$ORCHCTL" gc >/dev/null 2>&1
 assert_file_exists "gc preserves state with FIFO" "${SESSION_DIR2}/worker-51.state"
 assert_file_exists "gc preserves priority with FIFO" "${SESSION_DIR2}/worker-51.priority"
 assert_file_exists "gc preserves type with FIFO" "${SESSION_DIR2}/worker-51.type"
@@ -88,7 +88,7 @@ mkdir -p "$SESSION_DIR"
 echo "5" > "${SESSION_DIR}/worker-50.priority"
 echo "worker" > "${SESSION_DIR}/worker-50.type"
 echo "TERM" > "${SESSION_DIR}/worker-50.signal"
-bash "$ORCHCTRL" gc >/dev/null 2>&1
+bash "$ORCHCTL" gc >/dev/null 2>&1
 assert_not_exists "gc removes orphan priority" "${SESSION_DIR}/worker-50.priority"
 assert_not_exists "gc removes orphan type" "${SESSION_DIR}/worker-50.type"
 assert_not_exists "gc removes orphan signal" "${SESSION_DIR}/worker-50.signal"
@@ -100,7 +100,7 @@ assert_not_exists "gc removes orphan signal" "${SESSION_DIR}/worker-50.signal"
 # ── Test 8: gc removes empty session directory ──
 EMPTY_SESSION="${IPC_BASE}/session-gc-empty"
 mkdir -p "$EMPTY_SESSION"
-bash "$ORCHCTRL" gc >/dev/null 2>&1
+bash "$ORCHCTL" gc >/dev/null 2>&1
 assert_not_exists "gc removes empty session dir" "$EMPTY_SESSION"
 
 # ── Test 9: gc preserves non-empty session directory ──
@@ -113,13 +113,13 @@ assert_dir_exists "gc preserves non-empty session" "$SESSION_DIR2"
 # ── Test 10: gc removes orphan handle file ──
 mkdir -p "$SESSION_DIR"
 echo "12345" > "${SESSION_DIR}/handle-50.worker"
-bash "$ORCHCTRL" gc >/dev/null 2>&1
+bash "$ORCHCTL" gc >/dev/null 2>&1
 assert_not_exists "gc removes orphan handle file" "${SESSION_DIR}/handle-50.worker"
 
 # ── Test 11: gc removes orphan payload file ──
 mkdir -p "$SESSION_DIR"
 echo "base64data" > "${SESSION_DIR}/payload-50.b64"
-bash "$ORCHCTRL" gc >/dev/null 2>&1
+bash "$ORCHCTL" gc >/dev/null 2>&1
 assert_not_exists "gc removes orphan payload" "${SESSION_DIR}/payload-50.b64"
 
 # ── Test 12: gc removes orphan log files ──
@@ -127,7 +127,7 @@ mkdir -p "$SESSION_DIR"
 mkdir -p "${SESSION_DIR}/logs"
 echo "log data" > "${SESSION_DIR}/logs/worker-50.log"
 echo "stdout data" > "${SESSION_DIR}/logs/worker-50.stdout.log"
-bash "$ORCHCTRL" gc >/dev/null 2>&1
+bash "$ORCHCTL" gc >/dev/null 2>&1
 assert_not_exists "gc removes orphan log" "${SESSION_DIR}/logs/worker-50.log"
 assert_not_exists "gc removes orphan stdout log" "${SESSION_DIR}/logs/worker-50.stdout.log"
 
@@ -142,7 +142,7 @@ mkfifo "${SESSION_DIR_STALE}/worker-296"
 echo "TERMINATED:2026-02-28T10:00:00Z:done" > "${SESSION_DIR_STALE}/worker-296.state"
 echo "worker" > "${SESSION_DIR_STALE}/worker-296.type"
 echo "10" > "${SESSION_DIR_STALE}/worker-296.priority"
-bash "$ORCHCTRL" gc >/dev/null 2>&1
+bash "$ORCHCTL" gc >/dev/null 2>&1
 assert_not_exists "gc removes stale FIFO (TERMINATED + no handle)" "${SESSION_DIR_STALE}/worker-296"
 assert_not_exists "gc removes state for stale FIFO" "${SESSION_DIR_STALE}/worker-296.state"
 assert_not_exists "gc removes type for stale FIFO" "${SESSION_DIR_STALE}/worker-296.type"
@@ -156,7 +156,7 @@ mkfifo "${SESSION_DIR_STALE2}/worker-297"
 echo "NEW:2026-02-28T01:00:00Z:spawning" > "${SESSION_DIR_STALE2}/worker-297.state"
 echo "worker" > "${SESSION_DIR_STALE2}/worker-297.type"
 # Override staleness: set CEKERNEL_GC_STALE_TIMEOUT=0 to force stale
-CEKERNEL_GC_STALE_TIMEOUT=0 bash "$ORCHCTRL" gc >/dev/null 2>&1
+CEKERNEL_GC_STALE_TIMEOUT=0 bash "$ORCHCTL" gc >/dev/null 2>&1
 assert_not_exists "gc removes stale FIFO (NEW + timeout)" "${SESSION_DIR_STALE2}/worker-297"
 assert_not_exists "gc removes state for stale NEW FIFO" "${SESSION_DIR_STALE2}/worker-297.state"
 assert_not_exists "gc removes type for stale NEW FIFO" "${SESSION_DIR_STALE2}/worker-297.type"
@@ -169,7 +169,7 @@ echo "RUNNING:2026-02-28T10:00:00Z:working" > "${SESSION_DIR_STALE3}/worker-298.
 echo "worker" > "${SESSION_DIR_STALE3}/worker-298.type"
 # Create a handle file with a dead PID
 echo "99999999" > "${SESSION_DIR_STALE3}/handle-298.worker"
-bash "$ORCHCTRL" gc >/dev/null 2>&1
+bash "$ORCHCTL" gc >/dev/null 2>&1
 assert_not_exists "gc removes stale FIFO (dead handle PID)" "${SESSION_DIR_STALE3}/worker-298"
 assert_not_exists "gc removes state for dead handle" "${SESSION_DIR_STALE3}/worker-298.state"
 assert_not_exists "gc removes handle for dead process" "${SESSION_DIR_STALE3}/handle-298.worker"
@@ -182,7 +182,7 @@ echo "RUNNING:2026-02-28T10:00:00Z:working" > "${SESSION_DIR_LIVE}/worker-299.st
 echo "worker" > "${SESSION_DIR_LIVE}/worker-299.type"
 # Create a handle file with our own (live) PID
 echo "$$" > "${SESSION_DIR_LIVE}/handle-299.worker"
-bash "$ORCHCTRL" gc >/dev/null 2>&1
+bash "$ORCHCTL" gc >/dev/null 2>&1
 assert_fifo_exists "gc preserves FIFO with live handle" "${SESSION_DIR_LIVE}/worker-299"
 assert_file_exists "gc preserves state with live handle" "${SESSION_DIR_LIVE}/worker-299.state"
 assert_file_exists "gc preserves handle with live process" "${SESSION_DIR_LIVE}/handle-299.worker"
@@ -195,7 +195,7 @@ SESSION_DIR_DRY="${IPC_BASE}/session-gc-stale-dry"
 mkdir -p "$SESSION_DIR_DRY"
 mkfifo "${SESSION_DIR_DRY}/worker-300"
 echo "TERMINATED:2026-02-28T10:00:00Z:done" > "${SESSION_DIR_DRY}/worker-300.state"
-OUTPUT=$(bash "$ORCHCTRL" gc --dry-run 2>&1)
+OUTPUT=$(bash "$ORCHCTL" gc --dry-run 2>&1)
 assert_fifo_exists "dry-run preserves stale FIFO" "${SESSION_DIR_DRY}/worker-300"
 assert_match "dry-run mentions stale FIFO" "stale FIFO" "$OUTPUT"
 # Cleanup the stale resources for subsequent tests
@@ -210,7 +210,7 @@ rmdir "$SESSION_DIR_DRY" 2>/dev/null || true
 LOCK_DIR_DRY="${CEKERNEL_VAR_DIR}/locks/testhash456/60.lock"
 mkdir -p "$LOCK_DIR_DRY"
 echo "99999999" > "${LOCK_DIR_DRY}/pid"
-OUTPUT=$(bash "$ORCHCTRL" gc --dry-run 2>&1)
+OUTPUT=$(bash "$ORCHCTL" gc --dry-run 2>&1)
 assert_dir_exists "dry-run preserves stale lock" "$LOCK_DIR_DRY"
 assert_match "dry-run output indicates would clean" "dry-run" "$OUTPUT"
 # Cleanup
@@ -223,7 +223,7 @@ rm -rf "${CEKERNEL_VAR_DIR}/locks/testhash456"
 # ── Test 14: gc removes empty repo-hash directory under locks ──
 EMPTY_HASH_DIR="${CEKERNEL_VAR_DIR}/locks/emptyhash000"
 mkdir -p "$EMPTY_HASH_DIR"
-bash "$ORCHCTRL" gc >/dev/null 2>&1
+bash "$ORCHCTL" gc >/dev/null 2>&1
 assert_not_exists "gc removes empty repo-hash dir" "$EMPTY_HASH_DIR"
 
 # ══════════════════════════════════════════════
@@ -237,7 +237,7 @@ mkdir -p "$LOCK_DIR_SUM"
 echo "99999999" > "${LOCK_DIR_SUM}/pid"
 mkdir -p "$SESSION_DIR"
 echo "TERMINATED:2026-02-28T10:00:00Z:done" > "${SESSION_DIR}/worker-70.state"
-OUTPUT=$(bash "$ORCHCTRL" gc 2>&1)
+OUTPUT=$(bash "$ORCHCTL" gc 2>&1)
 assert_match "gc output includes cleaned count" "cleaned" "$OUTPUT"
 
 report_results

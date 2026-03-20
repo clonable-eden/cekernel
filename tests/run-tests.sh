@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run-tests.sh — Test runner that sequentially executes tests/{shared,orchestrator,process}/test-*.sh
+# run-tests.sh — Test runner that sequentially executes tests/{shared,orchestrator,ctl,process,scheduler}/test-*.sh
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -15,7 +15,7 @@ _CEKERNEL_VAR_DIR_CREATED=1
 echo "=== cekernel test runner ==="
 echo ""
 
-for category in shared orchestrator process scheduler; do
+for category in shared orchestrator ctl process scheduler; do
   category_dir="${SCRIPT_DIR}/${category}"
   [[ -d "$category_dir" ]] || continue
 

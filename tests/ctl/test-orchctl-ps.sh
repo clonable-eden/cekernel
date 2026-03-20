@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# test-orchctrl-ps.sh — Tests for orchctrl.sh ps command
+# test-orchctl-ps.sh — Tests for orchctl.sh ps command
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../helpers.sh"
 
 CEKERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-ORCHCTRL="${CEKERNEL_DIR}/scripts/orchestrator/orchctrl.sh"
+ORCHCTL="${CEKERNEL_DIR}/scripts/ctl/orchctl.sh"
 
-echo "test: orchctrl ps"
+echo "test: orchctl ps"
 
 # ── Isolated IPC base for test isolation ──
-IPC_BASE=$(mktemp -d /tmp/cekernel-test-orchctrl-ps.XXXXXX)
+IPC_BASE=$(mktemp -d /tmp/cekernel-test-orchctl-ps.XXXXXX)
 export CEKERNEL_IPC_BASE="$IPC_BASE"
 
 SESSION="test-ps-repo-00000001"
@@ -35,12 +35,12 @@ trap cleanup EXIT
 
 # ── Test 1: ps with no sessions → "no orchestrators." ──
 rm -rf "${IPC_BASE:?}/"*
-OUTPUT=$(bash "$ORCHCTRL" ps 2>/dev/null)
+OUTPUT=$(bash "$ORCHCTL" ps 2>/dev/null)
 assert_eq "ps no sessions" "no orchestrators." "$OUTPUT"
 
 # ── Test 2: ps with session but no orchestrator.pid → skip ──
 mkdir -p "$IPC_DIR"
-OUTPUT=$(bash "$ORCHCTRL" ps 2>/dev/null)
+OUTPUT=$(bash "$ORCHCTL" ps 2>/dev/null)
 assert_eq "ps no pid file" "no orchestrators." "$OUTPUT"
 
 # ══════════════════════════════════════════════
@@ -50,7 +50,7 @@ assert_eq "ps no pid file" "no orchestrators." "$OUTPUT"
 # ── Test 3: ps with dead PID → shows not-running status ──
 echo "99999" > "${IPC_DIR}/orchestrator.pid"
 echo "$(date +%s)" > "${IPC_DIR}/orchestrator.spawned"
-OUTPUT=$(bash "$ORCHCTRL" ps 2>/dev/null)
+OUTPUT=$(bash "$ORCHCTL" ps 2>/dev/null)
 assert_match "ps dead PID shows not-running" "not-running" "$OUTPUT"
 
 # ══════════════════════════════════════════════
@@ -66,7 +66,7 @@ BGPIDS="$BGPIDS$ORCH_PID "
 echo "$ORCH_PID" > "${IPC_DIR}/orchestrator.pid"
 echo "$(date +%s)" > "${IPC_DIR}/orchestrator.spawned"
 
-OUTPUT=$(bash "$ORCHCTRL" ps 2>/dev/null)
+OUTPUT=$(bash "$ORCHCTL" ps 2>/dev/null)
 assert_match "ps live PID shows session" "$SESSION" "$OUTPUT"
 assert_match "ps live PID shows PID" "PID=${ORCH_PID}" "$OUTPUT"
 
@@ -89,7 +89,7 @@ BGPIDS="$BGPIDS$ORCH_PID_B "
 echo "$ORCH_PID_B" > "${IPC_DIR_B}/orchestrator.pid"
 echo "$(date +%s)" > "${IPC_DIR_B}/orchestrator.spawned"
 
-OUTPUT=$(bash "$ORCHCTRL" ps 2>/dev/null)
+OUTPUT=$(bash "$ORCHCTL" ps 2>/dev/null)
 LINE_COUNT=$(echo "$OUTPUT" | grep -c "orchestrator" || true)
 assert_eq "ps multiple sessions: two orchestrators" "2" "$LINE_COUNT"
 
@@ -118,7 +118,7 @@ sleep 0.3  # Give children time to spawn
 echo "$PARENT_PID" > "${IPC_DIR_C}/orchestrator.pid"
 echo "$(date +%s)" > "${IPC_DIR_C}/orchestrator.spawned"
 
-OUTPUT=$(bash "$ORCHCTRL" ps 2>/dev/null)
+OUTPUT=$(bash "$ORCHCTL" ps 2>/dev/null)
 # Should show the parent orchestrator line
 assert_match "ps parent shows orchestrator" "orchestrator" "$OUTPUT"
 # Should show child processes (tree lines with └── or ├──)
@@ -142,7 +142,7 @@ BGPIDS="$BGPIDS$ORCH_PID_D "
 echo "$ORCH_PID_D" > "${IPC_DIR_D}/orchestrator.pid"
 echo "$(date +%s)" > "${IPC_DIR_D}/orchestrator.spawned"
 
-OUTPUT=$(bash "$ORCHCTRL" ps --session "$SESSION_D" 2>/dev/null)
+OUTPUT=$(bash "$ORCHCTL" ps --session "$SESSION_D" 2>/dev/null)
 assert_match "ps --session filters correctly" "$SESSION_D" "$OUTPUT"
 # Should NOT contain the other session
 if echo "$OUTPUT" | grep -q "$SESSION_C"; then
@@ -154,7 +154,7 @@ else
 fi
 
 # ── Test 9: ps --session with non-existent session → no orchestrators ──
-OUTPUT=$(bash "$ORCHCTRL" ps --session "nonexistent-session" 2>/dev/null)
+OUTPUT=$(bash "$ORCHCTL" ps --session "nonexistent-session" 2>/dev/null)
 assert_eq "ps --session nonexistent" "no orchestrators." "$OUTPUT"
 
 report_results

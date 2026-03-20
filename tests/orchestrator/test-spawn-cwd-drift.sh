@@ -20,7 +20,7 @@ file_contains() {
 
 SPAWN_SH="${CEKERNEL_DIR}/scripts/orchestrator/spawn.sh"
 CLEANUP_SH="${CEKERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh"
-SPAWN_ORCH_SH="${CEKERNEL_DIR}/scripts/orchestrator/spawn-orchestrator.sh"
+SPAWN_ORCH_SH="${CEKERNEL_DIR}/scripts/ctl/spawn-orchestrator.sh"
 PROCESS_STATUS_SH="${CEKERNEL_DIR}/scripts/orchestrator/process-status.sh"
 NOTIFY_COMPLETE_SH="${CEKERNEL_DIR}/scripts/process/notify-complete.sh"
 ORCH_MD="${CEKERNEL_DIR}/agents/orchestrator.md"
