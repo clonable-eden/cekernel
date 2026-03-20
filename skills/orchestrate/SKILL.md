@@ -1,7 +1,7 @@
 ---
 description: Delegate issues to the Orchestrator agent for parallel processing after priority assessment
 argument-hint: "[--env profile] <issue-numbers>"
-allowed-tools: Bash, Read, Task(cekernel:orchestrator), Task(orchestrator)
+allowed-tools: Bash, Read
 ---
 
 # /orchestrate
@@ -62,7 +62,7 @@ Then, read `skills/references/triage.md` from the repository root (`$(git rev-pa
 
 After triage, delegate to the Orchestrator.
 
-### Step 2: Parse `--env`, Initialize Session, and Launch Orchestrator Agent
+### Step 2: Parse `--env`, Initialize Session, and Launch Orchestrator Process
 
 If `--env <profile>` was specified, set `CEKERNEL_ENV` to the given profile name. If not specified, default to `default`.
 
@@ -97,13 +97,37 @@ Capture `CEKERNEL_SESSION_ID` from the Bash output (the line `CEKERNEL_SESSION_I
 
 If Claude Code session ID discovery fails (e.g., no `.jsonl` files found), continue — it is optional for Orchestrator operation.
 
-Launch the Orchestrator subagent via the Task tool:
+**Construct the Orchestrator prompt** from the following template. Replace `<placeholders>` with actual values determined in previous steps:
 
-- `subagent_type`: Use `CEKERNEL_AGENT_ORCHESTRATOR` determined in Step 0
-- `run_in_background`: `true`
-- `prompt`: Include issue numbers, base branch (if specified), execution order (if determined in Step 1), `CEKERNEL_SESSION_ID` value (from the Bash output above — must be `{repo}-{hex8}` format, **not** a UUID), `CEKERNEL_ENV` value, `CEKERNEL_SCRIPTS` value, `CEKERNEL_AGENT_WORKER` value, and `CEKERNEL_AGENT_REVIEWER` value. Instruct the Orchestrator to use `CEKERNEL_SCRIPTS` as prefix for all script calls, pass `export CEKERNEL_SESSION_ID=<ID>` and `export CEKERNEL_ENV=<profile>` in **all script invocations** (not just `spawn-worker.sh`, but also `watch.sh`, `process-status.sh`, `cleanup-worktree.sh`, `spawn-reviewer.sh`, etc.), `export CEKERNEL_AGENT_WORKER=<agent-name>` in all `spawn-worker.sh` invocations, and `export CEKERNEL_AGENT_REVIEWER=<agent-name>` in all `spawn-reviewer.sh` invocations.
+```
+Process the following issues: <#N title, #M title, ...>
+<Execution order if determined in Step 1, otherwise omit this line>
+<Base branch: <branch> if specified, otherwise omit this line>
 
-**MUST NOT**: Do not include Agent tool language (`subagent_type`, `Agent(worker)`, `Agent(reviewer)`, etc.) in the Orchestrator prompt. Workers and Reviewers are spawned by the Orchestrator via `spawn-worker.sh` / `spawn-reviewer.sh` (Bash), following its own agent definition. The skill must not dictate how the Orchestrator launches subprocesses.
+Environment values to propagate in ALL script invocations:
+- CEKERNEL_SESSION_ID=<session-id>
+- CEKERNEL_ENV=<profile>
+- CEKERNEL_SCRIPTS=<scripts-path>
+- CEKERNEL_AGENT_WORKER=<worker-agent-name>
+- CEKERNEL_AGENT_REVIEWER=<reviewer-agent-name>
+```
+
+**IMPORTANT**: `CEKERNEL_SESSION_ID` must be `{repo}-{hex8}` format from the Bash output above, **not** the Claude Code session UUID.
+
+**MUST NOT**: Do not include Agent tool language (`subagent_type`, `Agent(worker)`, `Agent(reviewer)`, etc.) in the prompt. Workers and Reviewers are spawned by the Orchestrator via `spawn-worker.sh` / `spawn-reviewer.sh` (Bash), following its own agent definition.
+
+**Launch the Orchestrator as an independent OS process** via `spawn-orchestrator.sh`:
+
+```bash
+export CEKERNEL_SESSION_ID=<session-id> && \
+export CEKERNEL_ENV=<profile> && \
+export CEKERNEL_AGENT_ORCHESTRATOR=<agent-name> && \
+export CEKERNEL_AGENT_WORKER=<agent-name> && \
+export CEKERNEL_AGENT_REVIEWER=<agent-name> && \
+"${CEKERNEL_SCRIPTS}/orchestrator/spawn-orchestrator.sh" "<prompt>"
+```
+
+The script launches the Orchestrator as a background `claude -p --agent` process that runs independently of the parent session. The Orchestrator PID is returned on stdout.
 
 The Orchestrator autonomously executes:
 

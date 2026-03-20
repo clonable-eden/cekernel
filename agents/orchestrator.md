@@ -358,23 +358,14 @@ During background monitoring (while `watch.sh` runs via `run_in_background`), pe
 
 ### Merge-Dependent Scheduling
 
-When a subsequent issue depends on a preceding issue's PR being merged (e.g., "#413 must be merged before spawning #414"), the Orchestrator must **not** poll for merge status using background tasks. Background-task polling generates excessive completion notifications that flood the parent session.
+The Orchestrator runs as an independent `claude -p` process (non-interactive), so it **cannot** receive user messages or wait for human input.
 
-Instead, follow this protocol:
+Merge dependencies between issues are resolved **before** the Orchestrator is launched:
+- The `/orchestrate` and `/dispatch` skills use `triage.md` Phase ordering to split dependent issues into separate phases
+- Each phase contains only independent issues that can be processed in parallel
+- The skill launches a separate Orchestrator instance per phase, after confirming the preceding phase's PRs are merged
 
-1. Complete the preceding issue's lifecycle (Worker → CI → Reviewer → approved)
-2. Clean up the worktree and release the lock (as per the `approved` flow)
-3. Inform the user that the next issue is blocked on merge:
-
-```
-Issue #414 is ready to start but depends on PR #N (from issue #413) being merged.
-Please merge the PR and let me know when done, and I will spawn the Worker for #414.
-```
-
-4. **Wait for the user's message** — the Orchestrator is an LLM agent and can receive user messages directly. No shell-based polling is needed.
-5. When the user confirms merge, spawn the next Worker
-
-**IMPORTANT**: Never use `run_in_background` with `gh pr view` or similar commands in a loop to detect merge status. This is the primary cause of notification noise. The Orchestrator should remain idle and responsive to user input while waiting.
+**The Orchestrator assumes all issues it receives are independent within the same phase.** It must not attempt to detect or handle merge dependencies at runtime. If a dependency is discovered during execution (e.g., a Worker reports a merge conflict with another Worker's branch), treat it as a failure and escalate.
 
 ## Worker and Target Repository Relationship
 
