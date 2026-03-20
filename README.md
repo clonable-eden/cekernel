@@ -41,7 +41,7 @@ Orchestrator (agent1)             Worker (agent2, 3, 4, ...)
 | `waitpid` | `watch.sh` (triple-path: FIFO + state file + crash detection) |
 | zombie reaping | `health-check.sh` + `cleanup-worktree.sh` |
 | core dump / checkpoint | `.cekernel-checkpoint.md` (suspend/resume) |
-| `systemctl` | `orchctrl.sh` / `/orchctrl` skill |
+| `systemctl` | `orchctl.sh` / `/orchctrl` skill |
 | device drivers | `backend-adapter.sh` (wezterm/tmux/headless) |
 | `/etc/default/` | `load-env.sh` + env profiles |
 | PID | issue number |
@@ -95,10 +95,12 @@ envs/
   README.md                # Environment variable catalog
 RELEASE_NOTES.md           # Structured release notes
 scripts/
+  ctl/
+    orchctl.sh             # Worker control interface (systemctl for cekernel)
+    spawn-orchestrator.sh  # Spawn Orchestrator as independent OS process
   orchestrator/
     cleanup-worktree.sh    # Remove worktree + branch + logs
     health-check.sh        # Detect zombie Workers
-    orchctrl.sh            # Worker control interface (systemctl for cekernel)
     send-signal.sh         # Send signal (TERM/SUSPEND) to a running Worker
     spawn.sh               # Common process spawning logic (concurrency guard, FIFO, state, backend, Type)
     spawn-worker.sh        # Spawn Worker (thin wrapper for spawn.sh --agent worker)
@@ -149,7 +151,7 @@ skills/
   dispatch/
     SKILL.md               # /dispatch skill — batch-process ready-labeled issues
   orchctrl/
-    SKILL.md               # /orchctrl skill — Worker control interface
+    SKILL.md               # /orchctrl skill — Worker control interface (orchctl.sh)
   orchestrate/
     SKILL.md               # /orchestrate skill — issue delegation
   postmortem/
@@ -165,6 +167,7 @@ skills/
   unix-architect/
     SKILL.md               # /unix-architect skill — ADR authoring and review
 tests/
+  ctl/test-*.sh            # Control script tests (orchctl, spawn-orchestrator)
   helpers.sh               # Assertion helpers
   orchestrator/test-*.sh   # Orchestrator script tests
   run-tests.sh             # Test runner

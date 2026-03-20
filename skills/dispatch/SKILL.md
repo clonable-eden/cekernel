@@ -102,7 +102,7 @@ Wait for user confirmation. If the user declines, exit without action.
 
 If `--env <profile>` was specified, set `CEKERNEL_ENV` to the given profile name. If not specified, default to `default`.
 
-**Initialize cekernel session and persist Claude Code session ID** — Run the following in a **single** Bash tool call. This generates `CEKERNEL_SESSION_ID` (format: `{repo}-{hex8}`), writes repo metadata for `orchctrl ls`, and separately persists the Claude Code session UUID for `/postmortem`:
+**Initialize cekernel session and persist Claude Code session ID** — Run the following in a **single** Bash tool call. This generates `CEKERNEL_SESSION_ID` (format: `{repo}-{hex8}`), writes repo metadata for `orchctl ls`, and separately persists the Claude Code session UUID for `/postmortem`:
 
 ```bash
 # 1. Generate CEKERNEL_SESSION_ID ({repo}-{hex8} format)
@@ -110,7 +110,7 @@ source "${CEKERNEL_SCRIPTS}/shared/load-env.sh"
 source "${CEKERNEL_SCRIPTS}/shared/session-id.sh"
 mkdir -p "$CEKERNEL_IPC_DIR"
 
-# 2. Write repo metadata for orchctrl (org/repo format)
+# 2. Write repo metadata for orchctl (org/repo format)
 _url="$(git config --get remote.origin.url)"
 _path="${_url#*:}"; _path="${_path#*//}"; _path="${_path%.git}"
 _REPO_SLUG="${_path#*/}"
@@ -159,7 +159,7 @@ export CEKERNEL_ENV=<profile> && \
 export CEKERNEL_AGENT_ORCHESTRATOR=<agent-name> && \
 export CEKERNEL_AGENT_WORKER=<agent-name> && \
 export CEKERNEL_AGENT_REVIEWER=<agent-name> && \
-"${CEKERNEL_SCRIPTS}/orchestrator/spawn-orchestrator.sh" "<prompt>"
+"${CEKERNEL_SCRIPTS}/ctl/spawn-orchestrator.sh" "<prompt>"
 ```
 
 The script launches the Orchestrator as a background `claude -p --agent` process that runs independently of the parent session. The Orchestrator PID is returned on stdout.
