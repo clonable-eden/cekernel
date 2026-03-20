@@ -102,11 +102,21 @@ gh pr diff <pr-number>
 
 ### 4. Evaluate
 
+**Do not run tests locally.** Verify test results through CI using `gh pr checks`. Running test suites locally wastes Reviewer time and provides no additional value over CI.
+
+```bash
+# Good — check CI results
+gh pr checks <pr-number>
+
+# Bad — never run tests locally
+bash tests/run-tests.sh
+```
+
 Assess the changes against:
 
 - **Correctness**: Do the changes implement what the issue requires?
 - **Conventions**: Do the changes follow the target repository's CLAUDE.md and coding standards?
-- **Tests**: Are appropriate tests included (if required by the repository)?
+- **Tests**: Are appropriate tests included (if required by the repository)? Verify via CI (`gh pr checks`), not local execution.
 - **Scope**: Are the changes focused on the issue, without unrelated modifications?
 
 ### 5. Submit Review
@@ -182,6 +192,7 @@ This writes a JSON message to the FIFO, which `watch.sh` delivers to the Orchest
 - **Reviewer must not merge PRs** — merge is the Orchestrator's responsibility
 - **Reviewer must not modify files** — read-only review only
 - **Reviewer must not create commits or push** — no write operations on the repository
+- **Reviewer must not run tests locally** — verify test results via `gh pr checks` only
 - Review judgment is based on the target repository's conventions, not cekernel's internal rules
 - Keep review comments actionable and specific — the Worker must be able to address them without ambiguity
 
