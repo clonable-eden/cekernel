@@ -148,6 +148,9 @@ phase-transition.sh <issue> RUNNING "phase0:plan"
   Phase 0 (Plan)
 phase-transition.sh <issue> RUNNING "phase1:implement"
   Phase 1 (Implement)
+    phase-transition.sh <issue> RUNNING "phase1:implement(red)"
+    phase-transition.sh <issue> RUNNING "phase1:implement(green)"
+    phase-transition.sh <issue> RUNNING "phase1:implement(refactor)"
 phase-transition.sh <issue> RUNNING "phase2:create-pr"
   Phase 2 (Create PR)
 phase-transition.sh <issue> WAITING "phase3:ci-waiting"
@@ -159,6 +162,9 @@ phase-transition.sh <issue> WAITING "phase3:ci-waiting"
 |---|---|---|---|
 | Phase 0 | RUNNING | `phase0:plan` | Before posting execution plan |
 | Phase 1 | RUNNING | `phase1:implement` | Before starting implementation |
+| Phase 1 (TDD) | RUNNING | `phase1:implement(red)` | Before writing a failing test |
+| Phase 1 (TDD) | RUNNING | `phase1:implement(green)` | Before writing minimum code to pass |
+| Phase 1 (TDD) | RUNNING | `phase1:implement(refactor)` | Before refactoring |
 | Phase 2 | RUNNING | `phase2:create-pr` | Before `git push` and `gh pr create` |
 | Phase 3 (CI wait) | WAITING | `phase3:ci-waiting` | Before `gh pr checks --watch` |
 | Phase 3 (CI fix) | RUNNING | `phase3:ci-fixing` | When fixing CI failures |
@@ -179,11 +185,16 @@ Implement **following the target repository's rules**.
 
 #### Development Method: TDD (Red-Green-Refactor)
 
-For issues involving code changes, follow [TDD](../docs/tdd.md) with test-first development. Commit at each step:
+For issues involving code changes, follow [TDD](../docs/tdd.md) with test-first development. Update the phase detail at each TDD step and commit:
 
-1. **RED**: Write a failing test, verify it fails, commit with `(RED)` suffix
-2. **GREEN**: Write minimum code to pass, verify it passes, commit with `(GREEN)` suffix
-3. **REFACTOR**: Improve design with tests passing, commit with `(REFACTOR)` suffix
+1. **RED**: `phase-transition.sh <issue> RUNNING "phase1:implement(red)"`
+   Write a failing test, verify it fails, commit with `(RED)` suffix
+2. **GREEN**: `phase-transition.sh <issue> RUNNING "phase1:implement(green)"`
+   Write minimum code to pass, verify it passes, commit with `(GREEN)` suffix
+3. **REFACTOR**: `phase-transition.sh <issue> RUNNING "phase1:implement(refactor)"`
+   Improve design with tests passing, commit with `(REFACTOR)` suffix
+
+Repeat the cycle for each incremental change. The parenthesized sub-detail is backward-compatible — `phase1:implement` (without parentheses) remains valid for non-TDD work.
 
 ### Phase 2: Create PR
 
