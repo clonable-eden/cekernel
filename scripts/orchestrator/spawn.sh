@@ -80,9 +80,15 @@ if [[ "$ACTIVE" -ge "$MAX_PROCESSES" ]]; then
 fi
 
 # ── Issue Lock (duplicate process prevention) ──
-if ! issue_lock_acquire "$REPO_ROOT" "$ISSUE_NUMBER"; then
-  echo "Error: issue #${ISSUE_NUMBER} is already being processed by another process." >&2
-  exit 2
+# In resume mode, the lock is already held by the previous process (e.g.,
+# Worker → Reviewer transition via spawn-reviewer.sh). Re-acquiring would
+# fail because the lock directory already exists. issue_lock_update_pid
+# (called later) transfers ownership to the new process.
+if [[ "$RESUME" -eq 0 ]]; then
+  if ! issue_lock_acquire "$REPO_ROOT" "$ISSUE_NUMBER"; then
+    echo "Error: issue #${ISSUE_NUMBER} is already being processed by another process." >&2
+    exit 2
+  fi
 fi
 
 # ── Fetch issue info ──
@@ -136,8 +142,8 @@ rollback() {
   rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.priority"
   rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.type"
   rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.backend"
-  # Release issue lock
-  if [[ -n "${REPO_ROOT:-}" ]]; then
+  # Release issue lock (only for fresh spawn; resume mode inherits the lock)
+  if [[ "${RESUME:-0}" -eq 0 && -n "${REPO_ROOT:-}" ]]; then
     issue_lock_release "$REPO_ROOT" "$ISSUE_NUMBER"
   fi
 }
