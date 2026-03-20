@@ -129,4 +129,19 @@ export CEKERNEL_IPC_DIR="$SAVED_IPC_DIR"
 assert_eq "read fails with exit 1 when CEKERNEL_IPC_DIR empty" "1" "$EXIT_CODE"
 assert_match "read error mentions CEKERNEL_IPC_DIR (empty)" "CEKERNEL_IPC_DIR" "$ERR_MSG"
 
+# ── Test 18: Parenthesized TDD sub-detail is preserved (issue #461) ──
+worker_state_write 70 RUNNING "phase1:implement(red)"
+STATE=$(worker_state_read 70)
+assert_match "TDD sub-detail (red) preserved" '"detail":"phase1:implement\(red\)"' "$STATE"
+
+# ── Test 19: TDD sub-detail (green) round-trips correctly ──
+worker_state_write 70 RUNNING "phase1:implement(green)"
+STATE=$(worker_state_read 70)
+assert_match "TDD sub-detail (green) preserved" '"detail":"phase1:implement\(green\)"' "$STATE"
+
+# ── Test 20: TDD sub-detail (refactor) round-trips correctly ──
+worker_state_write 70 RUNNING "phase1:implement(refactor)"
+STATE=$(worker_state_read 70)
+assert_match "TDD sub-detail (refactor) preserved" '"detail":"phase1:implement\(refactor\)"' "$STATE"
+
 report_results
