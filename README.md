@@ -41,7 +41,7 @@ Orchestrator (agent1)             Worker (agent2, 3, 4, ...)
 | `waitpid` | `watch.sh` (triple-path: FIFO + state file + crash detection) |
 | zombie reaping | `health-check.sh` + `cleanup-worktree.sh` |
 | core dump / checkpoint | `.cekernel-checkpoint.md` (suspend/resume) |
-| `systemctl` | `orchctl.sh` / `/orchctrl` skill |
+| `systemctl` | `orchctl.sh` / `/orchctl` skill |
 | device drivers | `backend-adapter.sh` (wezterm/tmux/headless) |
 | `/etc/default/` | `load-env.sh` + env profiles |
 | PID | issue number |
@@ -150,8 +150,8 @@ skills/
     SKILL.md               # /cron skill — recurring schedule management
   dispatch/
     SKILL.md               # /dispatch skill — batch-process ready-labeled issues
-  orchctrl/
-    SKILL.md               # /orchctrl skill — Worker control interface (orchctl.sh)
+  orchctl/
+    SKILL.md               # /orchctl skill — Worker control interface (orchctl.sh)
   orchestrate/
     SKILL.md               # /orchestrate skill — issue delegation
   postmortem/
@@ -318,7 +318,7 @@ If using the WezTerm backend, see [`config/README.md`](./config/README.md) for p
 | `/setup` | Interactive runtime setup (first-time) |
 | `/orchestrate` | Issue delegation and parallel processing |
 | `/dispatch` | Batch-process ready-labeled issues |
-| `/orchctrl` | Worker inspection and control |
+| `/orchctl` | Worker inspection and control |
 | `/cron` | Recurring schedule management (launchd/crontab) |
 | `/at` | One-shot schedule management (launchd/atd) |
 | `/postmortem` | Transcript-based post-mortem analysis |
