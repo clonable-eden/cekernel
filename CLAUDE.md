@@ -281,6 +281,9 @@ The skill analyzes git log and recommends a bump level. After confirmation:
   - `test:` Tests only
   - `refactor:` Refactoring
   - `release:` Version bump (CI auto-generated)
+- Skill reference files (`skills/references/*.md`) and skill definitions (`skills/*/SKILL.md`)
+  are executable instructions, not documentation. Use `feat:` / `fix:` accordingly.
+  `docs:` is reserved for purely informational files (README, architecture docs, ADRs).
 
 ### Worktree Naming
 
