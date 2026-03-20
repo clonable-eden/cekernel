@@ -141,6 +141,9 @@ desktop_notify "Alerter Title" "Alerter Message"
 wait  # alerter runs in background (&)
 MOCK_OUTPUT=$(cat "$MOCK_LOG" 2>/dev/null || echo "")
 assert_match "alerter preferred over osascript" "alerter called:" "$MOCK_OUTPUT"
+assert_match "alerter uses --message (double-dash)" "--message" "$MOCK_OUTPUT"
+assert_match "alerter uses --title (double-dash)" "--title" "$MOCK_OUTPUT"
+assert_match "alerter uses --sound (double-dash)" "--sound" "$MOCK_OUTPUT"
 if [[ "$MOCK_OUTPUT" == *"osascript called:"* ]]; then
   echo "  FAIL: osascript should not be called when alerter is available"
   TESTS_FAILED=$((TESTS_FAILED + 1))
