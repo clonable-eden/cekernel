@@ -40,36 +40,36 @@ mkfifo "${CEKERNEL_IPC_DIR}/worker-12"
 COUNT=$(active_worker_count)
 assert_eq "Three worker FIFOs: count is 3" "3" "$COUNT"
 
-# ── Test 4: Guard triggers at MAX_PROCESSES=3 with 3 active ──
+# ── Test 4: Guard triggers at MAX_ORCH_CHILDREN=3 with 3 active ──
 # Inline verification of spawn.sh guard logic
-MAX_PROCESSES=3
+MAX_ORCH_CHILDREN=3
 ACTIVE=$(active_worker_count)
-if [[ "$ACTIVE" -ge "$MAX_PROCESSES" ]]; then
+if [[ "$ACTIVE" -ge "$MAX_ORCH_CHILDREN" ]]; then
   GUARD_TRIGGERED="yes"
 else
   GUARD_TRIGGERED="no"
 fi
-assert_eq "Guard triggers at MAX_PROCESSES=3 with 3 active" "yes" "$GUARD_TRIGGERED"
+assert_eq "Guard triggers at MAX_ORCH_CHILDREN=3 with 3 active" "yes" "$GUARD_TRIGGERED"
 
 # ── Test 5: Remove 1 FIFO → guard released ──
 rm -f "${CEKERNEL_IPC_DIR}/worker-12"
 ACTIVE=$(active_worker_count)
-if [[ "$ACTIVE" -ge "$MAX_PROCESSES" ]]; then
+if [[ "$ACTIVE" -ge "$MAX_ORCH_CHILDREN" ]]; then
   GUARD_TRIGGERED="yes"
 else
   GUARD_TRIGGERED="no"
 fi
 assert_eq "Guard released after removing one FIFO" "no" "$GUARD_TRIGGERED"
 
-# ── Test 6: MAX_PROCESSES=5 with 2 active → guard not triggered ──
-MAX_PROCESSES=5
+# ── Test 6: MAX_ORCH_CHILDREN=5 with 2 active → guard not triggered ──
+MAX_ORCH_CHILDREN=5
 ACTIVE=$(active_worker_count)
-if [[ "$ACTIVE" -ge "$MAX_PROCESSES" ]]; then
+if [[ "$ACTIVE" -ge "$MAX_ORCH_CHILDREN" ]]; then
   GUARD_TRIGGERED="yes"
 else
   GUARD_TRIGGERED="no"
 fi
-assert_eq "Guard not triggered: 2 active < MAX_PROCESSES=5" "no" "$GUARD_TRIGGERED"
+assert_eq "Guard not triggered: 2 active < MAX_ORCH_CHILDREN=5" "no" "$GUARD_TRIGGERED"
 
 # ── Test 7: Regular file (non-FIFO) is not counted ──
 touch "${CEKERNEL_IPC_DIR}/worker-99"
