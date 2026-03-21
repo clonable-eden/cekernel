@@ -15,7 +15,7 @@ _CEKERNEL_VAR_DIR_CREATED=1
 echo "=== cekernel test runner ==="
 echo ""
 
-for category in shared orchestrator ctl process scheduler; do
+for category in shared orchestrator ctl process scheduler skills; do
   category_dir="${SCRIPT_DIR}/${category}"
   [[ -d "$category_dir" ]] || continue
 
