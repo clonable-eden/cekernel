@@ -125,7 +125,7 @@ scripts/
       wezterm.sh           # WezTerm backend implementation
     checkpoint-file.sh     # Checkpoint file helpers for suspend/resume
     claude-json-helper.sh  # ~/.claude.json trust entry read/write helper
-    claude-session-id.sh   # Claude Code session ID persistence for transcript discovery
+    claude-session-id.sh   # Orchestrator Claude Code session ID persistence (orchestrator.claude-session-id)
     desktop-notify.sh      # OS-native notification helper
     issue-lock.sh          # Repo × issue lockfile (duplicate Worker prevention)
     load-env.sh            # Environment profile loader (multi-layer search)
