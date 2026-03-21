@@ -44,6 +44,25 @@ If requirements are ambiguous or insufficient, FAIL immediately and return the r
 
 ## Workflow
 
+### Claude Code Session ID Persistence
+
+On startup, the Orchestrator must discover and persist its own Claude Code session ID (UUID). This is separate from `CEKERNEL_SESSION_ID` and is used by `/postmortem` to locate Orchestrator transcripts.
+
+The dispatch/orchestrate skill does **not** persist the Claude Code session ID because the skill runs in a different Claude Code session than the Orchestrator. The Orchestrator runs as an independent `claude -p --agent` process with its own UUID, so it must persist the ID itself.
+
+Run this **once** at startup, before processing any issues:
+
+```bash
+export CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID} && \
+source ${CEKERNEL_SCRIPTS}/shared/session-id.sh && \
+source ${CEKERNEL_SCRIPTS}/shared/claude-session-id.sh && \
+_PROJECT_ROOT="$(git rev-parse --show-toplevel)" && \
+_CLAUDE_SID=$(claude_session_id_discover "$_PROJECT_ROOT") && \
+claude_session_id_persist "$_CLAUDE_SID" || echo "warn: Claude session ID discovery failed (non-fatal)" >&2
+```
+
+If discovery fails (e.g., no `.jsonl` files found yet), continue — it is optional for Orchestrator operation.
+
 ### CEKERNEL_SESSION_ID Management
 
 Each Bash tool call runs in an independent shell, so `CEKERNEL_SESSION_ID` is not automatically shared.
