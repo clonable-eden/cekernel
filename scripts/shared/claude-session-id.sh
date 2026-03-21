@@ -22,12 +22,12 @@
 #     — Returns 1 if project directory or .jsonl files not found
 #
 #   claude_session_id_persist <session-id>
-#     — Save session ID to ${CEKERNEL_IPC_DIR}/claude-session-id
+#     — Save session ID to ${CEKERNEL_IPC_DIR}/orchestrator.claude-session-id
 #     — Requires CEKERNEL_IPC_DIR to be set
 #     — Returns 1 if CEKERNEL_IPC_DIR is not set
 #
 #   claude_session_id_read
-#     — Read the persisted session ID from ${CEKERNEL_IPC_DIR}/claude-session-id
+#     — Read the persisted session ID from ${CEKERNEL_IPC_DIR}/orchestrator.claude-session-id
 #     — Output: session ID string to stdout
 #     — Returns 1 if file not found or CEKERNEL_IPC_DIR not set
 
@@ -88,7 +88,7 @@ claude_session_id_persist() {
 
   local session_id="${1:?Usage: claude_session_id_persist <session-id>}"
 
-  local target="${CEKERNEL_IPC_DIR}/claude-session-id"
+  local target="${CEKERNEL_IPC_DIR}/orchestrator.claude-session-id"
   local tmp="${target}.tmp"
 
   echo "$session_id" > "$tmp"
@@ -103,7 +103,7 @@ claude_session_id_read() {
     return 1
   fi
 
-  local target="${CEKERNEL_IPC_DIR}/claude-session-id"
+  local target="${CEKERNEL_IPC_DIR}/orchestrator.claude-session-id"
 
   if [[ ! -f "$target" ]]; then
     echo "claude_session_id_read: file not found: ${target}" >&2

@@ -172,11 +172,13 @@ _transcript_derive_main_project_slug() {
 # which session(s) handled the given issue, then locates orchestrator transcripts
 # for those sessions.
 #
-# Two search strategies:
+# Three search strategies (tried in order, short-circuits on first success):
 #   1. Legacy (subagent model): Pass session ID to transcript_locate_orchestrator
 #      which searches <project>/<session>/subagents/*.jsonl
-#   2. New (claude -p model): When orchestrator.spawned exists in the session's IPC dir,
-#      scan the main project directory for JSONL files with orchestrator agentSetting
+#   2. UUID lookup: Read orchestrator.claude-session-id from the session's IPC dir
+#      to get the Claude Code UUID, then find <project>/<UUID>.jsonl directly
+#   3. agentSetting scan: When orchestrator.spawned exists, scan main project dir
+#      for JSONL files with orchestrator agentSetting (broadest, slowest)
 transcript_locate_orchestrator_by_issue() {
   local issue_number="${1:?Usage: transcript_locate_orchestrator_by_issue <issue-number> [var-dir] [claude-home] [project-slug]}"
   local var_dir="${2:-${CEKERNEL_VAR_DIR:-/usr/local/var/cekernel}}"
@@ -200,6 +202,8 @@ transcript_locate_orchestrator_by_issue() {
   # Pattern: ${ipc_base}/*/{worker,reviewer}-{issue_number}.spawned
   local seen_file
   seen_file=$(mktemp /tmp/cekernel-seen-sessions.XXXXXX)
+  local uuid_file
+  uuid_file=$(mktemp /tmp/cekernel-orch-uuids.XXXXXX)
   local found_spawned=0
   local has_orch_spawned=0
 
@@ -218,10 +222,19 @@ transcript_locate_orchestrator_by_issue() {
     if [[ -f "${session_dir}/orchestrator.spawned" ]]; then
       has_orch_spawned=1
     fi
+    # Collect Claude Code UUID from orchestrator.claude-session-id if present
+    local orch_uuid_file="${session_dir}/orchestrator.claude-session-id"
+    if [[ -f "$orch_uuid_file" ]]; then
+      local orch_uuid
+      orch_uuid=$(cat "$orch_uuid_file" 2>/dev/null | tr -d '[:space:]')
+      if [[ -n "$orch_uuid" ]] && ! grep -qxF "$orch_uuid" "$uuid_file" 2>/dev/null; then
+        echo "$orch_uuid" >> "$uuid_file"
+      fi
+    fi
   done < <(find "$ipc_base" -maxdepth 2 \( -name "worker-${issue_number}.spawned" -o -name "reviewer-${issue_number}.spawned" \) -print0 2>/dev/null)
 
   if [[ "$found_spawned" -eq 0 ]]; then
-    rm -f "$seen_file"
+    rm -f "$seen_file" "$uuid_file"
     echo "No .spawned files found for issue #${issue_number}" >&2
     return 1
   fi
@@ -237,8 +250,31 @@ transcript_locate_orchestrator_by_issue() {
 
   rm -f "$seen_file"
 
-  # Strategy 2 (claude -p model): agentSetting-based scan
-  # When orchestrator.spawned exists but no transcripts found via session ID,
+  # Strategy 2: UUID-based direct lookup via orchestrator.claude-session-id
+  # When orchestrator.claude-session-id exists, read the Claude Code UUID
+  # and find <project>/<UUID>.jsonl directly (O(1) instead of scanning all files)
+  if [[ "$any_found" -eq 0 ]] && [[ -s "$uuid_file" ]]; then
+    local main_slug="$project_slug"
+    if [[ -z "$main_slug" ]]; then
+      main_slug=$(_transcript_derive_main_project_slug "$issue_number" "$projects_dir") || true
+    fi
+
+    if [[ -n "$main_slug" ]]; then
+      local main_project_dir="${projects_dir}/${main_slug}"
+      while IFS= read -r orch_uuid; do
+        local uuid_jsonl="${main_project_dir}/${orch_uuid}.jsonl"
+        if [[ -f "$uuid_jsonl" ]]; then
+          echo "$uuid_jsonl"
+          any_found=1
+        fi
+      done < "$uuid_file"
+    fi
+  fi
+
+  rm -f "$uuid_file"
+
+  # Strategy 3 (claude -p model): agentSetting-based scan
+  # When orchestrator.spawned exists but no transcripts found via session ID or UUID,
   # scan the main project directory for JSONL files with orchestrator agentSetting.
   if [[ "$any_found" -eq 0 && "$has_orch_spawned" -eq 1 ]]; then
     local main_slug="$project_slug"

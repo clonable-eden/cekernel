@@ -8,7 +8,7 @@ Worker lifecycle events are recorded in the session-scoped log directory.
 
 ```
 $CEKERNEL_VAR_DIR/ipc/{CEKERNEL_SESSION_ID}/
-├── claude-session-id # Claude Code session UUID (written by /orchestrate)
+├── orchestrator.claude-session-id # Claude Code session UUID (written by /orchestrate)
 ├── worker-4          # FIFO (existing)
 ├── worker-7          # FIFO (existing)
 └── logs/
@@ -43,11 +43,11 @@ Post-mortem analysis (`/postmortem` skill, [ADR-0013](./adr/0013-transcript-base
 
 ### Claude Code Session ID (`claude-session-id.sh`)
 
-The `/orchestrate` skill persists the Claude Code session UUID to `${CEKERNEL_IPC_DIR}/claude-session-id` at Orchestrator launch. This bridges the gap between cekernel's `CEKERNEL_SESSION_ID` and Claude Code's internal session storage.
+The Orchestrator agent process persists its Claude Code session UUID to `${CEKERNEL_IPC_DIR}/orchestrator.claude-session-id` after startup. This bridges the gap between cekernel's `CEKERNEL_SESSION_ID` and Claude Code's internal session storage.
 
 Functions:
 - `claude_session_id_discover <project-root>` — find the current session's UUID from `~/.claude/projects/`
-- `claude_session_id_persist <uuid>` — write UUID to `${CEKERNEL_IPC_DIR}/claude-session-id`
+- `claude_session_id_persist <uuid>` — write UUID to `${CEKERNEL_IPC_DIR}/orchestrator.claude-session-id`
 - `claude_session_id_read` — read the persisted UUID
 
 ### Spawn Markers (`.spawned` files)

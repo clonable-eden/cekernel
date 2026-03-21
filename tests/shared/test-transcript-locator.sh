@@ -215,4 +215,42 @@ EXIT_CODE=0
 RESULT=$(transcript_locate_orchestrator_by_issue 200 "$MOCK_VAR_DIR" "$MOCK_CLAUDE_HOME" "-Users-test-git-repo" 2>/dev/null) || EXIT_CODE=$?
 assert_eq "No orchestrator.spawned and no subagent = exit 1" "1" "$EXIT_CODE"
 
+# ══════════════════════════════════════════════════════════════════════════════
+# Tests for UUID-based transcript lookup via orchestrator.claude-session-id
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Test 24: _by_issue uses orchestrator.claude-session-id for direct UUID lookup ──
+# Create a session where orchestrator.claude-session-id contains the UUID
+UUID_SESSION="mock-session-uuid-lookup"
+UUID_IPC="${MOCK_VAR_DIR}/ipc/${UUID_SESSION}"
+mkdir -p "$UUID_IPC"
+date +%s > "${UUID_IPC}/worker-300.spawned"
+date +%s > "${UUID_IPC}/orchestrator.spawned"
+
+# Write Claude Code UUID into orchestrator.claude-session-id
+ORCH_UUID="aaaabbbb-cccc-dddd-eeee-ffffffffffff"
+echo "$ORCH_UUID" > "${UUID_IPC}/orchestrator.claude-session-id"
+
+# Create the main project dir and the orchestrator transcript JSONL matching the UUID
+MAIN_PROJECT_FOR_300="${MOCK_CLAUDE_HOME}/projects/-Users-test-git-repo"
+# Already exists from previous tests
+echo '{"type":"agent-setting","agentSetting":"orchestrator","sessionId":"'"$ORCH_UUID"'"}' > "${MAIN_PROJECT_FOR_300}/${ORCH_UUID}.jsonl"
+
+# Worker project dir for issue 300 (needed for slug derivation fallback)
+WORKER_300="${MOCK_CLAUDE_HOME}/projects/-Users-test-git-repo--worktrees-issue-300-uuid-test"
+mkdir -p "$WORKER_300"
+
+RESULT=$(transcript_locate_orchestrator_by_issue 300 "$MOCK_VAR_DIR" "$MOCK_CLAUDE_HOME" "-Users-test-git-repo" 2>/dev/null) || true
+assert_match "UUID lookup finds orchestrator transcript via orchestrator.claude-session-id" "$ORCH_UUID" "$RESULT"
+
+# ── Test 25: UUID lookup takes priority over agentSetting scan ──
+# The UUID file should provide a direct hit without needing to scan all JSONL files
+# Verify it returns exactly 1 result (the UUID match), not all orchestrator JSONLs
+RESULT_COUNT=$(transcript_locate_orchestrator_by_issue 300 "$MOCK_VAR_DIR" "$MOCK_CLAUDE_HOME" "-Users-test-git-repo" 2>/dev/null | wc -l | tr -d ' ') || true
+assert_eq "UUID lookup returns exactly 1 transcript (direct match)" "1" "$RESULT_COUNT"
+
+# ── Test 26: UUID lookup without project_slug derives slug from worker dirs ──
+RESULT=$(transcript_locate_orchestrator_by_issue 300 "$MOCK_VAR_DIR" "$MOCK_CLAUDE_HOME" "" 2>/dev/null) || true
+assert_match "UUID lookup works without explicit project_slug" "$ORCH_UUID" "$RESULT"
+
 report_results

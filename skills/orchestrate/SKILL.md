@@ -120,7 +120,7 @@ echo "CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID}"
 
 Capture `CEKERNEL_SESSION_ID` from the Bash output (the line `CEKERNEL_SESSION_ID=...`) and use it in the Orchestrator prompt.
 
-Note: Claude Code session ID (`claude-session-id`) persistence is handled by the Orchestrator itself after startup. The orchestrate skill does not persist it because the skill's UUID differs from the Orchestrator's UUID (the Orchestrator runs as a separate `claude -p --agent` process).
+Note: Claude Code session ID (`orchestrator.claude-session-id`) persistence is handled by the Orchestrator itself after startup. The orchestrate skill does not persist it because the skill's UUID differs from the Orchestrator's UUID (the Orchestrator runs as a separate `claude -p --agent` process).
 
 **Construct the Orchestrator prompt** from the following template. Replace `<placeholders>` with actual values determined in previous steps:
 
