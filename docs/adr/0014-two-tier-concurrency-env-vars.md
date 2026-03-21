@@ -45,17 +45,18 @@ orchestrator-level concurrency control.
 
 **Counting mechanism**: Add an internal subcommand `orchctl.sh count` that
 scans `$IPC_BASE/*/orchestrator.pid`, validates with `kill -0`, and outputs the
-number of running orchestrators. This reuses `orchctl.sh`'s existing `IPC_BASE`
-resolution logic without duplication. The `count` subcommand is internal — not
-exposed in `orchctl.sh`'s usage/help output — intended for programmatic use by
-dispatch and orchestrate skills via Bash.
+count as a single integer to stdout (no label, newline-terminated). This reuses
+`orchctl.sh`'s existing `IPC_BASE` resolution logic without duplication. The
+`count` subcommand is internal — not exposed in `orchctl.sh`'s usage/help
+output — intended for programmatic use by dispatch and orchestrate skills via
+Bash.
 
 **Enforcement behavior differs by caller**:
 
-- **dispatch** (batch, non-interactive): If running orchestrators >= MAX, exit
-  immediately and notify the user via `desktop-notify`. Rationale: dispatch
-  processes a queue of issues; blocking indefinitely in a batch context is
-  wasteful.
+- **dispatch** (batch, non-interactive): If running orchestrators >= MAX, stop
+  dispatching further issues and notify the user via `desktop-notify`.
+  Already-dispatched issues continue; remaining issues are left for the next
+  dispatch run.
 - **orchestrate** (interactive, user-initiated): If running orchestrators >= MAX,
   ask the user whether to wait. If yes, poll `orchctl ps` periodically until a
   slot opens. If no, exit without action.
@@ -167,7 +168,7 @@ breaking changes if resource exhaustion becomes a real issue.
 - Orchestrator concurrency is bounded, preventing unbounded resource consumption
 - dispatch/orchestrate have appropriate failure modes (fail-fast vs interactive)
 - `spawn.sh` concurrency guard is simplified (single variable, no fallback chain)
-- Shared counting helper avoids duplicating `orchctl ps` discovery logic
+- Internal `orchctl count` subcommand avoids duplicating `orchctl ps` discovery logic
 
 ### Negative
 
@@ -181,3 +182,8 @@ Clarity vs backward compatibility: The rename breaks existing configurations.
 This is acceptable because (a) cekernel is pre-1.0 with a small user base,
 (b) the old names are actively misleading given the new process model, and
 (c) a release-note announcement gives users clear migration instructions.
+
+TOCTOU race in orchestrator counting: The check-then-spawn sequence has a
+time-of-check to time-of-use window — another orchestrator could start between
+`orchctl count` and the actual spawn. This is acceptable at the human-timescale
+operations typical of Claude Code (seconds to minutes between invocations).
