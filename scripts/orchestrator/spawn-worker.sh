@@ -10,7 +10,7 @@
 # Exit codes:
 #   0 — Worker spawned successfully
 #   1 — General error
-#   2 — Max concurrent processes reached (CEKERNEL_MAX_PROCESSES)
+#   2 — Max concurrent processes reached (CEKERNEL_MAX_ORCH_CHILDREN)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

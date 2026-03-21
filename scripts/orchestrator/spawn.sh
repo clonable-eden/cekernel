@@ -12,7 +12,7 @@
 # Exit codes:
 #   0 — Process spawned successfully
 #   1 — General error
-#   2 — Max concurrent processes reached (CEKERNEL_MAX_PROCESSES)
+#   2 — Max concurrent processes reached (CEKERNEL_MAX_ORCH_CHILDREN)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -59,14 +59,7 @@ AGENT_VAR="CEKERNEL_AGENT_$(echo "$AGENT_TYPE" | tr '[:lower:]' '[:upper:]')"
 AGENT_NAME="${!AGENT_VAR:-$AGENT_TYPE}"
 
 # ── Concurrency Guard ──
-# Priority: CEKERNEL_MAX_WORKERS > CEKERNEL_MAX_PROCESSES > 3
-# CEKERNEL_MAX_WORKERS is deprecated; emit warning when used.
-if [[ -n "${CEKERNEL_MAX_WORKERS:-}" ]]; then
-  echo "Warning: CEKERNEL_MAX_WORKERS is deprecated. Use CEKERNEL_MAX_PROCESSES instead." >&2
-  MAX_PROCESSES="${CEKERNEL_MAX_WORKERS}"
-else
-  MAX_PROCESSES="${CEKERNEL_MAX_PROCESSES:-3}"
-fi
+MAX_ORCH_CHILDREN="${CEKERNEL_MAX_ORCH_CHILDREN:-3}"
 
 active_worker_count() {
   find "$CEKERNEL_IPC_DIR" -maxdepth 1 -name 'worker-*' -type p 2>/dev/null | wc -l | tr -d ' '
@@ -74,8 +67,8 @@ active_worker_count() {
 
 mkdir -p "$CEKERNEL_IPC_DIR"
 ACTIVE=$(active_worker_count)
-if [[ "$ACTIVE" -ge "$MAX_PROCESSES" ]]; then
-  echo "Error: max processes ($MAX_PROCESSES) reached (active: $ACTIVE). Waiting..." >&2
+if [[ "$ACTIVE" -ge "$MAX_ORCH_CHILDREN" ]]; then
+  echo "Error: max children ($MAX_ORCH_CHILDREN) reached (active: $ACTIVE). Waiting..." >&2
   exit 2
 fi
 

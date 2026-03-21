@@ -9,8 +9,7 @@ These can be set via env profiles or explicit `export`.
 | Variable | Default | Valid Values | Used by | Purpose |
 |----------|---------|-------------|---------|---------|
 | `CEKERNEL_BACKEND` | `headless` | `wezterm`, `tmux`, `headless` | `backend-adapter.sh` | Select Worker process backend |
-| `CEKERNEL_MAX_PROCESSES` | `3` | Positive integer | `spawn.sh` | Maximum concurrent processes |
-| `CEKERNEL_MAX_WORKERS` | — | Positive integer | `spawn.sh` | **Deprecated**: use `CEKERNEL_MAX_PROCESSES`. If set, overrides `CEKERNEL_MAX_PROCESSES` and emits a warning |
+| `CEKERNEL_MAX_ORCH_CHILDREN` | `3` | Positive integer | `spawn.sh` | Maximum concurrent children (workers + reviewers) per orchestrator |
 | `CEKERNEL_WORKER_TIMEOUT` | `3600` | Positive integer (seconds) | `watch.sh` | Worker timeout before auto-termination |
 | `CEKERNEL_CHECKPOINT_FILENAME` | `.cekernel-checkpoint.md` | Any filename | `checkpoint-file.sh` | Checkpoint file name in worktree |
 | `CEKERNEL_TASK_FILENAME` | `.cekernel-task.md` | Any filename | `task-file.sh` | Task file name in worktree |
@@ -81,7 +80,7 @@ my-project/
   .cekernel/
     envs/
       default.env    # Override: CEKERNEL_BACKEND=wezterm
-      wezterm.env    # Override: CEKERNEL_MAX_PROCESSES=2
+      wezterm.env    # Override: CEKERNEL_MAX_ORCH_CHILDREN=2
 ```
 
 Custom profile names (e.g., `staging.env`) are supported — the project layer
