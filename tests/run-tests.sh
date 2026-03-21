@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run-tests.sh — Test runner that sequentially executes tests/{shared,orchestrator,ctl,process,scheduler}/test-*.sh
+# run-tests.sh — Test runner that sequentially executes tests/{shared,orchestrator,ctl,process,scheduler,skills}/test-*.sh
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
