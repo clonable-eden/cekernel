@@ -76,14 +76,12 @@ Question: "Enter a variable to set (KEY=VALUE format):"
   (User provides free-text input via "Other")
 ```
 
-**Separator parsing**: Accept any of the following separators between key and value: `=`, `:`, `;`, `/`, `|`, or space.
-
-Parse examples — all of these set `CEKERNEL_WORKER_TIMEOUT` to `1800`:
+**Separator normalization**: The user may use any common separator between key and value (`=`, `:`, `;`, `/`, `|`, or space). Normalize the input by replacing the first occurrence of any of these separators with `=` before validation and storage. Examples — all of these are normalized to `CEKERNEL_WORKER_TIMEOUT=1800`:
 
 ```
-CEKERNEL_WORKER_TIMEOUT=1800
-CEKERNEL_WORKER_TIMEOUT:1800
-CEKERNEL_WORKER_TIMEOUT 1800
+CEKERNEL_WORKER_TIMEOUT=1800   → as-is
+CEKERNEL_WORKER_TIMEOUT:1800   → replace : with =
+CEKERNEL_WORKER_TIMEOUT 1800   → replace space with =
 ```
 
 #### 2d. Validate the input
