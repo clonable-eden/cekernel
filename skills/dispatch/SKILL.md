@@ -129,7 +129,7 @@ If `CURRENT_ORCH < MAX_ORCH`, proceed to Step 4.
 
 If `--env <profile>` was specified, set `CEKERNEL_ENV` to the given profile name. If not specified, default to `default`.
 
-**Initialize cekernel session and persist Claude Code session ID** — Run the following in a **single** Bash tool call. This generates `CEKERNEL_SESSION_ID` (format: `{repo}-{hex8}`), writes repo metadata for `orchctl ls`, and separately persists the Claude Code session UUID for `/postmortem`:
+**Initialize cekernel session** — Run the following in a **single** Bash tool call. This generates `CEKERNEL_SESSION_ID` (format: `{repo}-{hex8}`) and writes repo metadata for `orchctl ls`:
 
 ```bash
 # 1. Generate CEKERNEL_SESSION_ID ({repo}-{hex8} format)
@@ -143,22 +143,13 @@ _path="${_url#*:}"; _path="${_path#*//}"; _path="${_path%.git}"
 _REPO_SLUG="${_path#*/}"
 echo "$_REPO_SLUG" > "${CEKERNEL_IPC_DIR}/repo"
 
-# 3. Persist Claude Code session ID (UUID — separate from CEKERNEL_SESSION_ID)
-source "${CEKERNEL_SCRIPTS}/shared/claude-session-id.sh"
-_PROJECT_ROOT="$(git rev-parse --show-toplevel)"
-_CLAUDE_SID=$(claude_session_id_discover "$_PROJECT_ROOT") && claude_session_id_persist "$_CLAUDE_SID" || echo "warn: Claude session ID discovery failed (non-fatal)" >&2
-
-# 4. Output CEKERNEL_SESSION_ID for prompt construction
+# 3. Output CEKERNEL_SESSION_ID for prompt construction
 echo "CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID}"
 ```
 
-**IMPORTANT**: `CEKERNEL_SESSION_ID` and `CLAUDE_SESSION_ID` are distinct values with different purposes:
-- `CEKERNEL_SESSION_ID` — cekernel's session identifier (`{repo}-{hex8}`), used for IPC directory and script coordination
-- `CLAUDE_SESSION_ID` — Claude Code's internal UUID, used only for `/postmortem` transcript lookup
+Capture `CEKERNEL_SESSION_ID` from the Bash output (the line `CEKERNEL_SESSION_ID=...`) and use it in the Orchestrator prompt.
 
-Capture `CEKERNEL_SESSION_ID` from the Bash output (the line `CEKERNEL_SESSION_ID=...`) and use it in the Orchestrator prompt. Do **NOT** use the Claude Code session UUID as `CEKERNEL_SESSION_ID`.
-
-If Claude Code session ID discovery fails (e.g., no `.jsonl` files found), continue — it is optional for Orchestrator operation.
+Note: Claude Code session ID (`claude-session-id`) persistence is handled by the Orchestrator itself after startup. The dispatch skill does not persist it because the skill's UUID differs from the Orchestrator's UUID (the Orchestrator runs as a separate `claude -p --agent` process).
 
 **Construct the Orchestrator prompt** from the following template. Replace `<placeholders>` with actual values determined in previous steps:
 
