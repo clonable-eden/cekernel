@@ -1038,6 +1038,30 @@ cmd_gc() {
   fi
 }
 
+# ── count: Count running orchestrators (internal) ──
+cmd_count() {
+  local count=0
+
+  if [[ -d "$IPC_BASE" ]]; then
+    for session_dir in "$IPC_BASE"/*/; do
+      [[ -d "$session_dir" ]] || continue
+
+      local pid_file="${session_dir}orchestrator.pid"
+      [[ -f "$pid_file" ]] || continue
+
+      local orch_pid
+      orch_pid=$(tr -d '[:space:]' < "$pid_file")
+      [[ -n "$orch_pid" ]] || continue
+
+      if kill -0 "$orch_pid" 2>/dev/null; then
+        count=$((count + 1))
+      fi
+    done
+  fi
+
+  echo "$count"
+}
+
 # ══════════════════════════════════════════════
 # Main
 # ══════════════════════════════════════════════
@@ -1056,5 +1080,6 @@ case "$COMMAND" in
   kill)    cmd_kill "$@" ;;
   nice)    cmd_nice "$@" ;;
   gc)      cmd_gc "$@" ;;
+  count)   cmd_count "$@" ;;
   *)       usage ;;
 esac
