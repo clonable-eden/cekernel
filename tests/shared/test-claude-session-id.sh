@@ -39,14 +39,14 @@ sleep 0.1
 # Create newer session (this should be discovered)
 touch "${PROJECT_DIR}/11111111-2222-3333-4444-555555555555.jsonl"
 
-RESULT=$(claude_session_id_discover "/Users/test/git/repo" "$MOCK_CLAUDE_HOME")
+RESULT=$(claude_session_id_discover "/Users/test/git/repo" "$MOCK_CLAUDE_HOME") || true
 assert_eq "Discovers most recent session ID" "11111111-2222-3333-4444-555555555555" "$RESULT"
 
 # ── Test 2: Discover session ID — excludes subagent directories ──
 mkdir -p "${PROJECT_DIR}/11111111-2222-3333-4444-555555555555/subagents"
 touch "${PROJECT_DIR}/11111111-2222-3333-4444-555555555555/subagents/agent-001.jsonl"
 
-RESULT=$(claude_session_id_discover "/Users/test/git/repo" "$MOCK_CLAUDE_HOME")
+RESULT=$(claude_session_id_discover "/Users/test/git/repo" "$MOCK_CLAUDE_HOME") || true
 assert_eq "Discover excludes subagent .jsonl files" "11111111-2222-3333-4444-555555555555" "$RESULT"
 
 # ── Test 3: Discover session ID — no project directory ──
@@ -74,7 +74,7 @@ EXIT_CODE=0
 assert_eq "Persist fails without CEKERNEL_IPC_DIR" "1" "$EXIT_CODE"
 
 # ── Test 7: Read session ID ──
-RESULT=$(claude_session_id_read)
+RESULT=$(claude_session_id_read) || true
 assert_eq "Read returns persisted session ID" "abcd1234-5678-90ab-cdef-1234567890ab" "$RESULT"
 
 # ── Test 8: Read session ID — file does not exist ──
@@ -89,13 +89,13 @@ EXIT_CODE=0
 assert_eq "Read fails without CEKERNEL_IPC_DIR" "1" "$EXIT_CODE"
 
 # ── Test 10: Project slug derivation ──
-RESULT=$(claude_session_id_project_slug "/Users/alice/git/myrepo")
+RESULT=$(claude_session_id_project_slug "/Users/alice/git/myrepo") || true
 assert_eq "Project slug from path" "-Users-alice-git-myrepo" "$RESULT"
 
 # ── Test 11: Persist overwrites existing value ──
 claude_session_id_persist "first-value"
 claude_session_id_persist "second-value"
-RESULT=$(claude_session_id_read)
+RESULT=$(claude_session_id_read) || true
 assert_eq "Persist overwrites existing value" "second-value" "$RESULT"
 
 report_results
