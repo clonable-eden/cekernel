@@ -98,6 +98,33 @@ Proceed with delegation to Orchestrator? (y/n)
 
 Wait for user confirmation. If the user declines, exit without action.
 
+### Step 3.5: Orchestrator Concurrency Guard
+
+Before launching the Orchestrator, check the current number of running orchestrators against `CEKERNEL_MAX_ORCHESTRATORS`:
+
+```bash
+ORCHCTL="${CEKERNEL_SCRIPTS}/ctl/orchctl.sh"
+CURRENT_ORCH=$(bash "$ORCHCTL" count 2>/dev/null)
+source "${CEKERNEL_SCRIPTS}/shared/load-env.sh"
+MAX_ORCH="${CEKERNEL_MAX_ORCHESTRATORS:-3}"
+echo "orchestrators: ${CURRENT_ORCH}/${MAX_ORCH}"
+```
+
+If `CURRENT_ORCH >= MAX_ORCH`:
+
+1. **Stop dispatching** — do NOT launch the Orchestrator. Any remaining issues are left for the next `/dispatch` run.
+2. **Notify the user** via desktop notification:
+
+```bash
+source "${CEKERNEL_SCRIPTS}/shared/desktop-notify.sh"
+desktop_notify "cekernel: dispatch stopped" "Orchestrator limit reached (${CURRENT_ORCH}/${MAX_ORCH}). Remaining issues deferred."
+```
+
+3. Report to the user which issues were dispatched (if any) and which were deferred due to the limit.
+4. Exit — do not proceed to Step 4.
+
+If `CURRENT_ORCH < MAX_ORCH`, proceed to Step 4.
+
 ### Step 4: Parse `--env`, Initialize Session, and Launch Orchestrator Process
 
 If `--env <profile>` was specified, set `CEKERNEL_ENV` to the given profile name. If not specified, default to `default`.

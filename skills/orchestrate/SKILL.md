@@ -62,6 +62,40 @@ Then, read `skills/references/triage.md` from the repository root (`$(git rev-pa
 
 After triage, delegate to the Orchestrator.
 
+### Step 1.5: Orchestrator Concurrency Guard
+
+Before launching the Orchestrator, check the current number of running orchestrators against `CEKERNEL_MAX_ORCHESTRATORS`:
+
+```bash
+ORCHCTL="${CEKERNEL_SCRIPTS}/ctl/orchctl.sh"
+CURRENT_ORCH=$(bash "$ORCHCTL" count 2>/dev/null)
+source "${CEKERNEL_SCRIPTS}/shared/load-env.sh"
+MAX_ORCH="${CEKERNEL_MAX_ORCHESTRATORS:-3}"
+echo "orchestrators: ${CURRENT_ORCH}/${MAX_ORCH}"
+```
+
+If `CURRENT_ORCH >= MAX_ORCH`:
+
+1. Report the current orchestrator count and limit to the user.
+2. Ask the user whether to **wait** for a slot to open or **cancel**.
+3. If the user chooses to **wait**:
+   - Poll `orchctl.sh count` every 30 seconds until `CURRENT_ORCH < MAX_ORCH`:
+   ```bash
+   while true; do
+     CURRENT_ORCH=$(bash "$ORCHCTL" count 2>/dev/null)
+     if [[ "$CURRENT_ORCH" -lt "$MAX_ORCH" ]]; then
+       echo "Slot available (${CURRENT_ORCH}/${MAX_ORCH}). Proceeding."
+       break
+     fi
+     echo "Waiting for slot... (${CURRENT_ORCH}/${MAX_ORCH})"
+     sleep 30
+   done
+   ```
+   - Once a slot opens, proceed to Step 2.
+4. If the user chooses to **cancel**, exit without action.
+
+If `CURRENT_ORCH < MAX_ORCH`, proceed to Step 2 directly.
+
 ### Step 2: Parse `--env`, Initialize Session, and Launch Orchestrator Process
 
 If `--env <profile>` was specified, set `CEKERNEL_ENV` to the given profile name. If not specified, default to `default`.
