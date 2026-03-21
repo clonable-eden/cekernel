@@ -152,8 +152,9 @@ _transcript_derive_main_project_slug() {
 
   local worker_slug
   worker_slug=$(basename "$worker_dir")
-  # Split at -.worktrees- to get main project slug
-  local main_slug="${worker_slug%%-.worktrees-*}"
+  # Split at --worktrees- to get main project slug
+  # Claude Code converts both / and . to - so .worktrees/ becomes --worktrees-
+  local main_slug="${worker_slug%%--worktrees-*}"
 
   if [[ "$main_slug" == "$worker_slug" ]]; then
     # Pattern didn't match (no -.worktrees- found)
