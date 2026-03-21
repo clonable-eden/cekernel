@@ -227,15 +227,15 @@ Numeric values 0-19 are also accepted for finer control.
 When the number of issues exceeds `CEKERNEL_MAX_ORCH_CHILDREN`, the Orchestrator uses a waiting queue model:
 
 1. Sort queued issues by priority (lower nice value first). On ties (equal nice value), preserve original order (FIFO within priority class).
-2. Spawn the first `MAX_PROCESSES` issues, each with an individual `watch.sh <issue>` in background (`run_in_background: true`)
+2. Spawn the first `MAX_ORCH_CHILDREN` issues, each with an individual `watch.sh <issue>` in background (`run_in_background: true`)
 3. Wait for background task completion notifications (do NOT poll with `sleep && process-status.sh`)
 4. When any background watch completes → cleanup that Worker (skip cleanup if SUSPENDED — preserve worktree for resume) → check Suspended Issues List, then queue, for the next issue to spawn (see Auto-Resume)
 5. Repeat until the queue is empty and all Workers have completed
 
-This keeps the number of active Workers at `MAX_PROCESSES` at all times, maximizing throughput. Unlike a batch model, a fast Worker's slot is immediately backfilled without waiting for slower Workers. Priority ensures that urgent work (e.g., hotfixes) is spawned before routine tasks.
+This keeps the number of active Workers at `MAX_ORCH_CHILDREN` at all times, maximizing throughput. Unlike a batch model, a fast Worker's slot is immediately backfilled without waiting for slower Workers. Priority ensures that urgent work (e.g., hotfixes) is spawned before routine tasks.
 
 ```bash
-# Example: 6 issues, MAX_PROCESSES=3
+# Example: 6 issues, MAX_ORCH_CHILDREN=3
 # Queue (sorted by priority): [4(critical), 6(high), 5(normal), 7(normal), 8(low), 9(low)]
 
 # Initial: spawn first 3 (highest priority), each watched individually in background
