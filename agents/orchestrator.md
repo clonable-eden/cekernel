@@ -104,7 +104,7 @@ The propagation chain:
     → orchestrator: passes export CEKERNEL_ENV=headless before ALL script calls
       → spawn-worker.sh: sources load-env.sh → loads headless.env
       → watch.sh: sources load-env.sh → loads headless.env → correct backend_worker_alive
-        → env vars (CEKERNEL_BACKEND, CEKERNEL_MAX_PROCESSES, etc.) are set
+        → env vars (CEKERNEL_BACKEND, CEKERNEL_MAX_ORCH_CHILDREN, etc.) are set
 ```
 
 Available profiles: `default`, `headless`, `tmux`, `wezterm`, or any custom profile in `.cekernel/envs/`. See `envs/README.md` for details.
@@ -185,7 +185,7 @@ Each Worker is watched individually via `run_in_background: true`. Cleanup proce
 
 | Variable | Default | Description |
 |---|---|---|
-| `CEKERNEL_MAX_PROCESSES` | 3 | Maximum concurrent processes |
+| `CEKERNEL_MAX_ORCH_CHILDREN` | 3 | Maximum concurrent children (workers + reviewers) per orchestrator |
 | `CEKERNEL_WORKER_TIMEOUT` | 3600 | Worker timeout in seconds |
 | `CEKERNEL_TERM_GRACE_PERIOD` | 120 | Grace period (seconds) after TERM before force-kill |
 | `CEKERNEL_MIN_RUNTIME` | 300 | Minimum Worker runtime (seconds) before suspension allowed |
@@ -194,13 +194,12 @@ Each Worker is watched individually via `run_in_background: true`. Cleanup proce
 
 ### Concurrency Limit
 
-The `CEKERNEL_MAX_PROCESSES` environment variable (default: 3) limits concurrent processes.
+The `CEKERNEL_MAX_ORCH_CHILDREN` environment variable (default: 3) limits concurrent children (workers + reviewers) per orchestrator.
 `spawn.sh` counts active FIFOs in the session and returns exit 2 when the limit is reached.
-`CEKERNEL_MAX_WORKERS` is deprecated but still supported (takes priority if set; emits a warning).
 
 ```bash
-# Example: set max to 5 processes
-export CEKERNEL_MAX_PROCESSES=5
+# Example: set max to 5 children
+export CEKERNEL_MAX_ORCH_CHILDREN=5
 ```
 
 ### Priority-Based Scheduling
@@ -225,18 +224,18 @@ Numeric values 0-19 are also accepted for finer control.
 
 ### Queuing Rules
 
-When the number of issues exceeds `CEKERNEL_MAX_PROCESSES`, the Orchestrator uses a waiting queue model:
+When the number of issues exceeds `CEKERNEL_MAX_ORCH_CHILDREN`, the Orchestrator uses a waiting queue model:
 
 1. Sort queued issues by priority (lower nice value first). On ties (equal nice value), preserve original order (FIFO within priority class).
-2. Spawn the first `MAX_PROCESSES` issues, each with an individual `watch.sh <issue>` in background (`run_in_background: true`)
+2. Spawn the first `MAX_ORCH_CHILDREN` issues, each with an individual `watch.sh <issue>` in background (`run_in_background: true`)
 3. Wait for background task completion notifications (do NOT poll with `sleep && process-status.sh`)
 4. When any background watch completes → cleanup that Worker (skip cleanup if SUSPENDED — preserve worktree for resume) → check Suspended Issues List, then queue, for the next issue to spawn (see Auto-Resume)
 5. Repeat until the queue is empty and all Workers have completed
 
-This keeps the number of active Workers at `MAX_PROCESSES` at all times, maximizing throughput. Unlike a batch model, a fast Worker's slot is immediately backfilled without waiting for slower Workers. Priority ensures that urgent work (e.g., hotfixes) is spawned before routine tasks.
+This keeps the number of active Workers at `MAX_ORCH_CHILDREN` at all times, maximizing throughput. Unlike a batch model, a fast Worker's slot is immediately backfilled without waiting for slower Workers. Priority ensures that urgent work (e.g., hotfixes) is spawned before routine tasks.
 
 ```bash
-# Example: 6 issues, MAX_PROCESSES=3
+# Example: 6 issues, MAX_ORCH_CHILDREN=3
 # Queue (sorted by priority): [4(critical), 6(high), 5(normal), 7(normal), 8(low), 9(low)]
 
 # Initial: spawn first 3 (highest priority), each watched individually in background
@@ -264,7 +263,7 @@ When a high-priority issue arrives and all Worker slots are full, suspend the lo
 
 **Decision rules** (evaluate in order):
 
-1. All slots must be full (`process-status.sh` shows `CEKERNEL_MAX_PROCESSES` active Workers)
+1. All slots must be full (`process-status.sh` shows `CEKERNEL_MAX_ORCH_CHILDREN` active Workers)
 2. The incoming issue's nice value must be **strictly lower** than the highest nice value among running Workers
 3. The candidate Worker must be in state RUNNING or WAITING (not TERMINATED, SUSPENDED, or NEW/READY)
 4. The candidate Worker must have been running for at least `CEKERNEL_MIN_RUNTIME` (default: 300s) — check uptime from `process-status.sh`
@@ -376,9 +375,9 @@ Prohibited use:
 
 ## Decision Criteria
 
-- Independent issues are processed in parallel (within `CEKERNEL_MAX_PROCESSES` limit)
+- Independent issues are processed in parallel (within `CEKERNEL_MAX_ORCH_CHILDREN` limit)
 - Dependent issues are processed serially (wait for preceding issue to complete)
-- When exceeding `CEKERNEL_MAX_PROCESSES`, use queuing (wait for completion, then spawn next)
+- When exceeding `CEKERNEL_MAX_ORCH_CHILDREN`, use queuing (wait for completion, then spawn next)
 - On Worker failure: check PR status and retry or escalate
 
 ### Merge-Dependent Scheduling

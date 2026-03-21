@@ -81,10 +81,9 @@ Locates `.jsonl` transcript files by issue number or session ID.
 
 ### Concurrency Limit
 
-The `CEKERNEL_MAX_PROCESSES` environment variable limits concurrent processes (default: 3).
+The `CEKERNEL_MAX_ORCH_CHILDREN` environment variable limits concurrent children per orchestrator (default: 3).
 `spawn.sh` counts active FIFOs in the session and returns exit 2 when the limit is reached.
 The Orchestrator uses this exit code to perform queuing.
-`CEKERNEL_MAX_WORKERS` is deprecated but still supported (takes priority if set; emits a warning).
 
 ### Process Status
 

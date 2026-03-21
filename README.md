@@ -45,7 +45,7 @@ graph LR
 | `tail -f` / `journalctl` | `watch-logs.sh` |
 | log rotation | Logs deleted by `cleanup-worktree.sh` |
 | page cache | `.cekernel-task.md` (issue data pre-extracted at spawn) |
-| `ulimit -u` (max processes) | `CEKERNEL_MAX_PROCESSES` |
+| `ulimit -u` (max processes) | `CEKERNEL_MAX_ORCH_CHILDREN` |
 | `ps aux` | `process-status.sh` |
 | process scheduler | Orchestrator queuing logic (priority queue + preemption) |
 | semaphore | Concurrency guard via FIFO count |
