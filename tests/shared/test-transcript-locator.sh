@@ -27,7 +27,7 @@ trap cleanup EXIT
 source "${CEKERNEL_DIR}/scripts/shared/transcript-locator.sh"
 
 # ── Test 1: Worker transcript discovery — single file ──
-WORKER_PROJECT="${MOCK_CLAUDE_HOME}/projects/-Users-test-git-repo-.worktrees-issue-42-feat-add-widget"
+WORKER_PROJECT="${MOCK_CLAUDE_HOME}/projects/-Users-test-git-repo--worktrees-issue-42-feat-add-widget"
 mkdir -p "$WORKER_PROJECT"
 touch "${WORKER_PROJECT}/session-abc123.jsonl"
 
@@ -48,7 +48,7 @@ assert_eq "Worker transcript not found returns empty" "" "$RESULT"
 assert_eq "Worker transcript not found exit code 1" "1" "$EXIT_CODE"
 
 # ── Test 4: Reviewer transcript shares same pattern as Worker ──
-REVIEWER_PROJECT="${MOCK_CLAUDE_HOME}/projects/-Users-test-git-repo-.worktrees-issue-42-feat-add-widget-reviewer"
+REVIEWER_PROJECT="${MOCK_CLAUDE_HOME}/projects/-Users-test-git-repo--worktrees-issue-42-feat-add-widget-reviewer"
 mkdir -p "$REVIEWER_PROJECT"
 touch "${REVIEWER_PROJECT}/session-review1.jsonl"
 
@@ -179,7 +179,7 @@ ORCH_CP_JSONL="${MOCK_CLAUDE_HOME}/projects/-Users-test-git-repo/orch-claude-p-u
 echo '{"type":"agent-setting","agentSetting":"orchestrator","sessionId":"orch-claude-p-uuid"}' > "$ORCH_CP_JSONL"
 
 # Worker project dir for issue 100 (needed for main slug derivation)
-WORKER_100="${MOCK_CLAUDE_HOME}/projects/-Users-test-git-repo-.worktrees-issue-100-test-feature"
+WORKER_100="${MOCK_CLAUDE_HOME}/projects/-Users-test-git-repo--worktrees-issue-100-test-feature"
 mkdir -p "$WORKER_100"
 
 RESULT=$(transcript_locate_orchestrator_by_issue 100 "$MOCK_VAR_DIR" "$MOCK_CLAUDE_HOME" "-Users-test-git-repo" 2>/dev/null)
