@@ -13,7 +13,7 @@ cekernel's configurable behavior is driven by `CEKERNEL_*` environment variables
 | `CEKERNEL_BACKEND` | `wezterm` | Yes | `backend-adapter.sh` |
 | `CEKERNEL_SESSION_ID` | auto-generated | No | `session-id.sh` → all scripts |
 | `CEKERNEL_IPC_DIR` | derived from SESSION_ID | No | `session-id.sh` → all scripts |
-| `CEKERNEL_MAX_WORKERS` (deprecated; now `CEKERNEL_MAX_PROCESSES`) | `3` | Yes | `spawn-worker.sh` |
+| `CEKERNEL_MAX_ORCH_CHILDREN` (originally `CEKERNEL_MAX_WORKERS`; see [ADR-0014](./0014-two-tier-concurrency-env-vars.md)) | `3` | Yes | `spawn-worker.sh` |
 | `CEKERNEL_WORKER_TIMEOUT` | `3600` | Yes | `watch-worker.sh` (now `watch.sh`) |
 | `CEKERNEL_CHECKPOINT_FILENAME` | `.cekernel-checkpoint.md` | Yes | `checkpoint-file.sh` |
 | `CEKERNEL_TASK_FILENAME` | `.cekernel-task.md` | Yes | `task-file.sh` |
@@ -55,8 +55,8 @@ Named `.env` files containing coherent sets of variable assignments:
 ```
 envs/
   README.md
-  default.env         # CEKERNEL_BACKEND=wezterm  CEKERNEL_MAX_WORKERS=3
-  headless.env        # CEKERNEL_BACKEND=headless  CEKERNEL_MAX_WORKERS=5
+  default.env         # CEKERNEL_BACKEND=wezterm  CEKERNEL_MAX_ORCH_CHILDREN=3
+  headless.env        # CEKERNEL_BACKEND=headless  CEKERNEL_MAX_ORCH_CHILDREN=5
   ci.env              # CEKERNEL_BACKEND=headless  CEKERNEL_WORKER_TIMEOUT=1800
 ```
 
@@ -65,7 +65,7 @@ Format: standard shell-sourceable `KEY=VALUE` lines (no `export`, no quotes unle
 ```bash
 # headless.env — Terminal-free execution for CI/cron
 CEKERNEL_BACKEND=headless
-CEKERNEL_MAX_WORKERS=5
+CEKERNEL_MAX_ORCH_CHILDREN=5
 CEKERNEL_WORKER_TIMEOUT=1800
 ```
 
@@ -119,7 +119,7 @@ The profile name is selected via `CEKERNEL_ENV` environment variable (default: `
 1. `CEKERNEL_ENV=headless` selects the profile name (meta-policy)
 2. Plugin's `headless.env` provides curated defaults (policy: plugin author's recommendation)
 3. Project's `headless.env` overrides plugin defaults for specific values (policy: project-specific needs)
-4. Explicit `export CEKERNEL_MAX_WORKERS=2` overrides everything (user intent)
+4. Explicit `export CEKERNEL_MAX_ORCH_CHILDREN=2` overrides everything (user intent)
 
 Worker agents do **not** load profiles. They inherit only `CEKERNEL_SESSION_ID` from the Orchestrator's environment, which is sufficient for all Worker-side IPC operations.
 
@@ -132,7 +132,7 @@ my-project/
   .cekernel/
     envs/
       default.env       # Override: CEKERNEL_BACKEND=tmux for this project
-      ci.env            # Override: CEKERNEL_MAX_WORKERS=2 for CI
+      ci.env            # Override: CEKERNEL_MAX_ORCH_CHILDREN=2 for CI
   .claude/
     settings.json       # Claude Code settings (separate namespace)
 ```
@@ -284,7 +284,7 @@ The `_CEKERNEL_USER_ENVS_DIR` override variable is added for testing, following 
 The default profile is changed from WezTerm-based to headless-based. The rationale: most cekernel usage is headless (CI, cron, SSH), so `default` should reflect the common case. Users who need a terminal backend select `wezterm` or `tmux` explicitly.
 
 Changes:
-- `default.env`: `CEKERNEL_BACKEND=wezterm` → `CEKERNEL_BACKEND=headless`, `CEKERNEL_MAX_PROCESSES=5`, added `CEKERNEL_WORKER_TIMEOUT=1800`
+- `default.env`: `CEKERNEL_BACKEND=wezterm` → `CEKERNEL_BACKEND=headless`, `CEKERNEL_MAX_ORCH_CHILDREN=5`, added `CEKERNEL_WORKER_TIMEOUT=1800`
 - `wezterm.env`: New profile for WezTerm backend (previously the default)
 - `tmux.env`: New profile for tmux backend
 - `ci.env`: Removed (redundant with the new headless-based default; GHA does not currently run Claude)
