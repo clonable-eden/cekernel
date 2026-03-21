@@ -43,7 +43,7 @@ Post-mortem analysis (`/postmortem` skill, [ADR-0013](./adr/0013-transcript-base
 
 ### Claude Code Session ID (`claude-session-id.sh`)
 
-The `/orchestrate` skill persists the Claude Code session UUID to `${CEKERNEL_IPC_DIR}/orchestrator.claude-session-id` at Orchestrator launch. This bridges the gap between cekernel's `CEKERNEL_SESSION_ID` and Claude Code's internal session storage.
+The Orchestrator agent process persists its Claude Code session UUID to `${CEKERNEL_IPC_DIR}/orchestrator.claude-session-id` after startup. This bridges the gap between cekernel's `CEKERNEL_SESSION_ID` and Claude Code's internal session storage.
 
 Functions:
 - `claude_session_id_discover <project-root>` — find the current session's UUID from `~/.claude/projects/`
