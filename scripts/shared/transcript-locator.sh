@@ -135,8 +135,9 @@ _transcript_find_orchestrator_jsonl() {
 
 # _transcript_derive_main_project_slug <issue-number> <projects-dir>
 # Derives the main project slug from worker project directories.
-# Worker projects follow the pattern: <main-slug>-.worktrees-issue-{N}-{slug}
-# Splits at -.worktrees- to extract the main project slug.
+# Worker projects follow the pattern: <main-slug>--worktrees-issue-{N}-{slug}
+# (Claude Code converts both / and . to - so /.worktrees/ becomes --worktrees-)
+# Splits at --worktrees- to extract the main project slug.
 # Returns the slug to stdout, or returns 1 if not derivable.
 _transcript_derive_main_project_slug() {
   local issue_number="${1:?Usage: _transcript_derive_main_project_slug <issue-number> <projects-dir>}"
@@ -157,7 +158,7 @@ _transcript_derive_main_project_slug() {
   local main_slug="${worker_slug%%--worktrees-*}"
 
   if [[ "$main_slug" == "$worker_slug" ]]; then
-    # Pattern didn't match (no -.worktrees- found)
+    # Pattern didn't match (no --worktrees- found)
     return 1
   fi
 
