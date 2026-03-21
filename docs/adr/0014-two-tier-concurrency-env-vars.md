@@ -6,10 +6,11 @@ Proposed
 
 ## Context
 
-When cekernel had only a single orchestrator, `CEKERNEL_MAX_PROCESSES` was
-sufficient — it controlled the number of workers/reviewers the orchestrator
-could spawn. Now that orchestrators are themselves processes (with PIDs tracked
-in `orchestrator.pid`, lifecycles visible via `orchctl ps`), two problems arise:
+`CEKERNEL_MAX_PROCESSES` controlled the number of workers/reviewers an
+orchestrator could spawn, but there was no concurrency control for
+orchestrators themselves. Now that orchestrators are managed as processes
+(PIDs tracked in `orchestrator.pid`, lifecycles visible via `orchctl ps`),
+orchestrator-level concurrency control is feasible. Two problems remain:
 
 1. **No upper bound on orchestrators**: `/dispatch` can spawn multiple
    orchestrators in rapid succession. Nothing prevents resource exhaustion.
@@ -42,9 +43,12 @@ orchestrator-level concurrency control.
 | Used by | `dispatch`, `orchestrate`, `orchctl` |
 | Purpose | Maximum number of concurrently running orchestrators |
 
-**Counting mechanism**: Reuse the discovery logic from `orchctl.sh`'s `cmd_ps` —
-scan `$IPC_BASE/*/orchestrator.pid`, validate with `kill -0`. Extract this into
-a shared helper so both `orchctl` and the concurrency guard can call it.
+**Counting mechanism**: Add an internal subcommand `orchctl.sh count` that
+scans `$IPC_BASE/*/orchestrator.pid`, validates with `kill -0`, and outputs the
+number of running orchestrators. This reuses `orchctl.sh`'s existing `IPC_BASE`
+resolution logic without duplication. The `count` subcommand is internal — not
+exposed in `orchctl.sh`'s usage/help output — intended for programmatic use by
+dispatch and orchestrate skills via Bash.
 
 **Enforcement behavior differs by caller**:
 
