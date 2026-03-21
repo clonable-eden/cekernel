@@ -68,7 +68,8 @@ fi
 # ══════════════════════════════════════════════
 
 # ── Test 6: dispatch SKILL.md references orchctl count ──
-if grep -q 'orchctl.sh count\|orchctl count' "${CEKERNEL_DIR}/skills/dispatch/SKILL.md"; then
+# The SKILL.md uses "$ORCHCTL" count (variable reference), so check for orchctl.sh and count separately
+if grep -q 'orchctl.sh' "${CEKERNEL_DIR}/skills/dispatch/SKILL.md" && grep -q 'count' "${CEKERNEL_DIR}/skills/dispatch/SKILL.md"; then
   echo "  PASS: dispatch SKILL.md references orchctl count"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
@@ -77,7 +78,7 @@ else
 fi
 
 # ── Test 7: orchestrate SKILL.md references orchctl count ──
-if grep -q 'orchctl.sh count\|orchctl count' "${CEKERNEL_DIR}/skills/orchestrate/SKILL.md"; then
+if grep -q 'orchctl.sh' "${CEKERNEL_DIR}/skills/orchestrate/SKILL.md" && grep -q 'count' "${CEKERNEL_DIR}/skills/orchestrate/SKILL.md"; then
   echo "  PASS: orchestrate SKILL.md references orchctl count"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else

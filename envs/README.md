@@ -9,6 +9,7 @@ These can be set via env profiles or explicit `export`.
 | Variable | Default | Valid Values | Used by | Purpose |
 |----------|---------|-------------|---------|---------|
 | `CEKERNEL_BACKEND` | `headless` | `wezterm`, `tmux`, `headless` | `backend-adapter.sh` | Select Worker process backend |
+| `CEKERNEL_MAX_ORCHESTRATORS` | `3` | Positive integer | `dispatch`, `orchestrate` | Maximum number of concurrently running orchestrators |
 | `CEKERNEL_MAX_ORCH_CHILDREN` | `3` | Positive integer | `spawn.sh` | Maximum concurrent children (workers + reviewers) per orchestrator |
 | `CEKERNEL_WORKER_TIMEOUT` | `3600` | Positive integer (seconds) | `watch.sh` | Worker timeout before auto-termination |
 | `CEKERNEL_CHECKPOINT_FILENAME` | `.cekernel-checkpoint.md` | Any filename | `checkpoint-file.sh` | Checkpoint file name in worktree |
