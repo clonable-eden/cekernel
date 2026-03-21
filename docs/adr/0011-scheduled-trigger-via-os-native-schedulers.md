@@ -238,7 +238,7 @@ When a scheduled run fails (non-zero exit from `claude -p` or `/dispatch`), the 
 
 Manual invocations (`/dispatch`, `/orchestrate`) and scheduled invocations can overlap. Two mechanisms prevent conflicts:
 
-1. **Worker concurrency guard**: `spawn-worker.sh` enforces `CEKERNEL_MAX_WORKERS` (deprecated; now `CEKERNEL_MAX_PROCESSES`) and exits with code 2 when the limit is reached. This is the existing mechanism and applies regardless of invocation source.
+1. **Worker concurrency guard**: `spawn-worker.sh` enforces `CEKERNEL_MAX_ORCH_CHILDREN` and exits with code 2 when the limit is reached. This is the existing mechanism and applies regardless of invocation source.
 2. **Issue-level lockfile**: Locking is performed at the **repo × issue** granularity in the Orchestrator/Worker layer (`/usr/local/var/cekernel/locks/<repo-hash>/<issue-number>.lock`). This prevents duplicate Workers for the same issue while allowing parallel processing of different issues — consistent with cekernel's fundamental parallel execution model.
 
 The dispatch layer (wrapper script) does **not** acquire locks. Dispatch is a lightweight operation (scan for issues, delegate to Orchestrator) and does not require mutual exclusion. If two dispatches overlap, the issue-level locks in the Worker layer prevent duplicate processing.
