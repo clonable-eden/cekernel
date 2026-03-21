@@ -63,9 +63,9 @@ assert_eq "Returns exit 1 when no .jsonl files exist" "1" "$EXIT_CODE"
 
 # ── Test 5: Persist session ID ──
 claude_session_id_persist "abcd1234-5678-90ab-cdef-1234567890ab"
-assert_file_exists "Session ID file created" "${CEKERNEL_IPC_DIR}/claude-session-id"
+assert_file_exists "Session ID file created" "${CEKERNEL_IPC_DIR}/orchestrator.claude-session-id"
 
-CONTENT=$(cat "${CEKERNEL_IPC_DIR}/claude-session-id")
+CONTENT=$(cat "${CEKERNEL_IPC_DIR}/orchestrator.claude-session-id")
 assert_eq "Persisted session ID content" "abcd1234-5678-90ab-cdef-1234567890ab" "$CONTENT"
 
 # ── Test 6: Persist session ID — requires CEKERNEL_IPC_DIR ──
@@ -78,7 +78,7 @@ RESULT=$(claude_session_id_read) || true
 assert_eq "Read returns persisted session ID" "abcd1234-5678-90ab-cdef-1234567890ab" "$RESULT"
 
 # ── Test 8: Read session ID — file does not exist ──
-rm -f "${CEKERNEL_IPC_DIR}/claude-session-id"
+rm -f "${CEKERNEL_IPC_DIR}/orchestrator.claude-session-id"
 EXIT_CODE=0
 RESULT=$(claude_session_id_read 2>/dev/null) || EXIT_CODE=$?
 assert_eq "Read returns exit 1 when file missing" "1" "$EXIT_CODE"
