@@ -123,53 +123,50 @@ Assess the changes against:
 
 > State: `worker-state-write.sh <issue-number> RUNNING "phase4:submitting-review"`
 
-Based on the evaluation, submit one of two verdicts:
+Based on the evaluation, submit one of two verdicts: **Approve** or **Request Changes**.
+
+The review body must clearly describe what needs to be fixed so that the Worker can address the feedback upon re-spawn.
+
+#### Self-Review Pre-Detection
+
+GitHub does not allow approving or requesting changes on your own PR (HTTP 422). Pre-detect self-review by comparing the PR author with the current GitHub user **before** attempting to submit:
+
+```bash
+PR_AUTHOR=$(gh pr view <pr-number> --json author --jq '.author.login')
+GH_USER=$(gh api user --jq '.login')
+OWNER_REPO="$(gh repo view --json nameWithOwner -q .nameWithOwner)"
+```
+
+Use `gh api` (not `gh pr review`) to submit reviews — `gh pr review --approve` posts the body as COMMENTED even on failure, while `gh api` with event=APPROVE returns 422 without posting anything.
 
 #### Approve
 
-When the changes are acceptable:
-
 ```bash
-gh pr review <pr-number> --approve --body "Review comment explaining approval"
+if [[ "$PR_AUTHOR" == "$GH_USER" ]]; then
+  # Self-review: use COMMENT to avoid 422
+  gh api "repos/${OWNER_REPO}/pulls/<pr-number>/reviews" \
+    -f event=COMMENT -f body="..."
+else
+  gh api "repos/${OWNER_REPO}/pulls/<pr-number>/reviews" \
+    -f event=APPROVE -f body="..."
+fi
+
+# notify-complete.sh uses the review verdict, not the GitHub submission method
+notify-complete.sh <issue-number> approved <pr-number>
 ```
 
 #### Request Changes
 
-When the changes need modification:
-
 ```bash
-gh pr review <pr-number> --request-changes --body "Review comment explaining required changes"
-```
-
-The review body must clearly describe what needs to be fixed so that the Worker can address the feedback upon re-spawn.
-
-#### Self-Review Fallback
-
-GitHub does not allow approving or requesting changes on your own PR (HTTP 422: `"Can not approve your own pull request"`). Use `gh api` (not `gh pr review`) to avoid duplicate postings — `gh pr review --approve` posts the body as COMMENTED even on failure, while `gh api` with event=APPROVE returns 422 without posting anything.
-
-```bash
-OWNER_REPO="$(gh repo view --json nameWithOwner -q .nameWithOwner)"
-
-# 1. Attempt APPROVE via REST API (422 = nothing posted)
-if ! gh api "repos/${OWNER_REPO}/pulls/<pr-number>/reviews" \
-  -f event=APPROVE -f body="..." 2>/dev/null; then
-  # 2. Self-review error → COMMENT fallback (single posting)
+if [[ "$PR_AUTHOR" == "$GH_USER" ]]; then
+  # Self-review: use COMMENT to avoid 422
   gh api "repos/${OWNER_REPO}/pulls/<pr-number>/reviews" \
     -f event=COMMENT -f body="..."
-fi
-
-# 3. notify-complete.sh uses the actual review verdict, not the GitHub submission method
-notify-complete.sh <issue-number> approved <pr-number>
-```
-
-The same fallback applies for `REQUEST_CHANGES`:
-
-```bash
-if ! gh api "repos/${OWNER_REPO}/pulls/<pr-number>/reviews" \
-  -f event=REQUEST_CHANGES -f body="..." 2>/dev/null; then
+else
   gh api "repos/${OWNER_REPO}/pulls/<pr-number>/reviews" \
-    -f event=COMMENT -f body="..."
+    -f event=REQUEST_CHANGES -f body="..."
 fi
+
 notify-complete.sh <issue-number> changes-requested <pr-number>
 ```
 

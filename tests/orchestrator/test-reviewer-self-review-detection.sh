@@ -65,7 +65,7 @@ fi
 # ── Test 6: self-review detection happens BEFORE review submission attempt ──
 # The comparison (PR_AUTHOR == GH_USER) must appear before gh api .../reviews
 COMPARISON_LINE=$(echo "$CONTENT" | grep -n 'PR_AUTHOR.*==.*GH_USER\|GH_USER.*==.*PR_AUTHOR' | head -1 | cut -d: -f1 || true)
-REVIEW_API_LINE=$(echo "$CONTENT" | grep -n 'gh api.*reviews.*event=APPROVE\|gh api.*reviews.*event=REQUEST_CHANGES' | head -1 | cut -d: -f1 || true)
+REVIEW_API_LINE=$(echo "$CONTENT" | grep -n '\-f event=APPROVE\|\-f event=REQUEST_CHANGES' | head -1 | cut -d: -f1 || true)
 if [[ -n "$COMPARISON_LINE" && -n "$REVIEW_API_LINE" && "$COMPARISON_LINE" -lt "$REVIEW_API_LINE" ]]; then
   echo "  PASS: self-review comparison appears before review API call"
   TESTS_PASSED=$((TESTS_PASSED + 1))
