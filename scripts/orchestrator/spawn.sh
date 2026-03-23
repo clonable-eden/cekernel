@@ -208,11 +208,15 @@ if [[ "$RESUME" -eq 1 ]]; then
   # it as self-cleanup. Clearing here would race with the Orchestrator's
   # marker write and prevent the Worker from entering the correct mode.
 
-  # Verify checkpoint exists for resume
-  if checkpoint_file_exists "$WORKTREE"; then
-    echo "checkpoint: $(checkpoint_file_path "$WORKTREE")" >&2
-  else
-    echo "Warning: no checkpoint file found. Process will start fresh." >&2
+  # Verify checkpoint exists for resume (Worker only)
+  # Checkpoints are written only on SUSPEND signal, which is a Worker-only concept.
+  # Reviewer resumes always lack a checkpoint — this is expected, not a warning.
+  if [[ "$AGENT_TYPE" == "worker" ]]; then
+    if checkpoint_file_exists "$WORKTREE"; then
+      echo "checkpoint: $(checkpoint_file_path "$WORKTREE")" >&2
+    else
+      echo "Warning: no checkpoint file found. Process will start fresh." >&2
+    fi
   fi
 else
   # Normal mode: create new worktree
