@@ -53,19 +53,20 @@ else
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-# ── Test 5: reviewer.md uses COMMENT event for self-review ──
-if echo "$CONTENT" | grep -q 'event=COMMENT'; then
-  echo "  PASS: reviewer.md uses COMMENT event for self-review"
+# ── Test 5: reviewer.md assigns COMMENT for self-review path ──
+# Matches both EVENT=COMMENT (variable assignment) and event=COMMENT (inline)
+if echo "$CONTENT" | grep -qi 'EVENT=COMMENT\|event=COMMENT'; then
+  echo "  PASS: reviewer.md uses COMMENT for self-review"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
-  echo "  FAIL: reviewer.md should use COMMENT event for self-review"
+  echo "  FAIL: reviewer.md should use COMMENT for self-review"
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-# ── Test 6: self-review detection happens BEFORE review submission attempt ──
-# The comparison (PR_AUTHOR == GH_USER) must appear before gh api .../reviews
+# ── Test 6: self-review detection happens BEFORE review submission ──
+# The comparison (PR_AUTHOR == GH_USER) must appear before the gh api review call
 COMPARISON_LINE=$(echo "$CONTENT" | grep -n 'PR_AUTHOR.*==.*GH_USER\|GH_USER.*==.*PR_AUTHOR' | head -1 | cut -d: -f1 || true)
-REVIEW_API_LINE=$(echo "$CONTENT" | grep -n '\-f event=APPROVE\|\-f event=REQUEST_CHANGES' | head -1 | cut -d: -f1 || true)
+REVIEW_API_LINE=$(echo "$CONTENT" | grep -n 'gh api.*pulls.*reviews' | head -1 | cut -d: -f1 || true)
 if [[ -n "$COMPARISON_LINE" && -n "$REVIEW_API_LINE" && "$COMPARISON_LINE" -lt "$REVIEW_API_LINE" ]]; then
   echo "  PASS: self-review comparison appears before review API call"
   TESTS_PASSED=$((TESTS_PASSED + 1))

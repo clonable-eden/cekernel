@@ -141,15 +141,17 @@ Use `gh api` (not `gh pr review`) to submit reviews — `gh pr review --approve`
 
 #### Approve
 
+When the changes are acceptable, set `VERDICT=APPROVE`:
+
 ```bash
+VERDICT=APPROVE
 if [[ "$PR_AUTHOR" == "$GH_USER" ]]; then
-  # Self-review: use COMMENT to avoid 422
-  gh api "repos/${OWNER_REPO}/pulls/<pr-number>/reviews" \
-    -f event=COMMENT -f body="..."
+  EVENT=COMMENT   # Self-review: COMMENT to avoid 422
 else
-  gh api "repos/${OWNER_REPO}/pulls/<pr-number>/reviews" \
-    -f event=APPROVE -f body="..."
+  EVENT="$VERDICT"
 fi
+gh api "repos/${OWNER_REPO}/pulls/<pr-number>/reviews" \
+  -f event="$EVENT" -f body="..."
 
 # notify-complete.sh uses the review verdict, not the GitHub submission method
 notify-complete.sh <issue-number> approved <pr-number>
@@ -157,15 +159,17 @@ notify-complete.sh <issue-number> approved <pr-number>
 
 #### Request Changes
 
+When the changes need modification, set `VERDICT=REQUEST_CHANGES`:
+
 ```bash
+VERDICT=REQUEST_CHANGES
 if [[ "$PR_AUTHOR" == "$GH_USER" ]]; then
-  # Self-review: use COMMENT to avoid 422
-  gh api "repos/${OWNER_REPO}/pulls/<pr-number>/reviews" \
-    -f event=COMMENT -f body="..."
+  EVENT=COMMENT   # Self-review: COMMENT to avoid 422
 else
-  gh api "repos/${OWNER_REPO}/pulls/<pr-number>/reviews" \
-    -f event=REQUEST_CHANGES -f body="..."
+  EVENT="$VERDICT"
 fi
+gh api "repos/${OWNER_REPO}/pulls/<pr-number>/reviews" \
+  -f event="$EVENT" -f body="..."
 
 notify-complete.sh <issue-number> changes-requested <pr-number>
 ```
