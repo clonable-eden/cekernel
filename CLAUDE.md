@@ -219,6 +219,9 @@ Test only the **behavior of executable scripts**.
 - OK: `spawn-worker.sh` returns exit 2 when the concurrency limit is exceeded
 - NG: Grep-testing `*.md` content to verify specific strings are present
 
+Agent definitions (`agents/*.md`), skill definitions (`skills/*/SKILL.md`),
+and documentation files are NOT executable scripts — do not write tests for them.
+
 Exception: When a change adds no executable scripts (e.g., env profile or
 skill definition changes), content-based assertions on configuration files
 are acceptable as regression guards.
