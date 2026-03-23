@@ -19,8 +19,12 @@ SPAWN_CONTENT=$(cat "$SPAWN_SH")
 # The checkpoint existence check in resume mode should only warn for Workers.
 # Reviewer resumes should NOT produce a "Warning: no checkpoint file found" message
 # because checkpoints are a Worker-only concept (written on SUSPEND signal).
-if echo "$SPAWN_CONTENT" | grep -q 'AGENT_TYPE.*worker.*checkpoint\|checkpoint.*AGENT_TYPE.*worker'; then
-  echo "  PASS: Checkpoint warning is conditional on AGENT_TYPE"
+# Extract the resume-mode block (between "Resume mode:" and "else" / "Normal mode:").
+# Verify that within this block, the checkpoint check is guarded by AGENT_TYPE == worker.
+RESUME_BLOCK=$(echo "$SPAWN_CONTENT" | sed -n '/Resume mode:/,/Normal mode:/p')
+HAS_AGENT_GUARD=$(echo "$RESUME_BLOCK" | grep -c 'AGENT_TYPE.*worker' || true)
+if [[ "$HAS_AGENT_GUARD" -gt 0 ]]; then
+  echo "  PASS: Checkpoint warning is conditional on AGENT_TYPE in resume block"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
   echo "  FAIL: Checkpoint warning should be conditional on AGENT_TYPE (worker only)"
