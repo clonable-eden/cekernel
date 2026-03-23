@@ -181,7 +181,7 @@ _transcript_derive_main_project_slug() {
 #      for JSONL files with orchestrator agentSetting (broadest, slowest)
 transcript_locate_orchestrator_by_issue() {
   local issue_number="${1:?Usage: transcript_locate_orchestrator_by_issue <issue-number> [var-dir] [claude-home] [project-slug]}"
-  local var_dir="${2:-${CEKERNEL_VAR_DIR:-/usr/local/var/cekernel}}"
+  local var_dir="${2:-${CEKERNEL_VAR_DIR:-$HOME/.local/var/cekernel}}"
   local claude_home="${3:-${HOME}/.claude}"
   local project_slug="${4:-}"
 
@@ -305,7 +305,7 @@ transcript_locate_all() {
   local session_id="${2:-}"
   local claude_home="${3:-${HOME}/.claude}"
   local project_slug="${4:-}"
-  local var_dir="${5:-${CEKERNEL_VAR_DIR:-/usr/local/var/cekernel}}"
+  local var_dir="${5:-${CEKERNEL_VAR_DIR:-$HOME/.local/var/cekernel}}"
 
   local any_found=0
 

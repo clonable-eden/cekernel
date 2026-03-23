@@ -52,7 +52,7 @@ graph LR
 | `flock` / mutex | `issue-lock.sh` (repo × issue lockfile) |
 | `cron` / `systemd timer` | `/cron` skill + OS-native schedulers (launchd/crontab) |
 | `at` (one-shot job) | `/at` skill + OS-native schedulers (launchd/atd) |
-| `/var/` | `~/.local/var/cekernel/` or `/usr/local/var/cekernel/` (runtime state) |
+| `/var/` | `~/.local/var/cekernel/` (runtime state) |
 
 For details on logging, IPC, and resource governance, see [internals.md](./docs/internals.md).
 

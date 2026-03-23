@@ -18,7 +18,7 @@ These can be set via env profiles or explicit `export`.
 | `CEKERNEL_AUTO_MERGE` | `false` | `true`, `false` | Orchestrator | `true`: Orchestrator auto-merges after Reviewer approval. `false`: desktop notification only, human merges manually |
 | `CEKERNEL_REVIEW_MAX_RETRIES` | `2` | Positive integer | Orchestrator | Max cycles of Reviewer reject → Worker re-implement. Escalates to human when exceeded |
 | `CEKERNEL_NOTIFY_MACOS_ACTION` | `none` | `none`, `open`, `pbcopy` | `desktop-notify-backend/macos.sh` | macOS notification URL action: `none` = notify only, `open` = open URL in browser, `pbcopy` = copy URL to clipboard |
-| `CEKERNEL_VAR_DIR` | `/usr/local/var/cekernel` | Directory path | `registry.sh`, `wrapper.sh` | Runtime state directory (locks, logs, runners, registry) |
+| `CEKERNEL_VAR_DIR` | `~/.local/var/cekernel` | Directory path | `registry.sh`, `wrapper.sh` | Runtime state directory (locks, logs, runners, registry) |
 
 ## Internal Variables
 
@@ -27,7 +27,7 @@ Auto-generated or derived. Not intended for user configuration.
 | Variable | Default | Used by | Purpose |
 |----------|---------|---------|---------|
 | `CEKERNEL_SESSION_ID` | Auto-generated (`{repo}-{hex8}`) | `session-id.sh` -> all scripts | Session namespace for IPC |
-| `CEKERNEL_IPC_DIR` | `/usr/local/var/cekernel/ipc/${SESSION_ID}` | `session-id.sh` -> all scripts | IPC directory path |
+| `CEKERNEL_IPC_DIR` | `~/.local/var/cekernel/ipc/${SESSION_ID}` | `session-id.sh` -> all scripts | IPC directory path |
 | `CEKERNEL_ACTIVE_BACKEND` | Derived from `CEKERNEL_BACKEND` | `backend-adapter.sh` (internal) | Resolved backend name |
 | `CEKERNEL_TERM_GRACE_PERIOD` | `120` | `orchestrator.md` | Grace period (seconds) after TERM before force-kill |
 | `CEKERNEL_MIN_RUNTIME` | `300` | `orchestrator.md` | Minimum runtime (seconds) before Worker can be suspended |

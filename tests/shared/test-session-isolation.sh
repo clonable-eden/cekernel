@@ -12,7 +12,7 @@ echo "test: session-isolation"
 ISSUE_NUMBER=10
 
 # ── Session A ──
-CEKERNEL_VAR_DIR="${CEKERNEL_VAR_DIR:-/usr/local/var/cekernel}"
+CEKERNEL_VAR_DIR="${CEKERNEL_VAR_DIR:-$HOME/.local/var/cekernel}"
 SESSION_A="test-isolation-aaaaaaaa"
 SESSION_A_DIR="${CEKERNEL_VAR_DIR}/ipc/${SESSION_A}"
 mkdir -p "$SESSION_A_DIR"

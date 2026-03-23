@@ -24,7 +24,7 @@ source "${SCRIPT_DIR}/wrapper.sh"
 source "${SCRIPT_DIR}/preflight.sh"
 source "${SCRIPT_DIR}/cron-backend.sh"
 
-CEKERNEL_VAR_DIR="${CEKERNEL_VAR_DIR:-/usr/local/var/cekernel}"
+CEKERNEL_VAR_DIR="${CEKERNEL_VAR_DIR:-$HOME/.local/var/cekernel}"
 
 # ── Usage ──
 usage() {

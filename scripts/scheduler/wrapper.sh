@@ -7,12 +7,12 @@
 #   schedule_generate_wrapper <id> <repo> <path> <prompt> — Generate runner script
 #
 # Environment variables (overridable for testing):
-#   CEKERNEL_VAR_DIR — Base directory (default: /usr/local/var/cekernel)
+#   CEKERNEL_VAR_DIR — Base directory (default: $HOME/.local/var/cekernel)
 
 _WRAPPER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${_WRAPPER_DIR}/../shared/load-env.sh"
 
-CEKERNEL_VAR_DIR="${CEKERNEL_VAR_DIR:-/usr/local/var/cekernel}"
+CEKERNEL_VAR_DIR="${CEKERNEL_VAR_DIR:-$HOME/.local/var/cekernel}"
 
 # Resolve CEKERNEL_DIR from this script's location
 _WRAPPER_CEKERNEL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

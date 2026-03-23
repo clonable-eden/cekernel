@@ -5,7 +5,7 @@
 #
 # Environment variables:
 #   CEKERNEL_SESSION_ID — Auto-generated as {repo-name}-{random-hex-8} if not set
-#   CEKERNEL_IPC_DIR    — Exports /usr/local/var/cekernel/ipc/${CEKERNEL_SESSION_ID}
+#   CEKERNEL_IPC_DIR    — Exports $HOME/.local/var/cekernel/ipc/${CEKERNEL_SESSION_ID}
 
 if [[ -z "${CEKERNEL_SESSION_ID:-}" ]]; then
   # Get repository name (fallback to "cekernel" outside git)
@@ -16,5 +16,5 @@ if [[ -z "${CEKERNEL_SESSION_ID:-}" ]]; then
   unset _repo_name _hex
 fi
 
-CEKERNEL_VAR_DIR="${CEKERNEL_VAR_DIR:-/usr/local/var/cekernel}"
+CEKERNEL_VAR_DIR="${CEKERNEL_VAR_DIR:-$HOME/.local/var/cekernel}"
 export CEKERNEL_IPC_DIR="${CEKERNEL_VAR_DIR}/ipc/${CEKERNEL_SESSION_ID}"
