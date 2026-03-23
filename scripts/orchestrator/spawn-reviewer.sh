@@ -30,6 +30,6 @@ done
 ISSUE_NUMBER="${1:?Usage: spawn-reviewer.sh [--priority <priority>] <issue-number> <pr-number>}"
 PR_NUMBER="${2:?Usage: spawn-reviewer.sh [--priority <priority>] <issue-number> <pr-number>}"
 
-REVIEWER_PROMPT="Review PR #${PR_NUMBER} for issue #${ISSUE_NUMBER}. Read the repository's CLAUDE.md, the issue body (.cekernel-task.md), and the PR diff. Submit your review via gh pr review. When done, run notify-complete.sh ${ISSUE_NUMBER} <result> ${PR_NUMBER} where result is: approved, changes-requested, or failed."
+REVIEWER_PROMPT="Review PR #${PR_NUMBER} for issue #${ISSUE_NUMBER}. Read the repository's CLAUDE.md, the issue body (.cekernel-task.md), and the PR diff. Follow the review submission procedure in your agent definition. When done, run notify-complete.sh ${ISSUE_NUMBER} <result> ${PR_NUMBER} where result is: approved, changes-requested, or failed."
 
 exec "${SCRIPT_DIR}/spawn.sh" --agent reviewer --resume --prompt "$REVIEWER_PROMPT" "${FLAGS[@]+"${FLAGS[@]}"}" "$ISSUE_NUMBER"
