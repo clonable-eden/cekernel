@@ -240,4 +240,63 @@ echo "TERMINATED:2026-02-28T10:00:00Z:done" > "${SESSION_DIR}/worker-70.state"
 OUTPUT=$(bash "$ORCHCTL" gc 2>&1)
 assert_match "gc output includes cleaned count" "cleaned" "$OUTPUT"
 
+# ══════════════════════════════════════════════
+# gc — stale orchestrator.pid cleanup (issue #513)
+# ══════════════════════════════════════════════
+
+# ── Test 21: gc removes orchestrator.pid when process is dead ──
+SESSION_DIR_ORCH="${IPC_BASE}/session-gc-orch1"
+mkdir -p "$SESSION_DIR_ORCH"
+echo "99999999" > "${SESSION_DIR_ORCH}/orchestrator.pid"
+bash "$ORCHCTL" gc >/dev/null 2>&1
+assert_not_exists "gc removes stale orchestrator.pid (dead PID)" "${SESSION_DIR_ORCH}/orchestrator.pid"
+
+# ── Test 22: gc preserves orchestrator.pid when process is alive ──
+SESSION_DIR_ORCH_LIVE="${IPC_BASE}/session-gc-orch2"
+mkdir -p "$SESSION_DIR_ORCH_LIVE"
+echo "$$" > "${SESSION_DIR_ORCH_LIVE}/orchestrator.pid"
+bash "$ORCHCTL" gc >/dev/null 2>&1
+assert_file_exists "gc preserves live orchestrator.pid" "${SESSION_DIR_ORCH_LIVE}/orchestrator.pid"
+# Cleanup
+rm -f "${SESSION_DIR_ORCH_LIVE}/orchestrator.pid"
+rmdir "$SESSION_DIR_ORCH_LIVE" 2>/dev/null || true
+
+# ── Test 23: gc removes orchestrator.spawned alongside stale orchestrator.pid ──
+SESSION_DIR_ORCH3="${IPC_BASE}/session-gc-orch3"
+mkdir -p "$SESSION_DIR_ORCH3"
+echo "99999999" > "${SESSION_DIR_ORCH3}/orchestrator.pid"
+echo "1711000000" > "${SESSION_DIR_ORCH3}/orchestrator.spawned"
+bash "$ORCHCTL" gc >/dev/null 2>&1
+assert_not_exists "gc removes orchestrator.spawned with stale pid" "${SESSION_DIR_ORCH3}/orchestrator.spawned"
+assert_not_exists "gc removes orchestrator.pid with spawned" "${SESSION_DIR_ORCH3}/orchestrator.pid"
+
+# ── Test 24: gc removes repo file alongside stale orchestrator.pid ──
+SESSION_DIR_ORCH4="${IPC_BASE}/session-gc-orch4"
+mkdir -p "$SESSION_DIR_ORCH4"
+echo "99999999" > "${SESSION_DIR_ORCH4}/orchestrator.pid"
+echo "my-repo" > "${SESSION_DIR_ORCH4}/repo"
+bash "$ORCHCTL" gc >/dev/null 2>&1
+assert_not_exists "gc removes repo file with stale pid" "${SESSION_DIR_ORCH4}/repo"
+
+# ── Test 25: gc --dry-run shows stale orchestrator.pid but doesn't remove ──
+SESSION_DIR_ORCH5="${IPC_BASE}/session-gc-orch5"
+mkdir -p "$SESSION_DIR_ORCH5"
+echo "99999999" > "${SESSION_DIR_ORCH5}/orchestrator.pid"
+echo "1711000000" > "${SESSION_DIR_ORCH5}/orchestrator.spawned"
+OUTPUT=$(bash "$ORCHCTL" gc --dry-run 2>&1)
+assert_file_exists "dry-run preserves stale orchestrator.pid" "${SESSION_DIR_ORCH5}/orchestrator.pid"
+assert_file_exists "dry-run preserves stale orchestrator.spawned" "${SESSION_DIR_ORCH5}/orchestrator.spawned"
+assert_match "dry-run mentions orchestrator.pid" "orchestrator.pid" "$OUTPUT"
+# Cleanup
+rm -f "${SESSION_DIR_ORCH5}/orchestrator.pid" "${SESSION_DIR_ORCH5}/orchestrator.spawned"
+rmdir "$SESSION_DIR_ORCH5" 2>/dev/null || true
+
+# ── Test 26: gc removes empty session dir after orchestrator metadata cleanup ──
+SESSION_DIR_ORCH6="${IPC_BASE}/session-gc-orch6"
+mkdir -p "$SESSION_DIR_ORCH6"
+echo "99999999" > "${SESSION_DIR_ORCH6}/orchestrator.pid"
+echo "1711000000" > "${SESSION_DIR_ORCH6}/orchestrator.spawned"
+bash "$ORCHCTL" gc >/dev/null 2>&1
+assert_not_exists "gc removes empty session dir after orch cleanup" "${SESSION_DIR_ORCH6}"
+
 report_results

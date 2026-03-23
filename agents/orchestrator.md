@@ -617,8 +617,14 @@ If `watch.sh` returns `merged` (legacy Worker behavior), proceed with cleanup di
 
 ## Completion
 
-When all issues have been processed (all Workers completed and cleaned up), the Orchestrator must remove its PID file before exiting. Without this cleanup, `orchctl ps` continues to show the completed Orchestrator as `not-running`.
+> **MANDATORY** — Execute every step below before exiting. Skipping PID cleanup causes `orchctl ps` to show stale `not-running` entries.
+
+When all issues have been processed (all Workers completed and cleaned up):
+
+- [ ] **Remove PID file** — This is the final required action before exit:
 
 ```bash
 rm -f "${CEKERNEL_IPC_DIR}/orchestrator.pid"
 ```
+
+If PID removal is accidentally skipped, `orchctl gc` will clean it up as a safety net, but the Orchestrator must not rely on that fallback.
