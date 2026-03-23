@@ -60,6 +60,7 @@ Assess whether changes follow these UNIX philosophy principles:
 - **Test independence**: Tests must not share state or depend on execution order.
 - **Edge cases**: Cover null/empty values, boundary values (0, 1, max), and error paths.
 - **TDD compliance**: When TDD is used, verify the Red-Green-Refactor cycle — failing test → minimal fix → refactor. Check commit suffixes: `(RED)`, `(GREEN)`, `(REFACTOR)`.
+- **No tests for non-executable files**: If the change only modifies non-executable files (agent definitions, skill definitions, documentation), there should be no content-based tests (e.g., grep-testing `*.md` for specific strings). If such tests exist, request their removal.
 
 ### Platform Constraints
 
@@ -221,6 +222,8 @@ Test only the **behavior of executable scripts**.
 
 Agent definitions (`agents/*.md`), skill definitions (`skills/*/SKILL.md`),
 and documentation files are NOT executable scripts — do not write tests for them.
+This rule takes precedence over TDD: do not write a RED test for non-executable file changes.
+TDD applies only to executable scripts.
 
 Exception: When a change adds no executable scripts (e.g., env profile or
 skill definition changes), content-based assertions on configuration files
