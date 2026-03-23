@@ -59,7 +59,7 @@ AGENT_VAR="CEKERNEL_AGENT_$(echo "$AGENT_TYPE" | tr '[:lower:]' '[:upper:]')"
 AGENT_NAME="${!AGENT_VAR:-$AGENT_TYPE}"
 
 # ── Concurrency Guard ──
-MAX_ORCH_CHILDREN="${CEKERNEL_MAX_ORCH_CHILDREN:-3}"
+MAX_ORCH_CHILDREN="${CEKERNEL_MAX_ORCH_CHILDREN:-5}"
 
 active_worker_count() {
   find "$CEKERNEL_IPC_DIR" -maxdepth 1 -name 'worker-*' -type p 2>/dev/null | wc -l | tr -d ' '

@@ -10,7 +10,7 @@ These can be set via env profiles or explicit `export`.
 |----------|---------|-------------|---------|---------|
 | `CEKERNEL_BACKEND` | `headless` | `wezterm`, `tmux`, `headless` | `backend-adapter.sh` | Select Worker process backend |
 | `CEKERNEL_MAX_ORCHESTRATORS` | `3` | Positive integer | `dispatch`, `orchestrate` | Maximum number of concurrently running orchestrators |
-| `CEKERNEL_MAX_ORCH_CHILDREN` | `3` | Positive integer | `spawn.sh` | Maximum concurrent children (workers + reviewers) per orchestrator |
+| `CEKERNEL_MAX_ORCH_CHILDREN` | `5` | Positive integer | `spawn.sh` | Maximum concurrent children (workers + reviewers) per orchestrator |
 | `CEKERNEL_WORKER_TIMEOUT` | `3600` | Positive integer (seconds) | `watch.sh` | Worker timeout before auto-termination |
 | `CEKERNEL_CHECKPOINT_FILENAME` | `.cekernel-checkpoint.md` | Any filename | `checkpoint-file.sh` | Checkpoint file name in worktree |
 | `CEKERNEL_TASK_FILENAME` | `.cekernel-task.md` | Any filename | `task-file.sh` | Task file name in worktree |
@@ -29,6 +29,8 @@ Auto-generated or derived. Not intended for user configuration.
 | `CEKERNEL_SESSION_ID` | Auto-generated (`{repo}-{hex8}`) | `session-id.sh` -> all scripts | Session namespace for IPC |
 | `CEKERNEL_IPC_DIR` | `/usr/local/var/cekernel/ipc/${SESSION_ID}` | `session-id.sh` -> all scripts | IPC directory path |
 | `CEKERNEL_ACTIVE_BACKEND` | Derived from `CEKERNEL_BACKEND` | `backend-adapter.sh` (internal) | Resolved backend name |
+| `CEKERNEL_TERM_GRACE_PERIOD` | `120` | `orchestrator.md` | Grace period (seconds) after TERM before force-kill |
+| `CEKERNEL_MIN_RUNTIME` | `300` | `orchestrator.md` | Minimum runtime (seconds) before Worker can be suspended |
 
 ## Meta Variable
 
@@ -55,10 +57,10 @@ Profiles only fill unset variables. Explicit `export` always wins.
 
 | Profile | Description |
 |---------|-------------|
-| `default.env` | Default settings (headless backend, 5 processes, 1800s timeout) |
+| `default.env` | Symlink to `headless.env` (loaded when `CEKERNEL_ENV` is unset or `default`) |
 | `wezterm.env` | WezTerm backend with standard concurrency |
 | `tmux.env` | tmux backend with standard concurrency |
-| `headless.env` | Terminal-free execution with higher concurrency |
+| `headless.env` | Terminal-free execution (headless backend, 5 children, 3600s timeout) |
 
 ### User Profile
 
