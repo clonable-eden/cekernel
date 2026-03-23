@@ -160,12 +160,24 @@ else
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-# ── Test 16: spawn-reviewer.sh prompt embeds PR number in gh pr review instruction ──
+# ── Test 16: spawn-reviewer.sh prompt delegates to agent definition (not gh pr review) ──
+# The prompt must NOT hardcode "gh pr review" — reviewer.md defines the submission
+# procedure (gh api with self-review pre-detection). Hardcoding overrides it.
 if echo "$CONTENT" | grep -q 'gh pr review'; then
-  echo "  PASS: spawn-reviewer.sh prompt includes gh pr review instruction"
+  echo "  FAIL: spawn-reviewer.sh prompt should NOT hardcode 'gh pr review'"
+  echo "    The agent definition (reviewer.md) defines the review submission procedure."
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+else
+  echo "  PASS: spawn-reviewer.sh prompt does not hardcode 'gh pr review'"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+fi
+
+# ── Test 18: spawn-reviewer.sh prompt delegates review procedure to agent definition ──
+if echo "$CONTENT" | grep -q 'agent definition'; then
+  echo "  PASS: spawn-reviewer.sh prompt delegates to agent definition"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
-  echo "  FAIL: spawn-reviewer.sh prompt should include gh pr review instruction"
+  echo "  FAIL: spawn-reviewer.sh prompt should delegate review procedure to agent definition"
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
