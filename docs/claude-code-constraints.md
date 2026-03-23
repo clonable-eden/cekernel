@@ -269,9 +269,8 @@ occur through the filesystem or external services.
 
 **Implications for cekernel**:
 - The session IPC directory (`${CEKERNEL_VAR_DIR}/ipc/{SESSION_ID}`) is the
-  correct coordination point. The base path defaults to `/usr/local/var/cekernel`
-  but is user-configurable via env profiles (e.g., `~/.config/cekernel/envs/default.env`
-  can set `CEKERNEL_VAR_DIR=~/.local/var/cekernel`)
+  correct coordination point. The base path defaults to `~/.local/var/cekernel`
+  and is user-configurable via env profiles (e.g., `~/.config/cekernel/envs/default.env`)
 - Workers in separate sessions correctly communicate via files and FIFOs
 - There is no "shared memory" shortcut between agents
 

@@ -31,7 +31,7 @@ source "${SCRIPT_DIR}/../shared/worker-state.sh"
 source "${SCRIPT_DIR}/../shared/worker-priority.sh"
 source "${SCRIPT_DIR}/../shared/checkpoint-file.sh"
 
-CEKERNEL_VAR_DIR="${CEKERNEL_VAR_DIR:-/usr/local/var/cekernel}"
+CEKERNEL_VAR_DIR="${CEKERNEL_VAR_DIR:-$HOME/.local/var/cekernel}"
 IPC_BASE="${CEKERNEL_IPC_BASE:-${CEKERNEL_VAR_DIR}/ipc}"
 
 # ── Usage ──

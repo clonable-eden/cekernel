@@ -11,7 +11,7 @@
 #   schedule_registry_get <id>                    — Get single entry (exit 1 if not found)
 #
 # Environment variables (overridable for testing):
-#   CEKERNEL_VAR_DIR — Base directory (default: /usr/local/var/cekernel)
+#   CEKERNEL_VAR_DIR — Base directory (default: $HOME/.local/var/cekernel)
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "Error: jq is required but not found. Install it: https://jqlang.github.io/jq/download/" >&2
@@ -21,7 +21,7 @@ fi
 _REGISTRY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${_REGISTRY_DIR}/../shared/load-env.sh"
 
-CEKERNEL_VAR_DIR="${CEKERNEL_VAR_DIR:-/usr/local/var/cekernel}"
+CEKERNEL_VAR_DIR="${CEKERNEL_VAR_DIR:-$HOME/.local/var/cekernel}"
 CEKERNEL_REGISTRY="${CEKERNEL_VAR_DIR}/schedules.json"
 CEKERNEL_REGISTRY_LOCK="${CEKERNEL_REGISTRY}.lock"
 

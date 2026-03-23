@@ -18,10 +18,10 @@
 #   _at_launchd_inject_cleanup <id> <runner_path>     — Add bootout to runner script
 #
 # Environment variables (overridable for testing):
-#   CEKERNEL_VAR_DIR     — Runtime directory (default: /usr/local/var/cekernel)
+#   CEKERNEL_VAR_DIR     — Runtime directory (default: $HOME/.local/var/cekernel)
 #   CEKERNEL_LAUNCHD_DIR — plist directory (default: ~/Library/LaunchAgents)
 
-CEKERNEL_VAR_DIR="${CEKERNEL_VAR_DIR:-/usr/local/var/cekernel}"
+CEKERNEL_VAR_DIR="${CEKERNEL_VAR_DIR:-$HOME/.local/var/cekernel}"
 CEKERNEL_LAUNCHD_DIR="${CEKERNEL_LAUNCHD_DIR:-${HOME}/Library/LaunchAgents}"
 
 # Parse ISO 8601 datetime into components.

@@ -23,7 +23,7 @@ RESULT=$(export CEKERNEL_SESSION_ID="my-custom-session-abc12345"; unset CEKERNEL
 assert_eq "Existing CEKERNEL_SESSION_ID is preserved" "my-custom-session-abc12345" "$RESULT"
 
 # ── Test 4: CEKERNEL_IPC_DIR is correctly derived ──
-EXPECTED_VAR_DIR="${CEKERNEL_VAR_DIR:-/usr/local/var/cekernel}"
+EXPECTED_VAR_DIR="${CEKERNEL_VAR_DIR:-$HOME/.local/var/cekernel}"
 RESULT=$(export CEKERNEL_SESSION_ID="test-session-aabbccdd"; unset CEKERNEL_IPC_DIR; source "$SESSION_SCRIPT"; echo "$CEKERNEL_IPC_DIR")
 assert_eq "CEKERNEL_IPC_DIR is derived correctly" "${EXPECTED_VAR_DIR}/ipc/test-session-aabbccdd" "$RESULT"
 

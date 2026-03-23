@@ -54,14 +54,14 @@ OUTPUT=$(run_with_user_profile "${CEKERNEL_DIR}/scripts/orchestrator/process-sta
 assert_match "process-status.sh finds worker via user profile CEKERNEL_VAR_DIR" '"issue":99' "$OUTPUT"
 
 # ── Test 2: process-status.sh does NOT report "No active session" ──
-# If load-env.sh is not sourced, CEKERNEL_VAR_DIR defaults to /usr/local/var/cekernel
+# If load-env.sh is not sourced, CEKERNEL_VAR_DIR defaults to $HOME/.local/var/cekernel
 # and the session dir won't be found.
 NO_SESSION_MSG=$(echo "$OUTPUT" | grep -c "No active session" || true)
 assert_eq "process-status.sh does not report missing session" "0" "$NO_SESSION_MSG"
 
 # ── Test 3: health-check.sh uses CEKERNEL_VAR_DIR from user profile ──
 # health-check.sh with an issue number should find the FIFO in the custom var dir.
-# Without load-env.sh, it would look in /usr/local/var/cekernel and report "completed"
+# Without load-env.sh, it would look in $HOME/.local/var/cekernel and report "completed"
 # (because the FIFO wouldn't be found at the wrong path).
 HC_OUTPUT=$(run_with_user_profile "${CEKERNEL_DIR}/scripts/orchestrator/health-check.sh" 99 2>&1 || true)
 # When load-env.sh works, health-check finds the FIFO and reports status (not "completed")

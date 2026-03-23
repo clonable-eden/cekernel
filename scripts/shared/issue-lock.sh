@@ -13,7 +13,7 @@
 # Lock path: ${CEKERNEL_VAR_DIR}/locks/<repo-hash>/<issue-number>.lock/
 #
 # Environment variables (overridable for testing):
-#   CEKERNEL_VAR_DIR — Base directory (default: /usr/local/var/cekernel)
+#   CEKERNEL_VAR_DIR — Base directory (default: $HOME/.local/var/cekernel)
 
 _ISSUE_LOCK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
 # Fallback: when BASH_SOURCE[0] does not resolve correctly (e.g., plugin mode
@@ -23,7 +23,7 @@ if [[ ! -f "${_ISSUE_LOCK_DIR}/load-env.sh" && -n "${CEKERNEL_SCRIPTS:-}" ]]; th
 fi
 source "${_ISSUE_LOCK_DIR}/load-env.sh"
 
-CEKERNEL_VAR_DIR="${CEKERNEL_VAR_DIR:-/usr/local/var/cekernel}"
+CEKERNEL_VAR_DIR="${CEKERNEL_VAR_DIR:-$HOME/.local/var/cekernel}"
 
 issue_lock_repo_hash() {
   local repo_path="${1:?Usage: issue_lock_repo_hash <repo-path>}"
