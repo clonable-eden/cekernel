@@ -67,8 +67,11 @@ if [[ -d "${CEKERNEL_IPC_DIR}/logs" ]]; then
   echo "[${TIMESTAMP}] ${EVENT} issue=#${ISSUE_NUMBER} result=${RESULT} detail=${DETAIL}" >> "$LOG_FILE"
 fi
 
-# ── Release issue lock (skip for ci-passed — Orchestrator manages lifecycle) ──
-if [[ "$RESULT" != "ci-passed" ]]; then
+# ── Release issue lock ──
+# Skip for Orchestrator-managed transitions: ci-passed (Worker→Reviewer),
+# changes-requested (Reviewer→Worker re-spawn), approved (Reviewer→merge/cleanup).
+# Only release for terminal results: merged, failed, cancelled.
+if [[ "$RESULT" != "ci-passed" && "$RESULT" != "changes-requested" && "$RESULT" != "approved" ]]; then
   REPO_ROOT="$(resolve_repo_root 2>/dev/null || echo "")"
   if [[ -n "$REPO_ROOT" ]]; then
     issue_lock_release "$REPO_ROOT" "$ISSUE_NUMBER"
