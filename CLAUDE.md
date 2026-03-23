@@ -26,7 +26,48 @@ cekernel's design is rooted in UNIX philosophy and TDD.
 - [TDD](./docs/tdd.md) — Red-Green-Refactor cycle and testing principles
 
 These documents are symlinked in `.claude/rules/` for automatic loading by Claude Code.
-This ensures Worker/Reviewer agents read the content without requiring explicit `Read` calls.
+This ensures Worker agents read the content without requiring explicit `Read` calls.
+
+> **Note**: `.claude/rules/` symlinks do not work in git worktrees. Reviewers operating
+> in worktrees should refer to the [Review](#review) section below, which extracts the
+> essential review criteria from these documents.
+
+## Review
+
+Review criteria for Reviewer agents. This section exists in CLAUDE.md because
+Reviewers operate in git worktrees where `.claude/rules/` symlinks are unavailable.
+The criteria below are extracted from `unix-philosophy.md`, `tdd.md`, and
+`claude-code-constraints.md`.
+
+### Design Principles
+
+Assess whether changes follow these UNIX philosophy principles:
+
+- **Modularity**: Simple parts connected by clean interfaces. Each component has well-defined boundaries.
+- **Clarity**: Readability over cleverness. Code serves future maintainers.
+- **Simplicity**: No unnecessary complexity. Favor simple solutions over intricate ones.
+- **Parsimony**: Avoid large programs unless clearly necessary.
+- **Transparency**: Design for visibility. Systems should be immediately understandable.
+- **Robustness**: Transparency and simplicity enable correctness verification.
+- **Least Surprise**: Interfaces follow familiar conventions.
+- **Repair**: Fail noisily and as soon as possible. Never silently continue in a broken state.
+- **Separation**: Separate policy from mechanism; interfaces from engines.
+- **Composition**: Programs accept and emit straightforward text streams for easy connection.
+
+### Testing Criteria
+
+- **Test behavior, not internals**: Tests verify externally observable behavior, not internal state.
+- **Test independence**: Tests must not share state or depend on execution order.
+- **Edge cases**: Cover null/empty values, boundary values (0, 1, max), and error paths.
+- **TDD compliance**: When TDD is used, verify the Red-Green-Refactor cycle — failing test → minimal fix → refactor. Check commit suffixes: `(RED)`, `(GREEN)`, `(REFACTOR)`.
+
+### Platform Constraints
+
+- **zsh compatibility**: Scripts `source`d in Claude Code must use `${BASH_SOURCE[0]:-${(%):-%x}}` fallback.
+- **bash 3.2 compatibility**: No `declare -A` (associative arrays). Use temp files with `grep -qxF` instead.
+- **Arithmetic safety**: Use `var=$((var + 1))` instead of `((var++))` (fails under `set -e` when var=0).
+- **Subagent nesting**: Nesting depth ≥ 2 is unreliable. Prefer independent processes with FIFO IPC.
+- **Context window**: Workers must externalize state to files/git — do not rely on conversation history.
 
 ## Scripts
 
