@@ -68,14 +68,18 @@ if [[ -d "${CEKERNEL_IPC_DIR}/logs" ]]; then
 fi
 
 # ── Release issue lock ──
-# Skip for Orchestrator-managed transitions: ci-passed (Worker→Reviewer),
-# changes-requested (Reviewer→Worker re-spawn), approved (Reviewer→merge/cleanup).
-# Only release for terminal results: merged, failed, cancelled.
-if [[ "$RESULT" != "ci-passed" && "$RESULT" != "changes-requested" && "$RESULT" != "approved" ]]; then
-  REPO_ROOT="$(resolve_repo_root 2>/dev/null || echo "")"
-  if [[ -n "$REPO_ROOT" ]]; then
-    issue_lock_release "$REPO_ROOT" "$ISSUE_NUMBER"
-  fi
-fi
+# Orchestrator-managed transitions retain the lock for the next lifecycle phase.
+# Only terminal results (merged, failed, cancelled) release the lock here.
+case "$RESULT" in
+  ci-passed|changes-requested|approved)
+    # Lock retained — Orchestrator manages the next transition
+    ;;
+  *)
+    REPO_ROOT="$(resolve_repo_root 2>/dev/null || echo "")"
+    if [[ -n "$REPO_ROOT" ]]; then
+      issue_lock_release "$REPO_ROOT" "$ISSUE_NUMBER"
+    fi
+    ;;
+esac
 
 echo "Notified orchestrator: issue #${ISSUE_NUMBER} ${RESULT}" >&2
