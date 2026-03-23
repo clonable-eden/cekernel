@@ -129,6 +129,7 @@ scripts/
     desktop-notify.sh      # OS-native notification helper
     issue-lock.sh          # Repo × issue lockfile (duplicate Worker prevention)
     load-env.sh            # Environment profile loader (multi-layer search)
+    resolve-repo-root.sh   # Resolve repository root from any subdirectory
     runner.sh              # Runner script generator for terminal backends (cd, env, prompt)
     session-id.sh          # Session ID generation + IPC directory derivation
     task-file.sh           # Local task file extraction (session memory: page cache)
@@ -137,7 +138,11 @@ scripts/
     worker-state.sh        # Worker process state management
   process/
     check-signal.sh        # Check for pending signal (Worker/Reviewer-side)
+    clear-resume-marker.sh # Clear resume marker after successful resume
+    create-checkpoint.sh   # Create checkpoint file for suspend/resume
     notify-complete.sh     # Process → Orchestrator completion notification
+    phase-transition.sh    # Atomic phase boundary: signal check + state write
+    worker-state-write.sh  # Write Worker state from Worker/Reviewer side
 skills/
   at/
     SKILL.md               # /at skill — one-shot schedule management
