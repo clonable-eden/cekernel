@@ -305,7 +305,7 @@ transcript_locate_all() {
   local session_id="${2:-}"
   local claude_home="${3:-${HOME}/.claude}"
   local project_slug="${4:-}"
-  local var_dir="${5:-${CEKERNEL_VAR_DIR:-/usr/local/var/cekernel}}"
+  local var_dir="${5:-${CEKERNEL_VAR_DIR:-$HOME/.local/var/cekernel}}"
 
   local any_found=0
 
