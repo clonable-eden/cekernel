@@ -55,7 +55,7 @@ timeout detected
 
 This replaces the current behavior of immediate force-kill on timeout. The grace period allows the Worker to commit progress, post status, and exit cleanly.
 
-**New environment variable**: `CEKERNEL_TERM_GRACE_PERIOD` (default: 120 seconds). Configurable via env profiles.
+**New environment variable**: [`CEKERNEL_TERM_GRACE_PERIOD`](#environment-variable-catalog-as-of-2026-03-23) (default: 120 seconds). Configurable via env profiles.
 
 ### 3. Preemption via SUSPEND
 
@@ -84,7 +84,7 @@ incoming issue (nice=0, critical) arrives, all 3 slots full:
 - A Worker in state TERMINATED, SUSPENDED, or NEW/READY cannot be suspended (only RUNNING/WAITING Workers).
 - At most one preemption per scheduling cycle. The Orchestrator does not cascade-suspend multiple Workers in a single decision.
 
-**New environment variable**: `CEKERNEL_MIN_RUNTIME` (default: 300 seconds).
+**New environment variable**: [`CEKERNEL_MIN_RUNTIME`](#environment-variable-catalog-as-of-2026-03-23) (default: 300 seconds).
 
 **Escalation chain** (reuses `CEKERNEL_TERM_GRACE_PERIOD` — no new variable):
 
@@ -231,3 +231,12 @@ This conflates two resources: Worker slots (bounded by `MAX_WORKERS`) and "cogni
 **Simplicity vs. Optimality**: The policy uses single-factor decisions (nice value only) rather than multi-factor scoring (nice + elapsed time + state + resource consumption). This is suboptimal in theory — a smarter scheduler could make better decisions. But the Orchestrator is an LLM agent, not a compiled program. Simple rules it can follow reliably are better than optimal rules it might misapply.
 
 **6-state vs. 10-state model**: ADR-0004 proposed 10 states (SPAWNING, PLANNING, RUNNING, PR_CREATED, CI_WAITING, CI_FIXING, MERGING, COMPLETED, FAILED, CANCELLED). The implementation uses 6 (NEW, READY, RUNNING, WAITING, SUSPENDED, TERMINATED) with phase detail in a free-text field. This sacrifices type-safety (any string can go in the detail field) for pragmatism (zero code changes, existing validation logic works as-is). The trade-off is acceptable because the primary consumers (humans reading `worker-status.sh` output, the Orchestrator reading state) benefit equally from `WAITING:phase3:ci-waiting` as from a dedicated `CI_WAITING` state.
+
+## Environment Variable Catalog (as of 2026-03-23)
+
+Variables introduced or referenced by this ADR. See [`envs/README.md`](../../envs/README.md) for the full catalog.
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `CEKERNEL_TERM_GRACE_PERIOD` | `120` | Grace period (seconds) after TERM/SUSPEND before escalation |
+| `CEKERNEL_MIN_RUNTIME` | `300` | Minimum Worker runtime (seconds) before suspension allowed |
