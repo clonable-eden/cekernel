@@ -172,7 +172,7 @@ else
   TESTS_PASSED=$((TESTS_PASSED + 1))
 fi
 
-# ── Test 18: spawn-reviewer.sh prompt delegates review procedure to agent definition ──
+# ── Test 17: spawn-reviewer.sh prompt delegates review procedure to agent definition ──
 if echo "$CONTENT" | grep -q 'agent definition'; then
   echo "  PASS: spawn-reviewer.sh prompt delegates to agent definition"
   TESTS_PASSED=$((TESTS_PASSED + 1))
@@ -181,7 +181,7 @@ else
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-# ── Test 17: spawn-reviewer.sh extracts flags correctly with new interface ──
+# ── Test 18: spawn-reviewer.sh extracts flags correctly with new interface ──
 # Simulate arg parsing: spawn-reviewer.sh --priority high 267 296
 # Should extract ISSUE=267, PR=296
 SKIP_NEXT=0
