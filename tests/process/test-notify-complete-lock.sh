@@ -32,8 +32,13 @@ setup_fifo() {
 
 # ── Table-driven tests ──
 # Format: result:detail:expect_locked (1=lock retained, 0=lock released)
+# Lock retention policy:
+#   ci-passed, changes-requested, approved → Orchestrator-managed transitions, lock retained
+#   merged, failed, cancelled → terminal lifecycle events, lock released
 TEST_CASES=(
   "ci-passed:42:1"
+  "changes-requested:55:1"
+  "approved:55:1"
   "merged:99:0"
   "failed:CI failed:0"
   "cancelled:TERM signal:0"
