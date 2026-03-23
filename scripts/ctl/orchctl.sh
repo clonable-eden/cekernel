@@ -998,7 +998,47 @@ cmd_gc() {
     done
   }
 
-  # ── 3. Clean orphan IPC files (no active FIFO) ──
+  # ── 3. Clean stale orchestrator metadata ──
+  # When the orchestrator process is dead, remove orchestrator.pid,
+  # orchestrator.spawned, and repo files from the session directory.
+  if [[ -d "$IPC_BASE" ]]; then
+    for session_dir in "$IPC_BASE"/*/; do
+      [[ -d "$session_dir" ]] || continue
+      local orch_pid_file="${session_dir}orchestrator.pid"
+      [[ -f "$orch_pid_file" ]] || continue
+
+      local orch_pid
+      orch_pid=$(tr -d '[:space:]' < "$orch_pid_file")
+      [[ -n "$orch_pid" ]] || continue
+
+      # Skip if orchestrator is still alive
+      if kill -0 "$orch_pid" 2>/dev/null; then
+        continue
+      fi
+
+      # Orchestrator is dead — clean up metadata files
+      if [[ "$dry_run" -eq 1 ]]; then
+        echo "[dry-run] would remove stale orchestrator.pid: $orch_pid_file" >&2
+      else
+        rm -f "$orch_pid_file"
+      fi
+      cleaned=$((cleaned + 1))
+
+      # Also remove orchestrator.spawned and repo if present
+      for meta_file in "${session_dir}orchestrator.spawned" "${session_dir}repo"; do
+        if [[ -f "$meta_file" ]]; then
+          if [[ "$dry_run" -eq 1 ]]; then
+            echo "[dry-run] would remove stale metadata: $meta_file" >&2
+          else
+            rm -f "$meta_file"
+          fi
+          cleaned=$((cleaned + 1))
+        fi
+      done
+    done
+  fi
+
+  # ── 4. Clean orphan IPC files (no active FIFO) ──
   if [[ -d "$IPC_BASE" ]]; then
     for session_dir in "$IPC_BASE"/*/; do
       [[ -d "$session_dir" ]] || continue
@@ -1026,7 +1066,7 @@ cmd_gc() {
   # ── Cleanup temp file ──
   rm -f "$active_issues_file"
 
-  # ── 4. Summary ──
+  # ── 5. Summary ──
   if [[ "$cleaned" -eq 0 ]]; then
     echo "gc: nothing to clean." >&2
   else
