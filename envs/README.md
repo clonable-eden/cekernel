@@ -38,6 +38,33 @@ Auto-generated or derived. Not intended for user configuration.
 |----------|---------|---------|---------|
 | `CEKERNEL_ENV` | `default` | `load-env.sh` | Select which env profile to load |
 
+## Notes on bare mode auth
+
+`CEKERNEL_USE_BARE=true` opts the headless backend into Claude Code's `--bare`
+mode. `--bare` strips Claude Code of all interactive amenities, which has
+important authentication consequences worth calling out separately from the
+variable table.
+
+- **`--bare` does not read OAuth / keychain credentials.** Per the
+  [Claude Code CLI reference](https://docs.claude.com/en/docs/claude-code/cli-reference),
+  `--bare` runs without the interactive session that owns the OAuth token and
+  the OS keychain entries, so any auth state established by `claude login`
+  is invisible to a `--bare` invocation.
+- **An explicit API key source is mandatory.** Either set `ANTHROPIC_API_KEY`
+  in the environment, or supply a settings file with an `apiKeyHelper` via
+  `--settings <path>`. Without one of these, `--bare` will fail to
+  authenticate.
+- **Preflight auto-disables when no key is available.** cekernel's headless
+  preflight checks for a usable `ANTHROPIC_API_KEY` / `apiKeyHelper` before
+  launching. When neither is configured, it emits a warning on stderr,
+  disables `--bare` for that invocation, and falls back to the standard
+  `claude -p` path so the run still proceeds.
+- **Recommended use cases.** Enable `CEKERNEL_USE_BARE=true` from
+  programmatic-batch contexts where `ANTHROPIC_API_KEY` can be supplied
+  explicitly — typically the `/cron` and `/at` scheduled jobs, CI pipelines,
+  and other non-interactive automation. Leave it off for ordinary
+  developer-driven sessions that rely on the OAuth login.
+
 ## Profiles
 
 Env profiles are `.env` files containing coherent sets of variable assignments.
