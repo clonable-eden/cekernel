@@ -10,6 +10,10 @@
 # Handle file: ${CEKERNEL_IPC_DIR}/handle-{issue}.{type} contains PID (numeric).
 # Process group: setsid creates a new process group for clean termination.
 
+# ── Dependencies ──
+_HEADLESS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
+source "${_HEADLESS_DIR}/../bare-mode.sh"
+
 # ── External API ──
 
 backend_available() {
@@ -33,13 +37,16 @@ backend_spawn_worker() {
   # Source .cekernel-env to propagate PATH and env vars (SESSION_ID, IPC_DIR, ENV).
   # Unset Claude Code session markers to avoid nested-session detection.
   # Use -p (print mode) for non-TTY execution.
+  # When CEKERNEL_USE_BARE=1, prepend --bare + --plugin-dir + --add-dir
+  # so plugin agents/skills and worktree CLAUDE.md remain discoverable.
   # NOTE: -p may hang without TTY due to upstream bug (claude-code#9026).
   # stdout/stderr discarded — analysis uses transcripts (ADR-0005, #347).
   (
     cd "$worktree" && \
     unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ACCESS_TOKEN && \
     source .cekernel-env && \
-    exec claude -p --agent "$agent_name" "$prompt"
+    cekernel_bare_prepare "$worktree" && \
+    exec claude ${CEKERNEL_BARE_FLAGS[@]+"${CEKERNEL_BARE_FLAGS[@]}"} -p --agent "$agent_name" "$prompt"
   ) >/dev/null 2>&1 &
   local pid=$!
 

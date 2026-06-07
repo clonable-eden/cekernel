@@ -39,6 +39,7 @@ assert_eq "CEKERNEL_USE_BARE=0 → empty flags" "0" "$RESULT"
 # ── Test 4: CEKERNEL_USE_BARE=1 (no worktree arg) → --bare --plugin-dir <root> ──
 RESULT=$(
   export CEKERNEL_USE_BARE=1
+  export ANTHROPIC_API_KEY=test-key
   source "$BARE_SCRIPT"
   cekernel_bare_prepare
   printf '%s\n' "${CEKERNEL_BARE_FLAGS[@]}"
@@ -52,6 +53,7 @@ assert_eq "CEKERNEL_USE_BARE=1 → bare + plugin-dir" "$EXPECTED" "$RESULT"
 TMP_WORKTREE="$(mktemp -d)"
 RESULT=$(
   export CEKERNEL_USE_BARE=1
+  export ANTHROPIC_API_KEY=test-key
   source "$BARE_SCRIPT"
   cekernel_bare_prepare "$TMP_WORKTREE"
   printf '%s\n' "${CEKERNEL_BARE_FLAGS[@]}"
@@ -78,5 +80,46 @@ EXIT=$(
   cekernel_use_bare && echo enabled || echo disabled
 )
 assert_eq "cekernel_use_bare returns enabled when set to 1" "enabled" "$EXIT"
+
+# ── Test 8: bash 3.2 + set -u safe expansion (empty case) ──
+# Plain "${arr[@]}" fails on bash 3.2 under set -u when the array is empty.
+# Verify the documented workaround form expands cleanly.
+RESULT=$(
+  unset CEKERNEL_USE_BARE
+  source "$BARE_SCRIPT"
+  cekernel_bare_prepare
+  set -u
+  printf '[%s]' ${CEKERNEL_BARE_FLAGS[@]+"${CEKERNEL_BARE_FLAGS[@]}"}
+  echo "ok"
+)
+assert_eq "empty CEKERNEL_BARE_FLAGS expands safely under set -u" "[]ok" "$RESULT"
+
+# ── Test 9: preflight passes with ANTHROPIC_API_KEY ──
+EXIT=$(
+  export ANTHROPIC_API_KEY=test-key
+  source "$BARE_SCRIPT"
+  cekernel_bare_preflight && echo ok || echo blocked
+)
+assert_eq "preflight ok when ANTHROPIC_API_KEY is set" "ok" "$EXIT"
+
+# ── Test 10: preflight blocks without ANTHROPIC_API_KEY ──
+EXIT=$(
+  unset ANTHROPIC_API_KEY
+  source "$BARE_SCRIPT"
+  cekernel_bare_preflight && echo ok || echo blocked
+)
+assert_eq "preflight blocks when ANTHROPIC_API_KEY is unset" "blocked" "$EXIT"
+
+# ── Test 11: USE_BARE=1 but no API key → auto-disable with stderr warning ──
+RESULT=$(
+  export CEKERNEL_USE_BARE=1
+  unset ANTHROPIC_API_KEY
+  source "$BARE_SCRIPT"
+  cekernel_bare_prepare 2>/tmp/cekernel-bare-warn.$$
+  echo "flags=${#CEKERNEL_BARE_FLAGS[@]}"
+)
+assert_eq "auto-disable when no API key (empty flags)" "flags=0" "$RESULT"
+WARN=$(cat /tmp/cekernel-bare-warn.$$ 2>/dev/null; rm -f /tmp/cekernel-bare-warn.$$)
+assert_match "auto-disable emits stderr warning" "ANTHROPIC_API_KEY" "$WARN"
 
 report_results
