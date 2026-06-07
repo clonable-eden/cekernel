@@ -251,6 +251,20 @@ materially shape this decision:
   profile are still serialized into the prompt, exactly as in v1. The
   CEKERNEL_*-env-via-Bash-prefix pattern is preserved.
 
+- **`/goal` slash command resolution under `--bg`** (Confidence: Evolving) —
+  verified empirically in v2.1.153 that a positional `/goal <condition>`
+  in the `claude --bg` prompt argument is parsed as a slash command at
+  session bootstrap (registering a session-scoped Stop hook with the
+  given condition) rather than treated as the session's display name.
+  The v2 spawn pattern depends on this contract. If upstream changes
+  the behavior — for example, by requiring explicit hook registration
+  via a flag, by treating positional `/goal` as data, or by routing
+  slash-command parsing through a different initialization path — v2
+  spawn breaks silently (the session would start without the goal hook,
+  sit idle, and never complete). Watch the Claude Code changelog for
+  changes to `/goal`, `--bg`, or session-bootstrap prompt parsing, and
+  re-verify the contract on each upgrade.
+
 - **Bash Tool Shell Selection** and **Context Window Limits** are unchanged
   by this ADR.
 
@@ -469,11 +483,20 @@ The migration is sequenced to limit risk:
    PR, including the self-review fallback case (PR_AUTHOR == GH_USER →
    `COMMENT` event). Phase 4 must not ship until this PoC succeeds —
    the Worker PoCs (#536/#538) cover only the Worker side
-6. **Phase 5 — retire v1 scripts** (separate ADR): once telemetry shows v2
-   spawn mode covers >X% of invocations and a defect window has elapsed,
-   remove the legacy protocol scripts and v1 agent definitions. This is a
-   breaking change for any downstream that uses `notify-complete.sh` etc.
-   directly, and must be announced via release notes
+6. **Phase 5 — retire v1 scripts** (separate ADR): trigger conditions
+   (all required):
+   - Phase 2's `CEKERNEL_SPAWN_MODE` default has been flipped to `bg-goal`
+     for at least 60 consecutive days
+   - Zero GitHub issues filed in the cekernel repository during that window
+     that are root-caused to the legacy spawn path
+   - Maintainer ack in the form of a written sign-off on the Phase 5 ADR
+
+   cekernel has no telemetry collection; the signal is the GitHub issue
+   tracker plus maintainer judgment. When the trigger conditions hold,
+   a follow-up ADR removes the legacy protocol scripts and v1 agent
+   definitions. This is a breaking change for any downstream that uses
+   `notify-complete.sh` etc. directly, and must be announced via release
+   notes.
 
 ### Open Questions
 
