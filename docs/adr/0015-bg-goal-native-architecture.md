@@ -107,6 +107,25 @@ Migrate cekernel toward a **bg-goal native architecture** in which:
    `CEKERNEL_SPAWN_MODE=legacy|bg-goal` (default `legacy` until v2 is hardened).
    `spawn-worker.sh` and `spawn-reviewer.sh` dispatch on this variable.
 
+   **Backend × SPAWN_MODE matrix**: `bg-goal` is **headless-only**. When
+   `CEKERNEL_BACKEND` is `wezterm` or `tmux` and `CEKERNEL_SPAWN_MODE=bg-goal`,
+   `spawn.sh` silently downgrades to `legacy` for that spawn and emits a
+   one-line stderr notice the first time it does so per session. Rationale:
+   `claude --bg` detaches the process from any terminal, defeating the
+   pane-as-progress-window UX that motivates the wezterm/tmux backends. An
+   operator who wants `bg-goal` semantics on those backends must explicitly
+   set `CEKERNEL_BACKEND=headless`. A future Phase X may introduce a
+   `claude attach`-based re-attach pattern that restores the visualization
+   layer; that is out of scope for this ADR.
+
+   **Version floor**: v2 paths require `claude --version >= 2.1.154`
+   (the version that documents `--bg` and `--bare` in `--help`).
+   `spawn.sh` parses `claude --version` once at session start and falls
+   back to `legacy` for any older installation, emitting a one-line stderr
+   warning. The floor will be raised as `/goal`, `claude agents --json`,
+   and `claude daemon` mature (track upstream changelog and bump as
+   required behavior is added).
+
 6. **`orchctl ps` becomes a thin formatter over `claude agents --json`**, with
    cekernel-specific columns (issue number, priority, lock state) joined from
    cekernel's own state. The shell layer that called `process-status.sh`,
@@ -381,9 +400,10 @@ daemon-side cleanup is required:
   to be observed by `claude agents --json` and are wound down through
   `claude stop` or natural `/goal` completion
 - New spawns take the legacy path immediately
-- `agents/worker-policy.md` and `agents/worker-v1-protocol.md` are both
-  loaded under `legacy` so behavior is byte-for-byte equivalent to the
-  pre-split state
+- Under `legacy`, `--agent worker` resolves to the original `agents/worker.md`
+  (unchanged across the v1/v2 split — see Decision item 4), so behavior is
+  byte-for-byte equivalent to the pre-split state. `agents/worker-policy.md`
+  exists but is not loaded by `legacy`-mode spawns
 
 If a Worker spawned under `bg-goal` is wedged and `CEKERNEL_SPAWN_MODE` is
 flipped to `legacy` mid-flight, the operator stops the wedged session
