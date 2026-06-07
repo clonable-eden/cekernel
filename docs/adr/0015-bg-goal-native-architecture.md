@@ -89,16 +89,19 @@ Migrate cekernel toward a **bg-goal native architecture** in which:
    custom state machine — it observes Claude Code's daemon-tracked sessions and
    GitHub state.
 
-4. **`agents/worker.md` is split** into a thin `agents/worker-policy.md` (plan
-   comment shape, result comment shape, TDD rules, self-merge restraint,
-   target-repo authority — the genuinely useful guidance) and a renamed
-   `agents/worker-v1-protocol.md` carrying the v1 orchestrator-protocol layer
-   (phase transitions, FIFO IPC, checkpoint files). At split time, the
-   generic `agents/worker.md` filename is **retired** to avoid the
-   least-surprise trap of having "worker.md" silently mean "the legacy
-   contract". v2 sessions load `worker-policy.md`; v1 sessions load both
-   `worker-policy.md` and `worker-v1-protocol.md`. `agents/reviewer.md` is
-   split analogously into `reviewer-policy.md` and `reviewer-v1-protocol.md`.
+4. **A thin `agents/worker-policy.md` (agent name `worker-policy`) is
+   introduced alongside the existing `agents/worker.md`**, carrying the
+   policy layer: plan comment shape, result comment shape, TDD rules,
+   self-merge restraint, target-repo authority. v2 sessions are spawned
+   with `--agent <plugin>:worker-policy`; v1 sessions continue to use
+   `--agent <plugin>:worker` (and thus continue to load the full `worker.md`
+   superset). The original `worker.md` is **not** renamed — the agent name
+   `worker` is referenced by spawn scripts and namespace-detection logic
+   throughout the codebase, and renaming would ripple far beyond this ADR.
+   The least-surprise hazard of "`worker.md` silently means the legacy
+   contract" is addressed by a short header comment in `worker.md` pointing
+   readers at `worker-policy.md`. `agents/reviewer.md` and
+   `agents/reviewer-policy.md` follow the same pattern.
 
 5. **Both spawn paths coexist during the migration**, gated by
    `CEKERNEL_SPAWN_MODE=legacy|bg-goal` (default `legacy` until v2 is hardened).
@@ -215,9 +218,13 @@ materially shape this decision:
 - **Subagent Nesting Limitation (Confidence: Stable)** — v2 does not change
   the nesting story. Worker/Reviewer continue as independent OS-tracked
   processes (now daemon-tracked rather than process-group-tracked).
+  Clarification: `claude --bg` invoked from inside an Orchestrator (itself
+  a skill-spawned subagent) does **not** count as subagent nesting — the bg
+  session is hosted by Claude Code's daemon and runs outside the parent's
+  subagent tree, so the depth-≥2 reliability concern does not apply.
   ADR-0012 is not superseded — its concern about subagent nesting still
-  motivates the choice not to spawn workers as subagents inside the
-  Orchestrator session.
+  motivates the choice not to spawn workers as Task-tool subagents inside
+  the Orchestrator session.
 
 - **Subagent Information Propagation (Confidence: Stable)** — the bg session
   prompt is the only channel for the `/goal` condition and the issue
@@ -420,8 +427,12 @@ The migration is sequenced to limit risk:
    injection under `CEKERNEL_USE_BARE`. Functionally unchanged. Future-proofs
    `-p` independently of v2
 2. **Phase 1 — agent-definition split**: introduce
-   `agents/worker-policy.md` and `agents/reviewer-policy.md`. Existing
-   `worker.md` / `reviewer.md` unchanged. No behavior change
+   `agents/worker-policy.md` and `agents/reviewer-policy.md` (each ~3K
+   tokens). Existing `worker.md` / `reviewer.md` unchanged; a short header
+   comment in each points readers to the policy file. No behavior change.
+   **Phase 1 MUST land before Phase 2** — without it, sessions running
+   `bg-goal` mode pay the full ~21K-token-per-turn v1 prompt cost (see
+   Negative consequences)
 3. **Phase 2 — `spawn.sh` dispatch**: add `CEKERNEL_SPAWN_MODE=bg-goal` path
    that invokes `claude --bg --permission-mode auto --plugin-dir <root>
    --add-dir <worktree> --agent <policy-agent> "/goal <condition>"`. Default
@@ -429,9 +440,15 @@ The migration is sequenced to limit risk:
 4. **Phase 3 — `orchctl` view layer**: rewrite `orchctl ps` to merge
    `claude agents --json` with cekernel-specific state. `process-status.sh`
    becomes a back-compat wrapper
-5. **Phase 4 — Orchestrator coordinator-mode**: agent definition adjusts to
-   use `claude --bg` for Worker spawns and gh state for completion. No
-   FIFO, no `watch.sh`. Reviewer spawn flows through the same path
+5. **Phase 4 — Orchestrator coordinator-mode** (gated by Reviewer
+   bg+goal PoC): agent definition adjusts to use `claude --bg` for Worker
+   spawns and gh state for completion. No FIFO, no `watch.sh`. Reviewer
+   spawn flows through the same path. **Blocking dependency**: an empirical
+   PoC must demonstrate that a Reviewer bg+goal session correctly posts
+   either an `APPROVE` or `CHANGES_REQUESTED` review on a representative
+   PR, including the self-review fallback case (PR_AUTHOR == GH_USER →
+   `COMMENT` event). Phase 4 must not ship until this PoC succeeds —
+   the Worker PoCs (#536/#538) cover only the Worker side
 6. **Phase 5 — retire v1 scripts** (separate ADR): once telemetry shows v2
    spawn mode covers >X% of invocations and a defect window has elapsed,
    remove the legacy protocol scripts and v1 agent definitions. This is a
@@ -449,19 +466,25 @@ follow-up ADRs or implementation work:
 - Reviewer-as-`isolation: worktree`-subagent (#531): an orthogonal
   optimization. Compatible with v2 (Reviewer could be a bg session, or a
   subagent inside the Orchestrator bg session). Decision deferred
-- `/workflows` vs cekernel (#527): with v2 in place, the boundary
-  clarifies — `/workflows` is for in-session deterministic fan-outs,
-  cekernel is for cross-session persistent issue pipelines. #527 may be
-  closable as "resolved by v2 architecture"
-- Reviewer bg+goal PoC: Worker is verified, Reviewer is not. Needed
-  before Phase 4 lands
+
+### Subsumed Discussions
+
+- **`/workflows` vs cekernel boundary (#527)** — this ADR **subsumes** the
+  spawn-and-observability scope of #527 (cekernel adopts bg-goal for spawn
+  and `claude agents --json` for observability; `/workflows` is for
+  in-session deterministic fan-outs, cekernel is for cross-session
+  persistent issue pipelines). The only residual discussion in #527 is
+  whether cekernel-side skills (e.g., `dispatch` priority scoring) should
+  internally use `/workflows` to parallelize their own compute. That
+  narrower question can be tracked independently of v2 acceptance
 
 ## References
 
 - #534 — research issue containing the empirical PoC evidence
 - PoC PRs: #537 (Step 1, default Claude), #539 (Step 2, `cekernel:worker`)
 - PR #535 — `--bare` defensive layer (Phase 0)
-- #527 — `/workflows` boundary discussion (likely subsumed by this ADR)
+- #527 — `/workflows` boundary discussion (spawn/observability scope
+  subsumed by this ADR; see Subsumed Discussions above)
 - ADR-0012 — Worker/Reviewer separation (preserved; this ADR does not
   contradict it)
 - ADR-0013 — Transcript-based postmortem (simplifies under v2 native
