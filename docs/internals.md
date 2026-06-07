@@ -254,3 +254,11 @@ The launchd at-backend injects `launchctl bootout` into the runner script during
 On Linux, the `at` command's job number is stored as `os_ref` (unlike cron where `os_ref` = cekernel ID). The `cancel` command reads `os_ref` from the registry to call `atrm`.
 
 Related: [ADR-0011](./adr/0011-scheduled-trigger-via-os-native-schedulers.md).
+
+## bg+goal session (v2 design exploration)
+
+`claude --bg --permission-mode auto` combined with `/goal <actionable condition>` enables an autonomous agent session that runs under OAuth without a foreground TTY. The goal acts as a session-scoped Stop hook that blocks termination until the declared condition holds, turning the session into a self-driving worker.
+
+This pattern fits Worker / Reviewer responsibilities cleanly because their completion criteria (PR opened, review posted, CI green) are externally observable on GitHub. By delegating spawn and supervision to Claude Code's standard `--bg` primitive, cekernel can focus on state, IPC, and convention layers.
+
+It is a leading candidate for the core spawn mechanism of cekernel v2. See [#534](https://github.com/clonable-eden/cekernel/issues/534) for the full v2 architecture discussion.
