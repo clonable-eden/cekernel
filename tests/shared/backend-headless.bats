@@ -68,6 +68,18 @@ FULL_UUID="aaaa1111-2222-4333-8444-555566667777"
   assert_match "argv has the prompt" "test prompt" "$argv"
 }
 
+@test "spawn passes a plugin-scoped agent name from the 5th parameter" {
+  mock_claude_enqueue_short_id "aaaa1111"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$FULL_UUID" background "$WORKTREE_REAL" 1700000000000 busy)]"
+
+  backend_spawn_worker 500 worker "$WORKTREE" "test prompt" "cekernel:worker"
+
+  local argv
+  argv=$(cat "${MOCK_CLAUDE_STATE_DIR}/bg-argv.log")
+  assert_match "argv has --agent cekernel:worker" "--agent cekernel:worker" "$argv"
+}
+
 @test "spawn does NOT use the removed -p print mode" {
   mock_claude_enqueue_short_id "aaaa1111"
   mock_claude_enqueue_agents \

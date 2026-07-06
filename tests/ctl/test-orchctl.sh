@@ -345,15 +345,31 @@ assert_eq "unknown command: exit 1" "1" "$EXIT_CODE"
 # recover command
 # ══════════════════════════════════════════════
 
-# Setup: restore worker-10 to RUNNING state with headless backend and a dead handle
+# Setup: restore worker-10 to RUNNING state with headless backend.
+# Under the v2 contract (ADR-0016 Phase 1) the headless handle is an opaque
+# session token verified via `claude agents --json` — mock claude accordingly.
+SESSION_TOKEN="aaaa1111-2222-4333-8444-555566667777"
 echo "RUNNING:2026-02-28T10:00:00Z:phase1:implement" > "${IPC_A}/worker-10.state"
 echo "headless" > "${IPC_A}/worker-10.backend"
-# Use PID 99999 — virtually guaranteed to be non-existent
-echo "99999" > "${IPC_A}/handle-10.worker"
+echo "$SESSION_TOKEN" > "${IPC_A}/handle-10.worker"
+
+RECOVER_MOCK_DIR=$(mktemp -d)
+cat > "${RECOVER_MOCK_DIR}/claude" <<'MOCK_SCRIPT'
+#!/usr/bin/env bash
+# agents --json replies with the content of CLAUDE_AGENTS_REPLY
+if [[ "${1:-}" == "agents" ]]; then
+  echo "${CLAUDE_AGENTS_REPLY:-[]}"
+else
+  exit 1
+fi
+MOCK_SCRIPT
+chmod +x "${RECOVER_MOCK_DIR}/claude"
 
 # ── Test 40: recover dead RUNNING worker → TERMINATED/crashed ──
+# Session not listed in agents --json → dead
 EXIT_CODE=0
-bash "$ORCHCTL" recover 10 --session "$SESSION_A" 2>/dev/null || EXIT_CODE=$?
+CLAUDE_AGENTS_REPLY="[]" PATH="${RECOVER_MOCK_DIR}:${PATH}" \
+  bash "$ORCHCTL" recover 10 --session "$SESSION_A" 2>/dev/null || EXIT_CODE=$?
 assert_eq "recover dead worker: exit 0" "0" "$EXIT_CODE"
 STATE_CONTENT=$(cat "${IPC_A}/worker-10.state")
 assert_match "recover changes state to TERMINATED" "^TERMINATED:" "$STATE_CONTENT"
@@ -361,14 +377,12 @@ assert_match "recover detail is crashed:detected-by-recover" "crashed:detected-b
 
 # ── Test 41: recover alive worker → error ──
 echo "RUNNING:2026-02-28T10:00:00Z:phase1:implement" > "${IPC_A}/worker-10.state"
-# Start a background sleep and use its PID as a live handle
-sleep 60 &
-ALIVE_PID=$!
-echo "$ALIVE_PID" > "${IPC_A}/handle-10.worker"
+# Session busy in agents --json → alive
 EXIT_CODE=0
-bash "$ORCHCTL" recover 10 --session "$SESSION_A" 2>/dev/null || EXIT_CODE=$?
-kill "$ALIVE_PID" 2>/dev/null || true
-wait "$ALIVE_PID" 2>/dev/null || true
+CLAUDE_AGENTS_REPLY="[{\"sessionId\":\"${SESSION_TOKEN}\",\"kind\":\"background\",\"cwd\":\"/tmp\",\"startedAt\":1700000000000,\"state\":\"busy\"}]" \
+  PATH="${RECOVER_MOCK_DIR}:${PATH}" \
+  bash "$ORCHCTL" recover 10 --session "$SESSION_A" 2>/dev/null || EXIT_CODE=$?
+rm -rf "$RECOVER_MOCK_DIR"
 assert_eq "recover alive worker: error" "1" "$EXIT_CODE"
 # State should remain RUNNING (not changed)
 STATE_CONTENT=$(cat "${IPC_A}/worker-10.state")

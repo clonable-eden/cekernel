@@ -43,71 +43,10 @@ mkdir -p "${CEKERNEL_IPC_DIR}/logs"
   assert_eq "CEKERNEL_AGENT_WORKER preserves 'cekernel:worker' when set" "cekernel:worker" "$result"
 }
 
-# ── Test 3: headless backend receives agent name as 5th parameter ──
-# Create a mock claude that records its arguments
-TEST_TMP=$(mktemp -d)
-trap 'rm -rf "$TEST_TMP" "$CEKERNEL_IPC_DIR" 2>/dev/null || true' EXIT
-
-MOCK_BIN="${TEST_TMP}/mock-bin"
-mkdir -p "$MOCK_BIN"
-cat > "${MOCK_BIN}/claude" <<'MOCK_SCRIPT'
-#!/usr/bin/env bash
-# Record args to a file, then sleep
-echo "$@" > "${CEKERNEL_AGENT_ARGS_FILE:-/dev/null}"
-sleep 300
-MOCK_SCRIPT
-chmod +x "${MOCK_BIN}/claude"
-
-OLD_PATH="$PATH"
-export PATH="${MOCK_BIN}:${PATH}"
-
-# wait_for_file is provided by helpers.sh
-
-# ── Test 3a: headless backend uses agent name from 5th parameter ──
-export CEKERNEL_BACKEND=headless
-ARGS_FILE="${TEST_TMP}/args-3a.txt"
-export CEKERNEL_AGENT_ARGS_FILE="$ARGS_FILE"
-source "${CEKERNEL_DIR}/scripts/shared/backend-adapter.sh"
-
-ISSUE="600"
-WORKTREE="${TEST_TMP}/worktree"
-mkdir -p "$WORKTREE"
-# Create .cekernel-env required by headless backend (always present in production)
-touch "${WORKTREE}/.cekernel-env"
-
-# Pass agent name as 5th parameter (spawn.sh resolves this from env var)
-backend_spawn_worker "$ISSUE" "worker" "$WORKTREE" "test prompt" "cekernel:worker"
-
-if wait_for_file "$ARGS_FILE"; then
-  ARGS=$(cat "$ARGS_FILE")
-  assert_match "headless uses agent name from 5th param (cekernel:worker)" "cekernel:worker" "$ARGS"
-else
-  echo "  FAIL: headless backend did not record claude args (timeout)"
-  TESTS_FAILED=$((TESTS_FAILED + 1))
-fi
-
-backend_kill_worker "$ISSUE" 2>/dev/null || true
-sleep 0.2
-wait 2>/dev/null || true
-
-# ── Test 3b: headless backend uses 'worker' from 5th parameter ──
-ARGS_FILE="${TEST_TMP}/args-3b.txt"
-export CEKERNEL_AGENT_ARGS_FILE="$ARGS_FILE"
-
-ISSUE2="601"
-backend_spawn_worker "$ISSUE2" "worker" "$WORKTREE" "test prompt 2" "worker"
-
-if wait_for_file "$ARGS_FILE"; then
-  ARGS=$(cat "$ARGS_FILE")
-  assert_match "headless uses agent name from 5th param (worker)" "--agent worker" "$ARGS"
-else
-  echo "  FAIL: headless backend did not record claude args (default, timeout)"
-  TESTS_FAILED=$((TESTS_FAILED + 1))
-fi
-
-backend_kill_worker "$ISSUE2" 2>/dev/null || true
-sleep 0.2
-wait 2>/dev/null || true
+# NOTE: The former Tests 3/3a/3b (headless backend passes the agent name
+# to claude argv) moved to tests/shared/backend-headless.bats on the v2
+# --bg contract (ADR-0017 §3) — the -p era mock claude blocked the
+# synchronous --bg spawn path.
 
 # ── Test 4: backends no longer hardcode CEKERNEL_AGENT_WORKER ──
 # After #340, backends receive agent name as a parameter, not from env var.
@@ -159,9 +98,6 @@ else
   echo "  FAIL: spawn.sh should pass \$AGENT_NAME to backend_spawn_worker"
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
-
-# ── Restore PATH ──
-PATH="$OLD_PATH"
 
 # ── Cleanup ──
 rm -rf "$CEKERNEL_IPC_DIR"
