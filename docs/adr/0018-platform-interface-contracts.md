@@ -38,27 +38,71 @@ boundary** stating what is guaranteed, to whom, and where drift is absorbed.
 All invocation and parsing of `claude --bg` spawn output, `claude agents
 --json`, `claude stop`, and daemon queries live in `scripts/shared/
 claude-bg.sh`. **Raw platform JSON never crosses the module boundary.**
-The module exports semantic predicates:
 
-| Function | Meaning | Backed by (v2.1.201 matrix) |
-|----------|---------|------------------------------|
-| `bg_is_alive <token>` | session is running or waiting | `status` ∈ {`busy`, `blocked`} |
-| `bg_is_blocked <token>` | waiting on a permission dialog | `status` == `blocked` |
-| `bg_is_terminal <token>` | session finished or was stopped | `state` ∈ {`done`, `stopped`}, or session absent |
-| `bg_result <token>` | terminal detail | echoes `done` / `stopped` / `gone` |
+**Layer hierarchy** (ownership is meaningless if undeclared):
 
-Liveness reads `status`; terminality reads `state`. The observed
-(status, state) matrix is documented in the module header and mirrored in
-`docs/claude-code-constraints.md`. Consumers (watch, orchctl, wrapper,
-registry, gc, backends, issue-lock) migrate to the predicates.
+```
+claude-bg.sh     — CLI surface: the ONLY parser of platform output
+  ↑ consumed by
+bg-session.sh    — lifecycle core (spawn/supervise/terminate), predicates only
+  ↑ consumed by
+backends / watch / orchctl / wrapper / registry / gc / issue-lock
+```
+
+`bg-session.sh` and every other consumer use the predicates below; none
+of them may parse `agents --json` output themselves.
+
+The module reports observations in **three dimensions, kept distinct** —
+session verdict, and two failure kinds that are NOT verdicts:
+
+| Report | Meaning | Backed by (v2.1.201 matrix) |
+|--------|---------|------------------------------|
+| `alive` | session running or waiting | `status` ∈ {`busy`, `blocked`} |
+| `blocked` | waiting on a permission dialog | `status` == `blocked` |
+| `terminal` (`done`/`stopped`) | session finished / was stopped | `state` ∈ {`done`, `stopped`} |
+| `not-listed` | no session matches the token | absent from `agents --json` |
+| `query-failed` | the platform query itself failed | CLI error / daemon unreachable |
+| `unknown-value` | (status, state) pair not in the matrix | schema drift detected |
+
+Liveness reads `status`; terminality reads `state`. **The predicates
+guarantee honest reporting, not interpretation**: `not-listed`,
+`query-failed`, and `unknown-value` are returned distinctly (distinct exit
+codes / echoed tokens, plus a stderr warning for `unknown-value`) and are
+never coerced into alive or dead. Coercing an unknown status to "dead" is
+exactly how #581 killed healthy Workers; this contract makes that class of
+bug impossible *inside* the layer.
+
+**Degradation policy belongs to each consumer** (Rule of Separation —
+policy stays out of the mechanism): issue-lock treats `query-failed` as
+alive (never steal a lock on doubt — its existing, correct behavior);
+watch retries then escalates; gc refuses to reap. The ADR fixes the
+vocabulary, not the reactions.
+
+### Observed (status, state) matrix — v2.1.201, 2026-07-07
+
+| `status` | `state` | Verdict |
+|----------|---------|---------|
+| `busy` | `working` | alive |
+| `blocked` | `working` | alive + blocked |
+| `idle` | `done` | terminal (`done`) |
+| `idle` (or absent) | `stopped` | terminal (`stopped`) |
+| — session absent — | | not-listed |
+| any combination not above | | unknown-value |
+
+This table is the contract. It is mirrored in the `claude-bg.sh` header,
+`docs/claude-code-constraints.md` § Background Agent Sessions, and
+`mock-claude.bash`; the ADR-0017 staleness rule couples all three.
 
 ### 2. mock-claude is the executable specification
 
 `tests/helpers/mock-claude.bash` emits the same (status, state) matrix and
 is the contract's test double (staleness coupling per ADR-0017: a PR that
 updates the constraints-doc matrix MUST update the mock in the same PR).
-Contract tests exercise the predicates against every matrix row, including
-drift cases (unknown states → fail noisily, Rule of Repair).
+Contract tests exercise the predicates against every matrix row **and**
+the three non-verdict reports: a not-listed token, a failing CLI, and an
+out-of-matrix (status, state) pair each produce their distinct report —
+never a coerced alive/dead (Rule of Repair: the layer's job is to make
+drift *visible*, not to guess).
 
 ### 3. Session env is guaranteed by the spawner, not the daemon
 
@@ -126,5 +170,10 @@ is not maintainable.
 
 - Implementation issue: migrate the 9 bypassing consumers, fix #591
   (terminal reads `state`) and #589 (env injection normative) inside the
-  new contract.
+  new contract. Fold in #573 item 2 (transient-error vs not-listed
+  distinction) — it is this ADR's failure semantics.
+- Implementation verification: whether `claude agents --json` resurrects
+  the on-demand daemon as a side effect — predicates should be
+  side-effect-free observers, or the effect must be documented in the
+  constraints doc.
 - CLAUDE.md: add the review criterion.
