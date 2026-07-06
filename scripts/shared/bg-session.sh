@@ -186,17 +186,15 @@ bg_session_alive() {
     state=$(bg_session_status "$issue" "$type" 2>/dev/null) || return 1
     [[ "$state" == "busy" || "$state" == "blocked" ]]
   else
-    local handle_file found=0
+    local handle_file
     for handle_file in "${CEKERNEL_IPC_DIR}"/handle-"${issue}".*; do
       [[ -f "$handle_file" ]] || continue
-      found=1
       local token
       token=$(cat "$handle_file")
       if claude_bg_token_alive "$token" 2>/dev/null; then
         return 0
       fi
     done
-    [[ "$found" -eq 1 ]] || return 1
     return 1
   fi
 }
