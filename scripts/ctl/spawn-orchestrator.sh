@@ -28,9 +28,10 @@ source "${SCRIPT_DIR}/../shared/bare-mode.sh"
 PROMPT="${1:?Usage: spawn-orchestrator.sh <prompt>}"
 REPO_ROOT="$(resolve_repo_root)"
 
-# --bare requires an explicit auth path — fail before spawning an
-# Orchestrator that would die on auth (Rule of Repair, ADR-0016 Phase 0).
-bare_mode_preflight
+# --bare is conditional on auth availability (ADR-0016 Amendment 1):
+# bare_mode_prepare drops --bare (OAuth/keychain auth) with a stderr notice
+# when no bare-compatible auth path exists — interactive spawn paths branch
+# instead of hard-failing.
 bare_mode_prepare "$REPO_ROOT"
 
 # ── Resolve agent name ──

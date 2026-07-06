@@ -29,11 +29,11 @@ schedule_generate_wrapper() {
   local syslog_file="${CEKERNEL_VAR_DIR}/logs/schedule.log"
   local run_log="${CEKERNEL_VAR_DIR}/logs/${id}.run.log"
 
-  # --bare requires an explicit auth path — fail at schedule time instead of
-  # generating a runner doomed to die on auth (Rule of Repair, ADR-0016
-  # Phase 0). Exported env vars do NOT reach the cron/at runtime, so use
-  # CEKERNEL_CLAUDE_SETTINGS (captured below as a --settings path with
-  # apiKeyHelper) for scheduled jobs.
+  # Scheduled (cron/at) paths keep the hard preflight failure (ADR-0016
+  # Amendment 1): they run unattended, where silent OAuth expiry is worse
+  # than a noisy refusal at schedule time (Rule of Repair). Exported env
+  # vars do NOT reach the cron/at runtime, so use CEKERNEL_CLAUDE_SETTINGS
+  # (captured below as a --settings path with apiKeyHelper).
   bare_mode_preflight || return 1
   local bare_flags
   bare_flags="$(bare_mode_flags "$repo")"

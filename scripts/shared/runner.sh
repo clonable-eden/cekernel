@@ -25,9 +25,10 @@ write_runner_script() {
   local runner="${CEKERNEL_IPC_DIR}/run-${issue}.sh"
   local prompt_file="${CEKERNEL_IPC_DIR}/prompt-${issue}.txt"
 
-  # --bare requires an explicit auth path — fail before generating a runner
-  # that would die on auth (Rule of Repair, ADR-0016 Phase 0).
-  bare_mode_preflight || return 1
+  # --bare is conditional on auth availability (ADR-0016 Amendment 1):
+  # bare_mode_flags drops --bare (OAuth/keychain auth) with a stderr notice
+  # when no bare-compatible auth path exists. wezterm/tmux runners are
+  # interactive spawn paths — they branch instead of hard-failing.
   local bare_flags
   bare_flags="$(bare_mode_flags "$worktree")"
 
