@@ -49,10 +49,22 @@ Known characteristics:
 - Background tasks are useful for long polling but should not be relied upon
   as the sole mechanism for critical signals
 
+Additionally (observed 2026-07-07, claude v2.1.201): **the harness may
+auto-detach a long-running foreground Bash call into a background task**
+even when the agent intended a blocking call. In `claude -p` execution this
+is fatal in combination with turn-end process exit: the agent believes it
+will be re-invoked on completion, ends its turn, and the process dies with
+its watchers (#558). Setting `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` in
+the spawned process's environment keeps Bash calls truly in the foreground.
+
 **Implications for cekernel**:
 - Background watchers can improve signal detection latency (seconds vs minutes)
   but must not replace phase-boundary checks as the reliable baseline
 - Design with the assumption that background notifications may be delayed or missed
+- Headless (`-p`) orchestrators MUST run with
+  `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` (spawn-orchestrator.sh sets it)
+  so that "wait in foreground" cannot be silently converted into a fatal
+  background detach
 
 **References**:
 [anthropics/claude-code#21048](https://github.com/anthropics/claude-code/issues/21048),
@@ -197,15 +209,21 @@ Observed characteristics:
 - `--allowedTools <tools...>` is variadic and swallows a following
   positional prompt; the prompt must precede the flag
 
+Verified 2026-07-07 (31-minute busy probe, session `cada4872`):
+- **Daemon lifetime is tied to running sessions, not CLI clients.** The
+  daemon (single PID) stayed alive for the full 31-minute busy window
+  after the spawning client exited, and shut down only after the session
+  completed. Long-running Workers are NOT orphaned by daemon exit.
+  Lingering `done` sessions do not keep the daemon alive.
+- **Minimal-environment spawn works**: `env -i HOME=... PATH=...` (cron
+  approximation) successfully auto-started the daemon and spawned a
+  session. Real launchd/crontab verification remains for Phase 3.
+- **Retention**: `agents --json --all` still listed sessions ~3 weeks old.
+
 Unverified (check before relying on them):
-- Whether a running background session counts as a daemon "client" — i.e.
-  whether a long-running Worker can be orphaned or killed by daemon exit
-  (`claude daemon stop --keep-workers` implies detached sessions can
-  survive, but the default lifecycle interaction is unconfirmed)
-- launchd/crontab reachability of the on-demand daemon (socket under
-  `/tmp/cc-daemon-<uid>/...`)
-- Retention window of finished sessions in `agents --json --all`
-- `--bg --bare` combination behavior
+- `--bg --bare` with a **prompt**: untested. The `--exec` path emits
+  `warning: --exec ignores --bare (only --name composes)` — verify the
+  prompt path in Phase 1 (#546).
 
 **Implications for cekernel**:
 - ADR-0016 delegates spawn/supervision to `--bg`; session IDs are captured
