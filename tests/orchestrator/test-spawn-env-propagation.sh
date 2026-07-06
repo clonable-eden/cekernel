@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # test-spawn-env-propagation.sh — Tests that spawn.sh writes .cekernel-env
-# and that PATH is propagated via runner script (not via LLM PROMPT prefix).
+# and that PATH is propagated via the sourced .cekernel-env (not via LLM
+# PROMPT prefix).
 #
 # Verifies:
 # 1. .cekernel-env is written to the worktree with all env vars
@@ -39,9 +40,9 @@ else
 fi
 
 # ── Test 3: BASH_PREFIX removed — spawn.sh must not define BASH_PREFIX ──
-# PATH is now propagated via .cekernel-env sourced by the runner script.
+# PATH is now propagated via .cekernel-env sourced by the spawn path.
 if [[ "$SCRIPT_CONTENT" != *'BASH_PREFIX='* ]]; then
-  echo "  PASS: BASH_PREFIX removed from spawn.sh (PATH via runner script)"
+  echo "  PASS: BASH_PREFIX removed from spawn.sh (PATH via .cekernel-env)"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
   echo "  FAIL: BASH_PREFIX still present in spawn.sh"
@@ -57,15 +58,11 @@ else
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-# ── Test 5: runner.sh sources .cekernel-env in generated script ──
-RUNNER_SCRIPT="${CEKERNEL_DIR}/scripts/shared/runner.sh"
-if grep -q 'source .cekernel-env' "$RUNNER_SCRIPT"; then
-  echo "  PASS: runner.sh generates scripts that source .cekernel-env"
-  TESTS_PASSED=$((TESTS_PASSED + 1))
-else
-  echo "  FAIL: runner.sh does not source .cekernel-env"
-  TESTS_FAILED=$((TESTS_FAILED + 1))
-fi
+# ── (former Test 5 removed) ──
+# runner.sh was removed in ADR-0016 Phase 5. The ".cekernel-env is sourced
+# on spawn" contract is asserted behaviorally in
+# tests/shared/backend-headless.bats ("spawn sources .cekernel-env from the
+# worktree") — no script-text grep needed (ADR-0017).
 
 # ── Test 6: Worker script directories are computed from SCRIPT_DIR ──
 if [[ "$SCRIPT_CONTENT" == *'CEKERNEL_WORKER_SCRIPTS="$(cd "${SCRIPT_DIR}/../process" && pwd)"'* ]]; then

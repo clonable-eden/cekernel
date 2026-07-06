@@ -132,8 +132,9 @@ scripts/
     backend-adapter.sh     # Backend abstraction layer (wezterm/tmux/headless)
     backends/
       headless.sh          # Headless backend implementation
-      tmux.sh              # tmux backend implementation
-      wezterm.sh           # WezTerm backend implementation
+      tmux.sh              # tmux backend (attach-only visualization pane)
+      wezterm.sh           # WezTerm backend (attach-only visualization pane)
+    bg-session.sh          # Shared claude --bg session core (spawn/liveness/stop)
     checkpoint-file.sh     # Checkpoint file helpers for suspend/resume
     claude-json-helper.sh  # ~/.claude.json trust entry read/write helper
     claude-bg.sh           # Shared claude --bg session helpers (agents --json query, capture)
@@ -142,7 +143,6 @@ scripts/
     issue-lock.sh          # Repo × issue lockfile (duplicate Worker prevention)
     load-env.sh            # Environment profile loader (multi-layer search)
     resolve-repo-root.sh   # Resolve repository root from any subdirectory
-    runner.sh              # Runner script generator for terminal backends (cd, env, prompt)
     session-id.sh          # Session ID generation + IPC directory derivation
     task-file.sh           # Local task file extraction (session memory: page cache)
     transcript-locator.sh  # Transcript discovery for post-mortem analysis (ADR-0013)
