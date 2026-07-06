@@ -27,7 +27,7 @@
 # runner.sh; the auth branch is decided inside bare_mode_prepare):
 #   source bare-mode.sh
 #   bare_mode_prepare "$worktree"
-#   exec claude -p "${CEKERNEL_BARE_FLAGS[@]}" --agent "$name" "$prompt"
+#   claude --bg "${CEKERNEL_BARE_FLAGS[@]}" --agent "$name" "$prompt"
 #
 # Usage (scheduled paths — wrapper.sh; unattended, so no-auth is a hard
 # error instead of a silent OAuth dependency):
