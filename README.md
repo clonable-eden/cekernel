@@ -168,11 +168,14 @@ skills/
     SKILL.md               # /unix-architect skill — ADR authoring and review
 tests/
   ctl/test-*.sh            # Control script tests (orchctl, spawn-orchestrator)
-  helpers.sh               # Assertion helpers
+  helpers.sh               # Assertion helpers (legacy harness)
+  helpers/
+    assertions.bash        # Assertion helpers (bats lane)
   orchestrator/test-*.sh   # Orchestrator script tests
-  run-tests.sh             # Test runner
+  run-tests.sh             # Dual-lane test runner (legacy test-*.sh + *.bats)
   scheduler/test-*.sh      # Scheduler script tests
   shared/test-*.sh         # Shared helper tests
+  shared/*.bats            # bats-core tests (ADR-0017 migration)
   process/test-*.sh        # Process script tests
 ```
 
@@ -187,6 +190,7 @@ tests/
 | [WezTerm](https://wezfurlong.org/wezterm/) | Worker window launch/management (wezterm backend) | No* |
 | [tmux](https://github.com/tmux/tmux) | Worker pane management (tmux backend) | No* |
 | git | Worktree creation/management | Yes |
+| [bats-core](https://bats-core.readthedocs.io/) | Test framework (development only) — `brew install bats-core`; CI pins v1.13.0 | No (dev) |
 
 \* One backend is required: headless (default), WezTerm, or tmux. Set `CEKERNEL_BACKEND` env var to select. Headless requires no terminal.
 

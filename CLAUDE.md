@@ -229,19 +229,49 @@ Exception: When a change adds no executable scripts (e.g., env profile or
 skill definition changes), content-based assertions on configuration files
 are acceptable as regression guards.
 
+**Assert behavior, never emitted script text** (ADR-0017). Tests verify
+executed effects and recorded argv, not the text of generated scripts.
+Grep-testing a generated runner for strings like `exec claude -p` is the
+same anti-pattern as `.md`-grep, one layer down — it breaks on mechanism
+changes even when behavior is preserved.
+
+### Test Harness (dual-lane, ADR-0017 migration)
+
+The suite is migrating from the custom harness to [bats-core](https://bats-core.readthedocs.io/).
+`tests/run-tests.sh` runs **both lanes** during migration:
+
+1. **Legacy lane**: `tests/{category}/test-*.sh` files using `helpers.sh`
+2. **bats lane**: `tests/**/*.bats` files via `bats --recursive tests/`
+
+Local setup: `brew install bats-core` (macOS). CI pins bats-core `v1.13.0`
+via git checkout in `cekernel-tests.yml`.
+
+New tests should be written as `.bats` files. Naming: one `.bats` file per
+script under test, named after the script (e.g. `tests/shared/session-id.bats`
+for `scripts/shared/session-id.sh`). Do not add new legacy-harness
+`test-*.sh` files. `run-tests.sh` is deleted when the last legacy-harness
+file is gone.
+
+In `.bats` files, use `load '../helpers/assertions'` for the ported
+`assert_*` functions (`bats-assert` is not vendored).
+
 ### Test File Naming
 
 ```
 tests/
-├── run-tests.sh             # Test runner
-├── helpers.sh               # Assertion functions
+├── run-tests.sh             # Dual-lane test runner (legacy + bats)
+├── helpers.sh               # Assertion functions (legacy harness)
+├── helpers/
+│   └── assertions.bash      # Assertion functions (bats lane)
 ├── orchestrator/
 │   ├── test-concurrency-guard.sh
-│   └── test-{feature}.sh   # Orchestrator script tests
+│   ├── test-{feature}.sh   # Orchestrator script tests (legacy)
+│   └── {script-name}.bats  # bats tests, named after the script under test
 ├── process/
 │   └── test-{feature}.sh   # Process script tests
 ├── shared/
-│   ├── test-session-id.sh   # session-id.sh tests
+│   ├── test-session-id.sh   # session-id.sh tests (legacy)
+│   ├── session-id.bats      # session-id.sh tests (bats)
 │   └── test-{feature}.sh   # Shared helper tests
 └── scheduler/
     └── test-{feature}.sh   # Scheduler script tests
@@ -249,7 +279,11 @@ tests/
 
 ### Assertion Functions
 
-Use the functions provided by `helpers.sh`:
+In `.bats` files, `load '../helpers/assertions'` provides the same
+`assert_*` API (failures return 1 and fail the surrounding `@test`;
+bats tracks pass/fail counts, so `report_results` does not exist there).
+
+In legacy-harness files, use the functions provided by `helpers.sh`:
 
 ```bash
 assert_eq <label> <expected> <actual>
