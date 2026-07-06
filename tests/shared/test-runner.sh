@@ -14,6 +14,9 @@ echo "test: runner"
 
 # ── Test session ──
 export CEKERNEL_SESSION_ID="test-runner-001"
+# --bare preflight requires an auth path (never reads OAuth/keychain)
+export ANTHROPIC_API_KEY="test-key-bare"
+unset CEKERNEL_CLAUDE_SETTINGS
 source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
 rm -rf "$CEKERNEL_IPC_DIR"
 mkdir -p "$CEKERNEL_IPC_DIR"
@@ -80,8 +83,12 @@ else
   TESTS_PASSED=$((TESTS_PASSED + 1))
 fi
 
-# ── Test 11: Runner script uses exec claude directly ──
-assert_match "runner uses exec claude" "exec claude -p --agent" "$RUNNER_CONTENT"
+# ── Test 11: Runner script uses exec claude directly, in --bare mode ──
+assert_match "runner uses exec claude with --bare" "exec claude -p --bare" "$RUNNER_CONTENT"
+
+# ── Test 11b: Runner script injects explicit --bare context ──
+assert_match "runner passes --plugin-dir cekernel root" "--plugin-dir ${CEKERNEL_DIR}" "$RUNNER_CONTENT"
+assert_match "runner passes --add-dir worktree" "--add-dir /tmp/worktree" "$RUNNER_CONTENT"
 
 # ── Test 12: Runner script sources .cekernel-env ──
 assert_match "runner sources .cekernel-env" "source .cekernel-env" "$RUNNER_CONTENT"
@@ -112,6 +119,14 @@ printf '%s' "$TEST_PROMPT" > "${CEKERNEL_IPC_DIR}/prompt-eval.txt"
 PROMPT_READ=$(cat "${CEKERNEL_IPC_DIR}/prompt-eval.txt")
 OUTPUT=$(echo "$PROMPT_READ")
 assert_eq "prompt survives file-to-variable-to-arg pipeline" "$TEST_PROMPT" "$OUTPUT"
+
+# ── Test 17: write_runner_script fails without --bare-compatible auth ──
+EXIT_CODE=0
+(
+  unset ANTHROPIC_API_KEY CEKERNEL_CLAUDE_SETTINGS
+  write_runner_script "46" "/tmp/wt" "s" "worker" "p" >/dev/null 2>&1
+) || EXIT_CODE=$?
+assert_eq "write_runner_script fails without bare auth" "1" "$EXIT_CODE"
 
 # ── Cleanup ──
 rm -rf "$CEKERNEL_IPC_DIR"

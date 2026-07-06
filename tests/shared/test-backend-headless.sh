@@ -14,6 +14,9 @@ echo "test: backend-headless"
 
 # ── Test session ──
 export CEKERNEL_SESSION_ID="test-headless-backend-001"
+# --bare preflight requires an auth path (never reads OAuth/keychain)
+export ANTHROPIC_API_KEY="test-key-bare"
+unset CEKERNEL_CLAUDE_SETTINGS
 source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
 rm -rf "$CEKERNEL_IPC_DIR"
 mkdir -p "$CEKERNEL_IPC_DIR"
@@ -156,6 +159,37 @@ fi
 
 backend_kill_worker "$ISSUE_ENV" 2>/dev/null || true
 sleep 0.2
+
+# ── Test 11: claude is launched with explicit --bare context (ADR-0016 Phase 0) ──
+# Replace the mock with an args-recording version and inspect the argv.
+ARGS_FILE="${TEST_TMP}/claude-args.txt"
+cat > "${MOCK_BIN}/claude" <<MOCK_SCRIPT
+#!/usr/bin/env bash
+printf '%s\n' "\$@" > '${ARGS_FILE}'
+MOCK_SCRIPT
+chmod +x "${MOCK_BIN}/claude"
+
+ISSUE_BARE="504"
+backend_spawn_worker "$ISSUE_BARE" "worker" "$WORKTREE" "test prompt" "worker"
+if wait_for_file "$ARGS_FILE"; then
+  ARGS_CONTENT=$(cat "$ARGS_FILE")
+  assert_match "claude argv includes --bare" "--bare" "$ARGS_CONTENT"
+  assert_match "claude argv includes --plugin-dir cekernel root" "--plugin-dir" "$ARGS_CONTENT"
+  assert_match "claude argv includes --add-dir worktree" "--add-dir" "$ARGS_CONTENT"
+else
+  echo "  FAIL: mock claude was not invoked (no args file)"
+  TESTS_FAILED=$((TESTS_FAILED + 3))
+fi
+backend_kill_worker "$ISSUE_BARE" 2>/dev/null || true
+
+# ── Test 12: spawn fails fast without --bare-compatible auth ──
+EXIT_CODE=0
+(
+  unset ANTHROPIC_API_KEY CEKERNEL_CLAUDE_SETTINGS
+  backend_spawn_worker "505" "worker" "$WORKTREE" "test prompt" "worker" 2>/dev/null
+) || EXIT_CODE=$?
+assert_eq "spawn fails without bare auth" "1" "$EXIT_CODE"
+assert_not_exists "no handle file created without auth" "${CEKERNEL_IPC_DIR}/handle-505.worker"
 
 # ── Restore PATH ──
 PATH="$OLD_PATH"

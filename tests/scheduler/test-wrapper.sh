@@ -15,6 +15,9 @@ setup() {
   export CEKERNEL_VAR_DIR="$(mktemp -d)"
   mkdir -p "${CEKERNEL_VAR_DIR}/runners"
   echo '[]' > "${CEKERNEL_VAR_DIR}/schedules.json"
+  # --bare preflight requires an auth path (never reads OAuth/keychain)
+  export ANTHROPIC_API_KEY="test-key-bare"
+  unset CEKERNEL_CLAUDE_SETTINGS
   source "$WRAPPER_SCRIPT"
 }
 
@@ -167,6 +170,40 @@ schedule_generate_wrapper "$TEST_ID" "$TEST_REPO" "$TEST_PATH" "$TEST_PROMPT"
 RUNNER="${CEKERNEL_VAR_DIR}/runners/${TEST_ID}.sh"
 CONTENT=$(cat "$RUNNER")
 assert_match "calls schedule_registry_update_status" "schedule_registry_update_status" "$CONTENT"
+teardown
+
+# ── Test 17: claude is invoked with explicit --bare context (ADR-0016 Phase 0) ──
+setup
+schedule_generate_wrapper "$TEST_ID" "$TEST_REPO" "$TEST_PATH" "$TEST_PROMPT"
+RUNNER="${CEKERNEL_VAR_DIR}/runners/${TEST_ID}.sh"
+CONTENT=$(cat "$RUNNER")
+assert_match "claude invoked with --bare" "claude -p --bare" "$CONTENT"
+assert_match "plugin dir embedded" "--plugin-dir ${CEKERNEL_DIR}" "$CONTENT"
+assert_match "repo embedded as --add-dir" "--add-dir ${TEST_REPO}" "$CONTENT"
+teardown
+
+# ── Test 18: CEKERNEL_CLAUDE_SETTINGS at generation time → --settings embedded ──
+# Required for cron/at: exported env vars don't reach the generated runner,
+# so auth must travel as a captured --settings path (apiKeyHelper).
+setup
+SETTINGS_FILE="${CEKERNEL_VAR_DIR}/claude-settings.json"
+echo '{}' > "$SETTINGS_FILE"
+export CEKERNEL_CLAUDE_SETTINGS="$SETTINGS_FILE"
+schedule_generate_wrapper "$TEST_ID" "$TEST_REPO" "$TEST_PATH" "$TEST_PROMPT"
+RUNNER="${CEKERNEL_VAR_DIR}/runners/${TEST_ID}.sh"
+CONTENT=$(cat "$RUNNER")
+assert_match "--settings embedded in runner" "--settings ${SETTINGS_FILE}" "$CONTENT"
+unset CEKERNEL_CLAUDE_SETTINGS
+teardown
+
+# ── Test 19: generation fails fast without --bare-compatible auth ──
+setup
+EXIT_CODE=0
+(
+  unset ANTHROPIC_API_KEY CEKERNEL_CLAUDE_SETTINGS
+  schedule_generate_wrapper "$TEST_ID" "$TEST_REPO" "$TEST_PATH" "$TEST_PROMPT" 2>/dev/null
+) || EXIT_CODE=$?
+assert_eq "generation fails without bare auth" "1" "$EXIT_CODE"
 teardown
 
 report_results

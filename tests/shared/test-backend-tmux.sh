@@ -13,6 +13,9 @@ echo "test: backend-tmux"
 
 # ── Test session ──
 export CEKERNEL_SESSION_ID="test-tmux-backend-002"
+# --bare preflight requires an auth path (never reads OAuth/keychain)
+export ANTHROPIC_API_KEY="test-key-bare"
+unset CEKERNEL_CLAUDE_SETTINGS
 source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
 rm -rf "$CEKERNEL_IPC_DIR"
 mkdir -p "$CEKERNEL_IPC_DIR"
