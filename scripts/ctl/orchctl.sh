@@ -971,7 +971,8 @@ cmd_gc() {
 
 # ── count: Count running orchestrators (internal, ADR-0014) ──
 # Session-ID based (ADR-0016 Phase 2): a session counts when its captured
-# token maps to a busy or blocked session in `claude agents --json`.
+# token is alive (busy/blocked) per claude_bg_token_alive_from_json — the
+# liveness vocabulary lives in claude-bg.sh, not here (Rule of Separation).
 # Single fetch per invocation (Phase 4): all tokens resolve against one
 # `agents --json` response.
 cmd_count() {
@@ -991,9 +992,7 @@ cmd_count() {
       token=$(tr -d '[:space:]' < "$sid_file")
       [[ -n "$token" ]] || continue
 
-      local state
-      state=$(claude_bg_state_from_json "$agents_json" "$token") || continue
-      if [[ "$state" == "busy" || "$state" == "blocked" ]]; then
+      if claude_bg_token_alive_from_json "$agents_json" "$token"; then
         count=$((count + 1))
       fi
     done

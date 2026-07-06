@@ -34,10 +34,17 @@
 #       degraded fallback — prefix matching serves both.
 #     — Returns 1 (echoing nothing) when no session matches or the query fails.
 #
-#   claude_bg_token_alive <token>
-#     — exit 0 when the session state is busy or blocked (alive), 1 otherwise.
+#   claude_bg_token_alive_from_json <json> <token>
+#     — exit 0 when the session state is busy or blocked (alive), 1
+#       otherwise, resolved against a pre-fetched `agents --json` body.
 #       blocked means the session waits on a permission dialog — alive but
-#       stalled; supervision surfaces it distinctly (ADR-0016).
+#       stalled; supervision surfaces it distinctly (ADR-0016). This is the
+#       single home of the busy/blocked liveness vocabulary — view layers
+#       (orchctl count) delegate here instead of comparing states inline.
+#
+#   claude_bg_token_alive <token>
+#     — Fetching variant of claude_bg_token_alive_from_json: queries
+#       `agents --json` itself, then delegates.
 #
 #   claude_bg_capture_session_id <short-id> <cwd>
 #     — Echo the full session UUID (ADR-0016 normative capture order):
@@ -73,12 +80,21 @@ claude_bg_state_for_token() {
   claude_bg_state_from_json "$json" "$token"
 }
 
+# claude_bg_token_alive_from_json <json> <token>
+claude_bg_token_alive_from_json() {
+  local json="$1"
+  local token="$2"
+  local state
+  state=$(claude_bg_state_from_json "$json" "$token") || return 1
+  [[ "$state" == "busy" || "$state" == "blocked" ]]
+}
+
 # claude_bg_token_alive <token>
 claude_bg_token_alive() {
   local token="$1"
-  local state
-  state=$(claude_bg_state_for_token "$token") || return 1
-  [[ "$state" == "busy" || "$state" == "blocked" ]]
+  local json
+  json=$(claude_bg_agents_json) || return 1
+  claude_bg_token_alive_from_json "$json" "$token"
 }
 
 # claude_bg_capture_session_id <short-id> <cwd>
