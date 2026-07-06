@@ -248,7 +248,8 @@ else
   # Extract issue data into worktree (session memory: page cache)
   # Processes read .cekernel-task.md locally instead of calling gh issue view,
   # reducing GitHub API calls and context window consumption.
-  create_task_file "$WORKTREE" "$ISSUE_NUMBER" "$ISSUE_REPO"
+  # Record the base branch so the Worker targets it with `gh pr create --base` (#562)
+  create_task_file "$WORKTREE" "$ISSUE_NUMBER" "$ISSUE_REPO" "$BASE_BRANCH"
   echo "task file: $(task_file_path "$WORKTREE")" >&2
 fi
 
