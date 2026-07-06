@@ -248,6 +248,18 @@ lock_with_token() {
   assert_eq "check reports unlocked (stale)" "1" "$status"
 }
 
+@test "acquire steals the lock when the holder file is empty (corrupt write)" {
+  # An empty holder falls into the non-numeric token path where
+  # startswith("") matches EVERY session — an unrelated busy session
+  # must not keep a corrupt lock alive (PR #572 follow-up, #573).
+  mock_claude
+  lock_with_token ""
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$TOKEN" background /tmp/wt 1700000000000 busy)]"
+  run issue_lock_acquire "$REPO_A" "$ISSUE"
+  assert_eq "acquire succeeds (empty holder is stale)" "0" "$status"
+}
+
 @test "prefix-matches a short-ID token holder (degraded capture)" {
   mock_claude
   lock_with_token "aaaa1111"
