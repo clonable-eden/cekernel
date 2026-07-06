@@ -6,8 +6,27 @@
 # Functions:
 #   schedule_generate_wrapper <id> <repo> <path> <prompt> — Generate runner script
 #
+# ADR-0016 Phase 3: the generated runner spawns `claude --bg` (prompt path —
+# the hidden/unstable `--exec` flag is NOT used) and supervises the run by
+# polling `agents --json` to a terminal state. `--bg` returns immediately,
+# so exit-code-based success/error recording is impossible; instead:
+#
+#   done                         → registry status "success"
+#   blocked / stopped / timeout  → registry status "error"
+#   spawn or capture failure     → registry status "error"
+#   duration                     → the poll window, not the job runtime
+#
+# Fidelity note: "success" means the SESSION reached `done` (terminated),
+# not that the job inside it succeeded — job-level outcomes stay in
+# transcripts and notifications (see registry.sh, last_run_status).
+#
 # Environment variables (overridable for testing):
 #   CEKERNEL_VAR_DIR — Base directory (default: $HOME/.local/var/cekernel)
+#   CEKERNEL_SCHEDULE_POLL_INTERVAL — Poll interval in seconds, captured at
+#     generation time (default: 15)
+#   CEKERNEL_SCHEDULE_POLL_TIMEOUT — Poll window in seconds, captured at
+#     generation time (default: 3600). On timeout the runner records
+#     "error" but leaves the session running (it may still be working).
 
 _WRAPPER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${_WRAPPER_DIR}/../shared/load-env.sh"
@@ -29,6 +48,11 @@ schedule_generate_wrapper() {
   local syslog_file="${CEKERNEL_VAR_DIR}/logs/schedule.log"
   local run_log="${CEKERNEL_VAR_DIR}/logs/${id}.run.log"
 
+  # Poll window captured at generation time — exported env vars do NOT
+  # reach the cron/at runtime, so runtime knobs must be embedded.
+  local poll_interval="${CEKERNEL_SCHEDULE_POLL_INTERVAL:-15}"
+  local poll_timeout="${CEKERNEL_SCHEDULE_POLL_TIMEOUT:-3600}"
+
   # Scheduled (cron/at) paths keep the hard preflight failure (ADR-0016
   # Amendment 1): they run unattended, where silent OAuth expiry is worse
   # than a noisy refusal at schedule time (Rule of Repair). Exported env
@@ -49,36 +73,71 @@ CEKERNEL_DIR="${_WRAPPER_CEKERNEL_DIR}"
 CEKERNEL_VAR_DIR="${CEKERNEL_VAR_DIR}"
 SYSLOG_FILE="${syslog_file}"
 RUN_LOG="${run_log}"
+POLL_INTERVAL="${poll_interval}"
+POLL_TIMEOUT="${poll_timeout}"
 
 export PATH="${captured_path}"
 
 source "\${CEKERNEL_DIR}/scripts/scheduler/registry.sh"
 source "\${CEKERNEL_DIR}/scripts/shared/desktop-notify.sh"
+source "\${CEKERNEL_DIR}/scripts/shared/claude-bg.sh"
 
 # syslog: START
 echo "\$(date '+%Y-%m-%dT%H:%M:%S%z') cekernel[\$ID]: START prompt=\"${prompt}\" repo=\"${repo}\"" >> "\$SYSLOG_FILE"
 SECONDS=0
 
-if cd "${repo}" && claude -p ${bare_flags} \\
-  "${prompt}" >> "\$RUN_LOG" 2>&1; then
-  STATUS=0
-else
-  STATUS=\$?
+# Spawn as a \`claude --bg\` background agent session (ADR-0016 Phase 3).
+# --bg returns immediately; the outcome is supervised by polling below.
+# Session markers are unset in case the runner is invoked manually from
+# inside a Claude Code session (nested-session detection).
+STATUS=error
+FINAL_STATE=spawn-failed
+TOKEN=""
+if cd "${repo}" && SPAWN_OUT=\$(
+  unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ACCESS_TOKEN
+  claude --bg ${bare_flags} "${prompt}" 2>> "\$RUN_LOG"
+); then
+  printf '%s\n' "\$SPAWN_OUT" >> "\$RUN_LOG"
+
+  # Session-ID capture (ADR-0016 normative order): short ID from the
+  # human-oriented spawn line first, then kind+cwd+startedAt fallback
+  # (agents --json reports realpath'd cwd).
+  SHORT_ID=\$(printf '%s\n' "\$SPAWN_OUT" | awk '/backgrounded/ {print \$NF; exit}')
+  [[ "\$SHORT_ID" =~ ^[0-9a-f]{8}\$ ]] || SHORT_ID=""
+  if TOKEN=\$(claude_bg_capture_session_id "\$SHORT_ID" "\$(pwd -P)"); then
+    FINAL_STATE=\$(claude_bg_wait_terminal "\$TOKEN" "\$POLL_INTERVAL" "\$POLL_TIMEOUT")
+    # done = the SESSION terminated, not that the job inside it succeeded
+    # — job-level outcomes stay in transcripts and notifications.
+    [[ "\$FINAL_STATE" == "done" ]] && STATUS=success
+    # Reap: done sessions linger until stopped, and blocked never
+    # unblocks unattended. On timeout the session may still be doing
+    # real work — record error but leave it running.
+    if [[ "\$FINAL_STATE" != "timeout" ]]; then
+      claude stop "\$TOKEN" >/dev/null 2>&1 || true
+    fi
+  else
+    FINAL_STATE=capture-failed
+  fi
 fi
 
-# syslog: END
+# syslog: END (duration = poll window, not job runtime)
 DURATION="\${SECONDS}s"
-echo "\$(date '+%Y-%m-%dT%H:%M:%S%z') cekernel[\$ID]: END status=\$( [ "\$STATUS" -eq 0 ] && echo success || echo error ) duration=\$DURATION exit=\$STATUS" >> "\$SYSLOG_FILE"
+echo "\$(date '+%Y-%m-%dT%H:%M:%S%z') cekernel[\$ID]: END status=\$STATUS state=\$FINAL_STATE session=\${TOKEN:-none} duration=\$DURATION" >> "\$SYSLOG_FILE"
 
-# Update registry with run status
-schedule_registry_update_status "\$ID" "\$( [ "\$STATUS" -eq 0 ] && echo success || echo error )"
+# Update registry with run status (success = session reached done)
+schedule_registry_update_status "\$ID" "\$STATUS"
 
 # Notify on failure (best-effort, OS-native)
-if [ "\$STATUS" -ne 0 ]; then
-  desktop_notify "cekernel" "Schedule \$ID failed (exit \$STATUS)"
+if [[ "\$STATUS" != "success" ]]; then
+  desktop_notify "cekernel" "Schedule \$ID failed (state \$FINAL_STATE)"
 fi
 
-exit \$STATUS
+# Exit code mirrors the recorded status. Keep this as an explicit
+# \`exit \` line: at-backends/launchd.sh injects its one-shot cleanup
+# (launchctl bootout) immediately before it.
+EXIT_CODE=1
+[[ "\$STATUS" == "success" ]] && EXIT_CODE=0
+exit \$EXIT_CODE
 RUNNER_EOF
 
   chmod 700 "$runner_file"
