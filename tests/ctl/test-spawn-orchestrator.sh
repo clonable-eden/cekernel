@@ -44,12 +44,15 @@ else
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-# ── Test 3b: sources bare-mode.sh and runs auth preflight ──
-if echo "$CONTENT" | grep -q 'bare-mode\.sh' && echo "$CONTENT" | grep -q 'bare_mode_preflight'; then
-  echo "  PASS: sources bare-mode.sh and runs bare_mode_preflight"
+# ── Test 3b: sources bare-mode.sh and builds flags via bare_mode_prepare ──
+# ADR-0016 Amendment 1 (#574): interactive spawn paths must NOT hard-fail
+# on missing bare auth — the branch decision lives inside bare_mode_prepare.
+if echo "$CONTENT" | grep -q 'bare-mode\.sh' && echo "$CONTENT" | grep -q 'bare_mode_prepare' \
+  && ! echo "$CONTENT" | grep -q 'bare_mode_preflight'; then
+  echo "  PASS: sources bare-mode.sh and branches via bare_mode_prepare (no hard preflight)"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
-  echo "  FAIL: should source bare-mode.sh and run bare_mode_preflight"
+  echo "  FAIL: should branch via bare_mode_prepare without a hard bare_mode_preflight"
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 

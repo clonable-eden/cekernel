@@ -102,9 +102,10 @@ backend_spawn_worker() {
   local prompt="$4"
   local agent_name="$5"
 
-  # --bare requires an explicit auth path — fail before spawning a session
-  # that would die on auth (Rule of Repair, ADR-0016 Phase 0).
-  bare_mode_preflight || return 1
+  # --bare is conditional on auth availability (ADR-0016 Amendment 1):
+  # bare_mode_prepare drops --bare (OAuth/keychain auth) with a stderr
+  # notice when no bare-compatible auth path exists. Interactive spawn
+  # paths branch instead of hard-failing — only cron/at keeps preflight.
   bare_mode_prepare "$worktree"
 
   # Launch the session. `claude --bg` returns immediately after printing

@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
-# test-bare-mode.sh — Tests for bare-mode.sh (ADR-0016 Phase 0)
+# test-bare-mode.sh — Tests for bare-mode.sh (ADR-0016 Phase 0 + Amendment 1)
 #
-# Verifies the explicit-context flag builder for `claude -p --bare` spawns:
-#   bare_mode_prepare   — populates CEKERNEL_BARE_FLAGS array
+# Verifies the explicit-context flag builder for claude spawns:
+#   bare_mode_prepare   — populates CEKERNEL_BARE_FLAGS array (--bare only
+#                         when a bare-compatible auth path exists; the
+#                         OAuth branch is covered in bare-mode.bats)
 #   bare_mode_flags     — emits shell-quoted flag string for generated runners
 #   bare_mode_preflight — fails noisily when no --bare-compatible auth exists
+#                         (hard gate for the scheduled cron/at path only)
+# The prepare/flags tests pin ANTHROPIC_API_KEY so the --bare branch is
+# asserted deterministically regardless of the ambient environment.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -20,6 +25,7 @@ assert_file_exists "bare-mode.sh exists" "$BARE_SCRIPT"
 
 # ── Test 2: bare_mode_prepare without context dir → --bare --plugin-dir <root> ──
 RESULT=$(
+  export ANTHROPIC_API_KEY="test-key-bare"
   unset CEKERNEL_CLAUDE_SETTINGS
   source "$BARE_SCRIPT"
   bare_mode_prepare
@@ -33,6 +39,7 @@ assert_eq "prepare without context dir" "$EXPECTED" "$RESULT"
 # ── Test 3: bare_mode_prepare with context dir → adds --add-dir ──
 TMP_DIR="$(mktemp -d)"
 RESULT=$(
+  export ANTHROPIC_API_KEY="test-key-bare"
   unset CEKERNEL_CLAUDE_SETTINGS
   source "$BARE_SCRIPT"
   bare_mode_prepare "$TMP_DIR"
@@ -63,6 +70,7 @@ assert_eq "CEKERNEL_CLAUDE_SETTINGS adds --settings" "$EXPECTED" "$RESULT"
 
 # ── Test 5: bare_mode_flags emits a single-line flag string ──
 RESULT=$(
+  export ANTHROPIC_API_KEY="test-key-bare"
   unset CEKERNEL_CLAUDE_SETTINGS
   source "$BARE_SCRIPT"
   bare_mode_flags "$TMP_DIR"
@@ -75,6 +83,7 @@ assert_match "flags string contains add-dir" "--add-dir ${TMP_DIR}" "$RESULT"
 SPACE_DIR="${TMP_DIR}/with space"
 mkdir -p "$SPACE_DIR"
 RESULT=$(
+  export ANTHROPIC_API_KEY="test-key-bare"
   unset CEKERNEL_CLAUDE_SETTINGS
   source "$BARE_SCRIPT"
   bare_mode_flags "$SPACE_DIR"

@@ -120,13 +120,26 @@ PROMPT_READ=$(cat "${CEKERNEL_IPC_DIR}/prompt-eval.txt")
 OUTPUT=$(echo "$PROMPT_READ")
 assert_eq "prompt survives file-to-variable-to-arg pipeline" "$TEST_PROMPT" "$OUTPUT"
 
-# ── Test 17: write_runner_script fails without --bare-compatible auth ──
+# ── Test 17: write_runner_script succeeds without --bare-compatible auth ──
+# ADR-0016 Amendment 1 (#574): interactive spawn paths drop --bare (OAuth
+# auth) instead of hard-failing. Only cron/at (wrapper.sh) keeps the fail.
 EXIT_CODE=0
 (
   unset ANTHROPIC_API_KEY CEKERNEL_CLAUDE_SETTINGS
   write_runner_script "46" "/tmp/wt" "s" "worker" "p" >/dev/null 2>&1
 ) || EXIT_CODE=$?
-assert_eq "write_runner_script fails without bare auth" "1" "$EXIT_CODE"
+assert_eq "write_runner_script succeeds without bare auth (OAuth)" "0" "$EXIT_CODE"
+
+# ── Test 17b: the OAuth-branch runner drops --bare but keeps context ──
+RUNNER_46=$(cat "${CEKERNEL_IPC_DIR}/run-46.sh")
+if echo "$RUNNER_46" | grep -q -- '--bare'; then
+  echo "  FAIL: runner must not pass --bare without API-key auth"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+else
+  echo "  PASS: runner drops --bare without API-key auth (OAuth)"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+fi
+assert_match "OAuth-branch runner keeps --plugin-dir" "--plugin-dir ${CEKERNEL_DIR}" "$RUNNER_46"
 
 # ── Cleanup ──
 rm -rf "$CEKERNEL_IPC_DIR"

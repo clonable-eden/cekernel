@@ -169,17 +169,32 @@ FULL_UUID="aaaa1111-2222-4333-8444-555566667777"
   assert_file_exists ".cekernel-env sourced" "$marker"
 }
 
-@test "spawn fails fast without --bare-compatible auth" {
+# ADR-0016 Amendment 1 (#574): without a bare-compatible auth path the spawn
+# still succeeds — --bare is dropped so the session authenticates via
+# OAuth/keychain. Only scheduled paths (wrapper.sh) keep the hard fail.
+@test "spawn succeeds without --bare-compatible auth, dropping --bare (OAuth)" {
+  mock_claude_enqueue_short_id "aaaa1111"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$FULL_UUID" background "$WORKTREE_REAL" 1700000000000 busy)]"
+
   run bash -c "
     unset ANTHROPIC_API_KEY CEKERNEL_CLAUDE_SETTINGS
     source '${CEKERNEL_DIR}/scripts/shared/backend-adapter.sh'
     backend_spawn_worker 505 worker '$WORKTREE' 'test prompt' worker
   "
-  assert_eq "spawn fails without bare auth" "1" "$status"
-  assert_not_exists "no handle file without auth" \
+  assert_eq "spawn succeeds via OAuth" "0" "$status"
+  assert_match "stderr notice: bare mode disabled" "bare mode disabled" "$output"
+  assert_file_exists "handle file written" \
     "${CEKERNEL_IPC_DIR}/handle-505.worker"
-  assert_not_exists "no session spawned without auth" \
-    "${MOCK_CLAUDE_STATE_DIR}/bg-argv.log"
+
+  local argv
+  argv=$(cat "${MOCK_CLAUDE_STATE_DIR}/bg-argv.log")
+  assert_match "argv has --bg" "--bg" "$argv"
+  if [[ "$argv" == *"--bare"* ]]; then
+    echo "FAIL: --bare must not appear without API-key auth: ${argv}" >&2
+    return 1
+  fi
+  assert_match "argv keeps --plugin-dir context" "--plugin-dir" "$argv"
 }
 
 # ── handle accessor ──
