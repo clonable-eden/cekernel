@@ -5,12 +5,16 @@
 #
 # The single spawn/supervision path for all backends. Worker sessions are
 # spawned as `claude --bg` background agents supervised by the on-demand
-# daemon; cekernel keeps only an opaque session token as the handle:
+# daemon; cekernel keeps only an opaque session token as the handle.
 #
-#   spawn       → claude --bg --agent <name> (returns immediately)
-#   liveness    → claude agents --json state (busy|blocked = alive)
-#   status      → claude agents --json state (blocked surfaced distinctly)
-#   termination → claude stop <token> (also reaps lingering done sessions)
+# Layer position (ADR-0018): this is the lifecycle core ABOVE the CLI
+# surface — it consumes claude-bg.sh predicates only and never parses
+# `agents --json` output or invokes the claude CLI itself:
+#
+#   spawn       → claude_bg_spawn + claude_bg_capture_session_id
+#   liveness    → claude_bg_token_verdict (alive|blocked = alive)
+#   status      → claude_bg_token_verdict (verdict vocabulary passthrough)
+#   termination → claude_bg_stop (also reaps lingering done sessions)
 #
 # Terminal backends (wezterm/tmux) layer an attach-only visualization pane
 # on top of this core (ADR-0001 Amendment 1); headless uses it as-is.
@@ -18,11 +22,7 @@
 # Handle file: ${CEKERNEL_IPC_DIR}/handle-{issue}.{type} contains an opaque
 # session token — the full session UUID when capture succeeds, or the short
 # ID (first 8 hex chars) as a degraded fallback. All lookups prefix-match
-# the token against `agents --json` sessionId, so both forms work.
-#
-# Session-ID capture follows the ADR-0016 normative order implemented in
-# claude-bg.sh (claude_bg_capture_session_id): short-ID prefix match first,
-# then kind == "background" + cwd + newest startedAt as fallback.
+# the token against the session roster, so both forms work.
 #
 # The captured token is also persisted to
 # ${CEKERNEL_IPC_DIR}/{type}-{issue}.claude-session-id for post-mortem
@@ -35,17 +35,21 @@
 #   bg_session_get_handle <issue> [type]
 #     Echoes the opaque session token from the handle file.
 #   bg_session_status <issue> [type]
-#     Echoes the agents --json state (busy|blocked|done|...); "missing"
-#     with exit 1 when the handle or session is verifiably absent;
-#     "unknown" with exit 1 when the agents query fails (transient).
+#     Echoes the ADR-0018 verdict vocabulary with matching exit codes:
+#     alive|blocked|done|stopped (exit 0), not-listed (exit 3),
+#     query-failed (exit 4 — transient, callers must NOT treat it as a
+#     crash, #573), unknown-value (exit 5); plus "missing" (exit 1) when
+#     no handle file exists for the issue.
 #   bg_session_alive <issue> [type]
-#     exit 0 iff a session for the issue is busy or blocked.
+#     exit 0 iff a session for the issue is alive or blocked. Boolean
+#     projection — callers that need a degradation policy for
+#     query-failed / unknown-value must use bg_session_status instead.
 #   bg_session_stop <issue> [type]
-#     Stops the session(s) via `claude stop`. Never fails.
+#     Stops the session(s) via the claude-bg stop primitive. Never fails.
 
 # ── Dependencies ──
-# Session query / token state / capture primitives live in shared/claude-bg.sh
-# (ADR-0016 Phase 2 extraction) — shared with ctl/spawn-orchestrator.sh and
+# The claude CLI surface (spawn/query/stop) is owned by shared/claude-bg.sh
+# (ADR-0018 Decision 1) — shared with ctl/spawn-orchestrator.sh and
 # ctl/orchctl.sh. This file layers the Worker handle-file lifecycle on top.
 _BG_SESSION_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
 source "${_BG_SESSION_DIR}/bare-mode.sh"
@@ -69,32 +73,25 @@ bg_session_spawn() {
   # paths branch instead of hard-failing — only cron/at keeps preflight.
   bare_mode_prepare "$worktree"
 
-  # Launch the session. `claude --bg` returns immediately after printing
-  # `backgrounded · <short-id>`; the on-demand daemon supervises it.
-  # Source .cekernel-env so the daemon (when auto-started here) inherits
-  # PATH and cekernel env vars. Sessions inherit the DAEMON's env, not
-  # this subshell's (verified 2026-07-07, v2.1.202) — a pre-existing
-  # daemon serves its own (possibly stale) env (#589); Workers fall back
-  # to sourcing .cekernel-env per Bash call when commands are missing.
-  # Unset Claude Code session markers to avoid nested-session detection.
+  # Session env is guaranteed by the SPAWNER, not the daemon (ADR-0018
+  # Decision 3, #589): source .cekernel-env in the spawn subshell so a
+  # daemon auto-started by this call inherits PATH and CEKERNEL_* values.
+  # A PRE-EXISTING daemon serves its own (possibly stale) env — its
+  # inherited environment is declared unspecified — so Workers also
+  # source .cekernel-env per Bash call (the normative mechanism).
   # `--bg --bare` with a prompt composes without warnings (verified
-  # v2.1.201, 2026-07-07 — unlike the hidden --exec path).
-  local spawn_out
-  spawn_out=$(
+  # v2.1.201, 2026-07-07 — unlike the hidden --exec path). stderr is
+  # discarded — analysis uses transcripts.
+  local short_id
+  short_id=$(
     cd "$worktree" && \
-    unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ACCESS_TOKEN && \
     source .cekernel-env && \
-    claude --bg "${CEKERNEL_BARE_FLAGS[@]}" --agent "$agent_name" "$prompt" 2>/dev/null
+    claude_bg_spawn "$worktree" "${CEKERNEL_BARE_FLAGS[@]}" \
+      --agent "$agent_name" "$prompt" 2>/dev/null
   ) || {
     echo "Error: claude --bg spawn failed for issue #${issue}" >&2
     return 1
   }
-
-  # Primary capture: short ID from the human-oriented spawn line. Parsed
-  # solely to extract the token — structured data comes from agents --json.
-  local short_id
-  short_id=$(printf '%s\n' "$spawn_out" | awk '/backgrounded/ {print $NF; exit}')
-  [[ "$short_id" =~ ^[0-9a-f]{8}$ ]] || short_id=""
 
   # agents --json reports realpath'd cwd (e.g. /tmp → /private/tmp)
   local cwd_real
@@ -144,13 +141,12 @@ bg_session_get_handle() {
 }
 
 # bg_session_status <issue> [type]
-# Echoes the session state from `claude agents --json` (busy|blocked|done|
-# stopped|...). blocked means the session is waiting on a permission dialog
-# — supervision MUST surface it distinctly (ADR-0016).
-# Echoes "missing" and returns 1 when no handle exists or the session is
-# verifiably not listed. Echoes "unknown" and returns 1 when the agents
-# query itself fails (daemon restarting) — a transient condition callers
-# must NOT treat as a crash (#573).
+# Echoes the ADR-0018 verdict for the session (see header). "missing"
+# (exit 1) means no handle file exists — distinct from not-listed, where a
+# handle exists but no session matches it. blocked means the session is
+# waiting on a permission dialog — supervision MUST surface it distinctly
+# (ADR-0016). query-failed (exit 4) is transient (daemon restarting) —
+# callers must NOT treat it as a crash (#573).
 bg_session_status() {
   local issue="$1"
   local type="${2:-}"
@@ -161,30 +157,23 @@ bg_session_status() {
     return 1
   fi
 
-  local json
-  if ! json=$(claude_bg_agents_json); then
-    echo "unknown"
-    return 1
-  fi
-  local state
-  if ! state=$(claude_bg_state_from_json "$json" "$token"); then
-    echo "missing"
-    return 1
-  fi
-  echo "$state"
+  claude_bg_token_verdict "$token"
 }
 
 # bg_session_alive <issue> [type]
-# exit 0 if the session is alive (busy or blocked), exit 1 otherwise.
-# If type is omitted, checks any handle-{issue}.* file.
+# exit 0 if the session is alive (alive or blocked verdict), exit 1
+# otherwise. If type is omitted, checks any handle-{issue}.* file.
+# Boolean projection: non-verdict reports (query-failed, unknown-value)
+# count as not-confirmably-alive here — callers needing a degradation
+# policy must branch on bg_session_status.
 bg_session_alive() {
   local issue="$1"
   local type="${2:-}"
 
   if [[ -n "$type" ]]; then
-    local state
-    state=$(bg_session_status "$issue" "$type" 2>/dev/null) || return 1
-    [[ "$state" == "busy" || "$state" == "blocked" ]]
+    local verdict
+    verdict=$(bg_session_status "$issue" "$type" 2>/dev/null) || return 1
+    [[ "$verdict" == "alive" || "$verdict" == "blocked" ]]
   else
     local handle_file
     for handle_file in "${CEKERNEL_IPC_DIR}"/handle-"${issue}".*; do
@@ -200,27 +189,23 @@ bg_session_alive() {
 }
 
 # bg_session_stop <issue> [type]
-# Stops the session via `claude stop`. Sessions linger in `done` state
-# until explicitly stopped (ADR-0016), so cleanup paths rely on this to
-# reap them. No error if handle missing or session already gone.
+# Stops the session via the claude-bg stop primitive. Sessions linger in a
+# done state until explicitly stopped (ADR-0016), so cleanup paths rely on
+# this to reap them. No error if handle missing or session already gone.
 # If type is omitted, stops all handle-{issue}.* handles.
 bg_session_stop() {
   local issue="$1"
   local type="${2:-}"
 
+  local handle_file
   if [[ -n "$type" ]]; then
-    local handle_file="${CEKERNEL_IPC_DIR}/handle-${issue}.${type}"
+    handle_file="${CEKERNEL_IPC_DIR}/handle-${issue}.${type}"
     [[ -f "$handle_file" ]] || return 0
-    local token
-    token=$(cat "$handle_file")
-    [[ -n "$token" ]] && claude stop "$token" >/dev/null 2>&1 || true
+    claude_bg_stop "$(cat "$handle_file")"
   else
-    local handle_file
     for handle_file in "${CEKERNEL_IPC_DIR}"/handle-"${issue}".*; do
       [[ -f "$handle_file" ]] || continue
-      local token
-      token=$(cat "$handle_file")
-      [[ -n "$token" ]] && claude stop "$token" >/dev/null 2>&1 || true
+      claude_bg_stop "$(cat "$handle_file")"
     done
   fi
   return 0

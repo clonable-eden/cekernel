@@ -261,38 +261,57 @@ FULL_UUID="aaaa1111-2222-4333-8444-555566667777"
   assert_eq "short-ID handle matches by prefix" "0" "$status"
 }
 
-# ── status: blocked surfacing (ADR-0016) ──
+# ── status: ADR-0018 verdict vocabulary (blocked surfacing, ADR-0016) ──
 
-@test "backend_worker_status echoes the session state" {
+@test "backend_worker_status echoes the alive verdict for a busy session" {
+  echo "$FULL_UUID" > "${CEKERNEL_IPC_DIR}/handle-500.worker"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$FULL_UUID" background "$WORKTREE_REAL" 1700000000000 busy)]"
+  run backend_worker_status 500
+  assert_eq "exit status" "0" "$status"
+  assert_eq "verdict" "alive" "$output"
+}
+
+@test "backend_worker_status echoes the blocked verdict distinctly" {
   echo "$FULL_UUID" > "${CEKERNEL_IPC_DIR}/handle-500.worker"
   mock_claude_enqueue_agents \
     "[$(mock_claude_agent_record "$FULL_UUID" background "$WORKTREE_REAL" 1700000000000 blocked)]"
   run backend_worker_status 500
   assert_eq "exit status" "0" "$status"
-  assert_eq "state" "blocked" "$output"
+  assert_eq "verdict" "blocked" "$output"
 }
 
-@test "backend_worker_status echoes missing and fails when the session is not listed" {
+@test "backend_worker_status echoes not-listed when the session is absent" {
   echo "$FULL_UUID" > "${CEKERNEL_IPC_DIR}/handle-500.worker"
   run backend_worker_status 500
-  assert_eq "exit status" "1" "$status"
-  assert_eq "state" "missing" "$output"
+  assert_eq "exit status" "3" "$status"
+  assert_eq "report" "not-listed" "$output"
 }
 
-@test "backend_worker_status fails for a non-existent handle" {
+@test "backend_worker_status echoes missing and fails for a non-existent handle" {
   run backend_worker_status 99999
   assert_eq "exit status" "1" "$status"
+  assert_eq "report" "missing" "$output"
 }
 
-@test "backend_worker_status echoes unknown when the agents query fails (transient)" {
+@test "backend_worker_status echoes query-failed when the agents query fails (transient)" {
   # A failed `claude agents --json` (daemon restarting) must be
   # distinguishable from a session verifiably not listed — supervision
-  # must not treat the former as a crash (PR #572 follow-up, #573).
+  # must not treat the former as a crash (#573, ADR-0018).
   echo "$FULL_UUID" > "${CEKERNEL_IPC_DIR}/handle-500.worker"
   mock_bin claude 'exit 1'
   run backend_worker_status 500
-  assert_eq "exit status" "1" "$status"
-  assert_eq "state" "unknown" "$output"
+  assert_eq "exit status" "4" "$status"
+  assert_eq "report" "query-failed" "$output"
+}
+
+@test "backend_worker_status propagates unknown-value (never coerced)" {
+  echo "$FULL_UUID" > "${CEKERNEL_IPC_DIR}/handle-500.worker"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record_pair "$FULL_UUID" background "$WORKTREE_REAL" 1700000000000 idle working)]"
+  run --separate-stderr backend_worker_status 500
+  assert_eq "exit status" "5" "$status"
+  assert_eq "report" "unknown-value" "$output"
 }
 
 # ── termination: claude stop ──
