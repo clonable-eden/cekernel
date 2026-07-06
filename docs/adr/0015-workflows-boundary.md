@@ -12,21 +12,16 @@ JavaScript script deterministically orchestrates subagents via `agent()`,
 Orchestrator/Worker model on the surface — both fan out parallel agents —
 so the boundary must be explicit (#527).
 
-### `/workflows` characteristics (observed on claude v2.1.201)
+### `/workflows` characteristics
 
-- Script-driven deterministic control flow; intermediate results live in
-  script variables, not in the calling session's context window.
-- Concurrency cap `min(16, cpu cores - 2)` per workflow; 1000 agents per
-  run lifetime; 4096 items per `pipeline()`/`parallel()` call.
-- Agents are **subagents of the running session**: they can take
-  `isolation: 'worktree'` per call, share the session's MCP/tool surface,
-  and return structured output via JSON schema.
-- Resume (`resumeFromRunId`) replays cached `agent()` results — but
-  **same-session only**. `Date.now()`/`Math.random()` are banned inside
-  scripts precisely because state must be replayable, not persistent.
-- Invocation is gated on **explicit user opt-in** (e.g. "use a workflow",
-  ultracode mode, or a skill that instructs it). An agent cannot silently
-  choose workflow-scale orchestration on its own.
+Platform observations (concurrency caps, same-session-only resume, the
+explicit opt-in gate, determinism constraints) are recorded in
+[`docs/claude-code-constraints.md`](../claude-code-constraints.md#dynamic-workflows-workflows)
+under **Confidence: Evolving**. The properties that drive this ADR:
+intermediate results never enter the calling session's context window,
+runs cannot resume once their session ends, and invocation requires an
+explicit opt-in (an agent cannot silently choose workflow-scale
+orchestration on its own).
 
 ### The overlap is narrower than it looks
 
@@ -61,7 +56,10 @@ fan-out**. The overlap is only "several agents run in parallel."
    running a find→verify pipeline, may run a workflow — it is an
    implementation detail of that agent's single task, invisible to
    cekernel's lifecycle. The skill/agent definition must instruct it
-   explicitly (the opt-in gate requires this).
+   explicitly (the opt-in gate requires this). **This decision must not be
+   exercised until the Open questions below are verified** — the opt-in and
+   tool-surface preconditions are unconfirmed for cekernel's execution
+   contexts.
 
 4. **cekernel provides no wrapper, no abstraction, and no config surface
    for `/workflows`** (Rule of Parsimony). No `CEKERNEL_*` variable
@@ -84,6 +82,23 @@ fan-out**. The overlap is only "several agents run in parallel."
 - **ADR-0012 Amendment 2** — the Reviewer becomes a subagent; if a future
   Reviewer needs per-finding verifier fan-out, that is a legitimate
   `/workflows` use under rule 3.
+
+### Open questions (verify before exercising Decision 3)
+
+- **Opt-in gate in non-interactive sessions**: the confirmed gate
+  satisfiers are user wording and skill/slash-command instructions. Whether
+  an **agent definition's** system-prompt instruction satisfies the gate in
+  a `claude --bg --agent <name>` session — where no user utterance exists —
+  is unverified.
+- **Workflow tool on a subagent's tool surface**: the Reviewer (subagent at
+  depth 1 per ADR-0012 Amendment 2) launching workflow agents puts those at
+  depth 2. Nesting is supported (v2.1.172+), but whether the Workflow tool
+  is exposed to subagents at all, and whether `agents/reviewer.md` `tools:`
+  must list it, is unverified.
+
+Both must be resolved (PoC or primary-source confirmation) in the first
+implementation issue that wants to exercise Decision 3 — not assumed.
+Tracked in `docs/claude-code-constraints.md` § Dynamic Workflows.
 
 ## Alternatives Considered
 
@@ -129,6 +144,24 @@ A `/cekernel:workflow` skill that templates common fan-outs.
   to README (implementation follow-up).
 - If `/workflows` gains cross-session resume, part of this ADR's rationale
   weakens — flagged as an explicit revisit trigger in Decision 4.
+
+### Trade-offs
+
+**Zero dependency vs. duplicated capability**: cekernel keeps its own
+fan-out-free lifecycle machinery even though `/workflows` can express
+superficially similar structures. The cost is that two orchestration
+vocabularies coexist in the ecosystem; the gain is that a research-preview
+API can change or disappear without touching cekernel. Given cekernel's
+persistence-first mission, dependency-freedom wins until the preview
+stabilizes (the Decision 4 revisit trigger).
+
+**Permissiveness vs. predictability in rule 3**: allowing Workers/Reviewers
+to run workflows internally makes their resource usage less predictable
+(one Worker may fan out 16 subagents). The alternative — banning workflows
+inside cekernel agents — would be simpler to reason about but would deny
+single-task parallelism where it is genuinely the right tool. The opt-in
+gate plus explicit skill instruction keeps the decision visible and
+auditable.
 
 ## Follow-ups
 

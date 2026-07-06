@@ -107,6 +107,42 @@ failures, and unexpected behavior become common at nesting depth ≥ 2.
   independent process, communicating via FIFO instead of subagent return values
 - Design preference: independent processes with FIFO IPC over nested subagents
 
+### Dynamic Workflows (`/workflows`)
+
+**Confidence: Evolving** (research preview; observed on claude v2.1.201, 2026-07-06)
+
+The `Workflow` tool runs a JavaScript script that deterministically
+orchestrates subagents via `agent()`, `parallel()`, `pipeline()`, and
+`phase()`.
+
+Observed characteristics:
+- Intermediate results live in script variables and a run journal, not in
+  the calling session's context window
+- Concurrency cap `min(16, cpu cores - 2)` per workflow; 1000 agents per
+  run lifetime; 4096 items per `pipeline()`/`parallel()` call
+- Workflow agents are **subagents of the running session**: per-call
+  `isolation: 'worktree'` is available, they share the session's MCP/tool
+  surface, and can return schema-validated structured output
+- Resume (`resumeFromRunId`) replays cached `agent()` results —
+  **same-session only**; `Date.now()`/`Math.random()` are banned inside
+  scripts to keep runs replayable
+- Invocation is gated on **explicit user opt-in** (user wording, ultracode
+  mode, or a skill whose instructions direct the call)
+
+Unverified (check before relying on them):
+- Whether an **agent definition's** system-prompt instruction satisfies the
+  opt-in gate in a non-interactive session (`claude --bg --agent ...`),
+  where no user utterance exists
+- Whether the Workflow tool is present on a **subagent's** tool surface
+  (e.g. a Reviewer subagent at depth 1 launching workflow agents at
+  depth 2), and whether an agent's `tools:` frontmatter must list it
+
+**Implications for cekernel**:
+- Division of labor is governed by ADR-0015: cekernel persists across
+  sessions, `/workflows` fans out within one
+- Any cekernel agent intending to use a workflow must resolve the
+  unverified items above first (ADR-0015 Open questions)
+
 ### Subagent Information Propagation
 
 **Confidence: Stable**
