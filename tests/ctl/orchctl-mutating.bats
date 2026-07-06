@@ -159,6 +159,41 @@ worker_state() {
     "$(cat "${MOCK_CLAUDE_STATE_DIR}/stop.log")"
 }
 
+# ADR-0016 Phase 5: terminal backends also hold opaque session tokens as
+# handles; the pane lives in pane-{issue}.{type}. kill must stop the
+# session (claude stop) AND close the visualization pane/window.
+@test "kill stops a tmux-backend session AND kills the window (Phase 5 contract)" {
+  mock_claude
+  mock_bin tmux "echo \"\$*\" >> \"${BATS_TEST_TMPDIR}/tmux-argv.log\""
+  make_worker 10
+  echo "tmux" > "${IPC}/worker-10.backend"
+  echo "$SESSION_TOKEN" > "${IPC}/handle-10.worker"
+  echo "my-session:1.0" > "${IPC}/pane-10.worker"
+  run bash "$ORCHCTL" kill 10 --session "$SESSION"
+  assert_eq "kill exits 0" "0" "$status"
+  assert_file_exists "claude stop recorded" "${MOCK_CLAUDE_STATE_DIR}/stop.log"
+  assert_eq "stop called with the session token" "$SESSION_TOKEN" \
+    "$(cat "${MOCK_CLAUDE_STATE_DIR}/stop.log")"
+  assert_match "tmux window killed" "kill-window -t my-session:1" \
+    "$(cat "${BATS_TEST_TMPDIR}/tmux-argv.log")"
+}
+
+@test "kill stops a wezterm-backend session AND kills the pane (Phase 5 contract)" {
+  mock_claude
+  mock_bin wezterm "echo \"\$*\" >> \"${BATS_TEST_TMPDIR}/wezterm-argv.log\""
+  make_worker 10
+  echo "wezterm" > "${IPC}/worker-10.backend"
+  echo "$SESSION_TOKEN" > "${IPC}/handle-10.worker"
+  echo "42" > "${IPC}/pane-10.worker"
+  run bash "$ORCHCTL" kill 10 --session "$SESSION"
+  assert_eq "kill exits 0" "0" "$status"
+  assert_file_exists "claude stop recorded" "${MOCK_CLAUDE_STATE_DIR}/stop.log"
+  assert_eq "stop called with the session token" "$SESSION_TOKEN" \
+    "$(cat "${MOCK_CLAUDE_STATE_DIR}/stop.log")"
+  assert_match "wezterm pane killed" "cli kill-pane --pane-id 42" \
+    "$(cat "${BATS_TEST_TMPDIR}/wezterm-argv.log")"
+}
+
 # ── recover ──
 
 @test "recover dead RUNNING worker marks TERMINATED/crashed" {

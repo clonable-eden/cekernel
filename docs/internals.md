@@ -149,7 +149,7 @@ Related: [#173](https://github.com/clonable-eden/cekernel/issues/173), [PR #175]
 
 ## Claude Code Environment Variable Cleanup
 
-When spawning a child `claude -p` process from within a running Claude Code session, certain environment variables must be **unset** to prevent nested-session detection failures. Claude Code sets these variables in its session environment, and if they leak into child processes, the child process will detect that it is running inside an existing session and fail to start.
+When spawning a child `claude` process (e.g. `claude --bg`) from within a running Claude Code session, certain environment variables must be **unset** to prevent nested-session detection failures. Claude Code sets these variables in its session environment, and if they leak into child processes, the child process will detect that it is running inside an existing session and fail to start.
 
 ### Variables to Unset
 
@@ -161,11 +161,11 @@ When spawning a child `claude -p` process from within a running Claude Code sess
 
 ### Usage
 
-Before executing `claude -p` in a subprocess, unset all three variables:
+Before spawning a child `claude` process, unset all three variables:
 
 ```bash
 unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ACCESS_TOKEN
-exec claude -p "$prompt"
+claude --bg --agent worker "$prompt"
 ```
 
 Or in a subshell to avoid affecting the parent:
@@ -173,13 +173,13 @@ Or in a subshell to avoid affecting the parent:
 ```bash
 (
   unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ACCESS_TOKEN
-  exec claude -p "$prompt"
+  claude --bg --agent worker "$prompt"
 )
 ```
 
 ### Where This Is Applied
 
-The headless backend (`scripts/shared/backends/headless.sh`) applies this cleanup when spawning Workers. Terminal-based backends (WezTerm, tmux) naturally get a clean environment because they create new shell sessions.
+The shared spawn core (`scripts/shared/bg-session.sh`, used by all backends since ADR-0016 Phase 5) applies this cleanup when spawning Worker sessions via `claude --bg`. Terminal-based backends (WezTerm, tmux) additionally prefix their attach-pane command with `env -u` for the same variables, in case the mux server environment carries them.
 
 Related: [#117](https://github.com/clonable-eden/cekernel/issues/117), [PR #178](https://github.com/clonable-eden/cekernel/pull/178).
 

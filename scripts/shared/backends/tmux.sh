@@ -1,15 +1,26 @@
 #!/usr/bin/env bash
-# backends/tmux.sh — tmux backend (ADR-0005 API)
+# backends/tmux.sh — tmux backend (ADR-0005 API, ADR-0016 Phase 5)
 #
-# Implements 5 external API functions using tmux.
+# Spawn and supervision delegate to the shared `claude --bg` session core
+# (bg-session.sh) — identical to headless. tmux adds an attach-only
+# visualization layer: a 3-pane window whose main pane runs
+# `claude attach <session-id>` (ADR-0001 Amendment 1).
+#
+# Pane close = detach, NOT session termination: liveness maps to
+# `claude agents --json` state, never pane existence. Killing the worker
+# stops the session (claude stop) and closes the window.
+#
+# Handle file: ${CEKERNEL_IPC_DIR}/handle-{issue}.{type} contains the
+# opaque session token (see bg-session.sh).
+# Pane file:   ${CEKERNEL_IPC_DIR}/pane-{issue}.{type} contains the tmux
+# pane target (e.g. "session:window.pane") — a visualization detail,
+# cleaned up on kill.
+#
 # Sourced by backend-adapter.sh when CEKERNEL_BACKEND=tmux.
-#
-# Handle file: ${CEKERNEL_IPC_DIR}/handle-{issue}.{type} contains tmux pane target
-# (e.g., "session:window.pane").
 
 # ── Dependencies ──
 _TMUX_BACKEND_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
-source "${_TMUX_BACKEND_DIR}/../runner.sh"
+source "${_TMUX_BACKEND_DIR}/../bg-session.sh"
 
 # ── External API ──
 
@@ -20,14 +31,21 @@ backend_available() {
 }
 
 # backend_spawn_worker <issue> <type> <worktree> <prompt> <agent-name>
-# Spawns a Worker in a tmux 3-pane layout.
-# Saves pane target to handle file internally.
+# Spawns the Worker session via the shared --bg path, then opens a tmux
+# 3-pane layout whose main pane attaches to the session.
 backend_spawn_worker() {
   local issue="$1"
   local type="$2"
   local worktree="$3"
   local prompt="$4"
   local agent_name="$5"
+
+  # Spawn the session first (Rule of Repair: no window without a session).
+  # Writes handle-{issue}.{type} and {type}-{issue}.claude-session-id.
+  bg_session_spawn "$issue" "$type" "$worktree" "$prompt" "$agent_name" || return 1
+
+  local token
+  token=$(bg_session_get_handle "$issue" "$type")
 
   # Resolve session (tmux-specific)
   local session=""
@@ -48,91 +66,59 @@ backend_spawn_worker() {
   # Create bottom pane (25%) — git log
   _backend_split_pane bottom 25 "$main_pane" "$worktree" 2>/dev/null || true
 
-  # Generate runner script (handles cd, env, prompt file, claude)
-  local runner
-  runner=$(write_runner_script "$issue" "$worktree" "${CEKERNEL_SESSION_ID:-}" "$agent_name" "$prompt")
+  # Main pane: attach-only viewer. Claude Code session markers are unset
+  # defensively — the tmux server env may carry them when it was started
+  # from within a Claude session.
+  _backend_run_command "$main_pane" \
+    "env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT -u CLAUDE_CODE_SESSION_ACCESS_TOKEN claude attach '${token}'"
 
-  # Send runner script to main pane — no escaping needed, just a file path
-  _backend_run_command "$main_pane" "bash '${runner}'"
-
-  # Save handle (pane target)
-  echo "$main_pane" > "${CEKERNEL_IPC_DIR}/handle-${issue}.${type}"
+  # Save pane target (visualization bookkeeping, separate from the handle)
+  echo "$main_pane" > "${CEKERNEL_IPC_DIR}/pane-${issue}.${type}"
 }
 
 # backend_get_handle <issue> [type]
-# Returns the worker token (ADR-0005 Amendment 1). For tmux this is the
-# PID of the process running in the pane — numeric, kill -0 checkable.
+# Returns the opaque session token (ADR-0005 Amendment 1).
 backend_get_handle() {
-  local issue="$1"
-  local type="${2:-}"
+  bg_session_get_handle "$@"
+}
 
-  local handle_file
-  if [[ -n "$type" ]]; then
-    handle_file="${CEKERNEL_IPC_DIR}/handle-${issue}.${type}"
-  else
-    handle_file=$(ls "${CEKERNEL_IPC_DIR}"/handle-"${issue}".* 2>/dev/null | head -1)
-  fi
-
-  if [[ -z "$handle_file" || ! -f "$handle_file" ]]; then
-    echo "Error: no handle file for issue #${issue}" >&2
-    return 1
-  fi
-
-  local pane_target
-  pane_target=$(cat "$handle_file")
-  tmux list-panes -t "$pane_target" -F '#{pane_pid}' 2>/dev/null | head -1
+# backend_worker_status <issue> [type]
+backend_worker_status() {
+  bg_session_status "$@"
 }
 
 # backend_worker_alive <issue> [type]
-# exit 0 if alive, exit 1 if dead or no handle
-# If type is omitted, checks any handle-{issue}.* file.
+# Session-state liveness: pane close is a detach, never worker death.
 backend_worker_alive() {
-  local issue="$1"
-  local type="${2:-}"
-
-  if [[ -n "$type" ]]; then
-    local handle_file="${CEKERNEL_IPC_DIR}/handle-${issue}.${type}"
-    [[ -f "$handle_file" ]] || return 1
-    local pane_target
-    pane_target=$(cat "$handle_file")
-    _backend_pane_alive "$pane_target"
-  else
-    local found=0
-    for handle_file in "${CEKERNEL_IPC_DIR}"/handle-"${issue}".*; do
-      [[ -f "$handle_file" ]] || continue
-      found=1
-      local pane_target
-      pane_target=$(cat "$handle_file")
-      if _backend_pane_alive "$pane_target"; then
-        return 0
-      fi
-    done
-    [[ "$found" -eq 1 ]] || return 1
-    return 1
-  fi
+  bg_session_alive "$@"
 }
 
 # backend_kill_worker <issue> [type]
-# Kills the entire window. No error if handle missing.
-# If type is omitted, kills all handle-{issue}.* handles.
+# Stops the session(s) via `claude stop`, closes the visualization
+# window(s), and cleans up pane files. No error if handle missing.
 backend_kill_worker() {
   local issue="$1"
   local type="${2:-}"
 
+  # Stop the session(s) — the daemon owns the process
+  bg_session_stop "$issue" "$type"
+
+  # Close the visualization window(s) and clean up pane bookkeeping
+  local pane_file
   if [[ -n "$type" ]]; then
-    local handle_file="${CEKERNEL_IPC_DIR}/handle-${issue}.${type}"
-    [[ -f "$handle_file" ]] || return 0
-    local pane_target
-    pane_target=$(cat "$handle_file")
-    _backend_kill_window "$pane_target"
+    pane_file="${CEKERNEL_IPC_DIR}/pane-${issue}.${type}"
+    if [[ -f "$pane_file" ]]; then
+      _backend_kill_window "$(cat "$pane_file")"
+      rm -f "$pane_file"
+    fi
   else
-    for handle_file in "${CEKERNEL_IPC_DIR}"/handle-"${issue}".*; do
-      [[ -f "$handle_file" ]] || continue
-      local pane_target
-      pane_target=$(cat "$handle_file")
-      _backend_kill_window "$pane_target"
+    for pane_file in "${CEKERNEL_IPC_DIR}"/pane-"${issue}".*; do
+      [[ -f "$pane_file" ]] || continue
+      _backend_kill_window "$(cat "$pane_file")"
+      rm -f "$pane_file"
     done
   fi
+  return 0
 }
 
 # ── Private API (internal to tmux backend) ──
@@ -208,14 +194,10 @@ _backend_split_pane() {
   tmux split-window "${args[@]}"
 }
 
-# _backend_pane_alive <pane-target>
-_backend_pane_alive() {
-  local pane_target="$1"
-  tmux list-panes -t "$pane_target" >/dev/null 2>&1
-}
-
 # _backend_kill_window <pane-target>
-# Kill the entire window that the pane belongs to.
+# Kill the entire window that the pane belongs to. Closing the window only
+# detaches viewers — the session itself is stopped separately via
+# bg_session_stop.
 _backend_kill_window() {
   local pane_target="$1"
 

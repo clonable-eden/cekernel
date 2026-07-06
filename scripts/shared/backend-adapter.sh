@@ -9,18 +9,22 @@
 # Environment:
 #   CEKERNEL_BACKEND — Backend to use (default: headless)
 #
-# External API (5 functions, provided by backends — ADR-0005 Amendment 1):
+# External API (6 functions, provided by backends — ADR-0005 Amendment 1,
+# ADR-0016 Phase 5):
 #   backend_available       — Check if backend is usable
 #   backend_spawn_worker    — Start a Worker process (issue, type, worktree, prompt, agent-name)
-#   backend_get_handle      — Get the opaque worker token (issue): numeric PID
-#                             for terminal backends, session token for headless
-#   backend_worker_alive    — Check if Worker is alive (issue)
-#   backend_kill_worker     — Terminate a Worker (issue)
+#   backend_get_handle      — Get the opaque worker token (issue): the
+#                             `claude --bg` session token on all backends
+#   backend_worker_alive    — Check if Worker is alive (issue): maps to
+#                             `claude agents --json` state (busy|blocked)
+#   backend_worker_status   — Echo the session state (busy|blocked|done|...)
+#   backend_kill_worker     — Terminate a Worker (issue): claude stop +
+#                             visualization cleanup on terminal backends
 #
-# Optional API (feature-detect with `declare -F` before calling):
-#   backend_worker_status   — Echo the session state (busy|blocked|done|...).
-#                             Provided by headless (ADR-0016); terminal
-#                             backends gain it in Phase 5.
+# All backends spawn through the shared --bg session core (bg-session.sh).
+# Terminal backends (wezterm/tmux) add an attach-only visualization pane
+# (`claude attach <token>`); pane close = detach, never worker death
+# (ADR-0001 Amendment 1).
 #
 # Handle files are managed internally by each backend.
 # Callers pass only the issue number — never raw pane IDs or session tokens.

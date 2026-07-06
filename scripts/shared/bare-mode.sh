@@ -23,11 +23,11 @@
 # out (ADR-0016 Amendment 1). A one-line stderr notice records the branch.
 # Context injection (--plugin-dir/--add-dir) is kept on both branches.
 #
-# Usage (interactive spawn paths — headless.sh, spawn-orchestrator.sh,
-# runner.sh; the auth branch is decided inside bare_mode_prepare):
+# Usage (interactive spawn paths — bg-session.sh, spawn-orchestrator.sh;
+# the auth branch is decided inside bare_mode_prepare):
 #   source bare-mode.sh
 #   bare_mode_prepare "$worktree"
-#   exec claude -p "${CEKERNEL_BARE_FLAGS[@]}" --agent "$name" "$prompt"
+#   claude --bg "${CEKERNEL_BARE_FLAGS[@]}" --agent "$name" "$prompt"
 #
 # Usage (scheduled paths — wrapper.sh; unattended, so no-auth is a hard
 # error instead of a silent OAuth dependency):
@@ -41,7 +41,7 @@
 #     Includes --bare only when a bare-compatible auth path exists.
 #   bare_mode_flags [context-dir]
 #     Echoes the flags as a single shell-quoted string, safe to embed in
-#     generated runner scripts (runner.sh, wrapper.sh heredocs).
+#     generated runner scripts (wrapper.sh heredocs).
 #   bare_mode_preflight
 #     Returns 1 with an actionable stderr message when no --bare-compatible
 #     auth path exists. Hard gate for scheduled (cron/at) paths only, where
