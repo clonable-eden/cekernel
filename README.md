@@ -104,7 +104,7 @@ RELEASE_NOTES.md           # Structured release notes
 scripts/
   ctl/
     orchctl.sh             # Worker control interface (systemctl for cekernel)
-    spawn-orchestrator.sh  # Spawn Orchestrator as independent OS process
+    spawn-orchestrator.sh  # Spawn Orchestrator as a claude --bg background session
   orchestrator/
     cleanup-worktree.sh    # Remove worktree + branch + logs
     health-check.sh        # Detect zombie Workers
@@ -137,6 +137,7 @@ scripts/
     bg-session.sh          # Shared claude --bg session core (spawn/liveness/stop)
     checkpoint-file.sh     # Checkpoint file helpers for suspend/resume
     claude-json-helper.sh  # ~/.claude.json trust entry read/write helper
+    claude-bg.sh           # Shared claude --bg session helpers (agents --json query, capture)
     claude-session-id.sh   # Orchestrator Claude Code session ID persistence (orchestrator.claude-session-id)
     desktop-notify.sh      # OS-native notification helper
     issue-lock.sh          # Repo × issue lockfile (duplicate Worker prevention)
@@ -178,7 +179,7 @@ skills/
   unix-architect/
     SKILL.md               # /unix-architect skill — ADR authoring and review
 tests/
-  ctl/test-*.sh            # Control script tests (orchctl, spawn-orchestrator)
+  ctl/*.bats               # Control script tests (orchctl, spawn-orchestrator)
   helpers.sh               # Assertion helpers (legacy harness)
   helpers/
     assertions.bash        # Assertion helpers (bats lane)

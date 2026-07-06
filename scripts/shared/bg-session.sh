@@ -20,14 +20,9 @@
 # ID (first 8 hex chars) as a degraded fallback. All lookups prefix-match
 # the token against `agents --json` sessionId, so both forms work.
 #
-# Session-ID capture (ADR-0016 normative order):
-#   1. Primary: extract the short ID from the `backgrounded · <short-id>`
-#      spawn stdout line, then prefix-match it against sessionId in
-#      `claude agents --json`. Deterministic even with concurrent spawns.
-#   2. Fallback (stdout parse fails): kind == "background" + cwd + most
-#      recent startedAt. The kind filter is mandatory — the Orchestrator
-#      shares the repo-root cwd with interactive sessions. cwd is compared
-#      against the realpath'd worktree (agents --json reports realpath).
+# Session-ID capture follows the ADR-0016 normative order implemented in
+# claude-bg.sh (claude_bg_capture_session_id): short-ID prefix match first,
+# then kind == "background" + cwd + newest startedAt as fallback.
 #
 # The captured token is also persisted to
 # ${CEKERNEL_IPC_DIR}/{type}-{issue}.claude-session-id for post-mortem
@@ -48,59 +43,12 @@
 #     Stops the session(s) via `claude stop`. Never fails.
 
 # ── Dependencies ──
+# Session query / token state / capture primitives live in shared/claude-bg.sh
+# (ADR-0016 Phase 2 extraction) — shared with ctl/spawn-orchestrator.sh and
+# ctl/orchctl.sh. This file layers the Worker handle-file lifecycle on top.
 _BG_SESSION_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
 source "${_BG_SESSION_DIR}/bare-mode.sh"
-
-# ── Internal helpers ──
-
-# _bg_session_agents_json
-# Lists active sessions as JSON. Fails when the claude CLI is unavailable
-# or errors (Rule of Repair: callers decide how to surface it).
-_bg_session_agents_json() {
-  claude agents --json 2>/dev/null
-}
-
-# _bg_session_state_for_token <token>
-# Echoes the state of the session whose sessionId starts with <token>.
-# Returns 1 (echoing nothing) when no session matches or the query fails.
-_bg_session_state_for_token() {
-  local token="$1"
-  local json state
-  json=$(_bg_session_agents_json) || return 1
-  state=$(echo "$json" | jq -r --arg p "$token" \
-    '[.[] | select(.sessionId | startswith($p))][0].state // empty')
-  [[ -n "$state" ]] || return 1
-  echo "$state"
-}
-
-# _bg_session_capture_id <short-id> <cwd>
-# Echoes the full session UUID. With a short ID, prefix-matches it against
-# agents --json sessionId (primary path). With an empty short ID, falls
-# back to the newest background session at <cwd> (must be realpath'd).
-# Retries briefly to absorb the spawn → daemon registration race.
-_bg_session_capture_id() {
-  local short_id="$1"
-  local cwd="$2"
-  local attempt json full_id
-
-  for attempt in 1 2 3; do
-    json=$(_bg_session_agents_json) || json="[]"
-    if [[ -n "$short_id" ]]; then
-      full_id=$(echo "$json" | jq -r --arg p "$short_id" \
-        '[.[] | select(.sessionId | startswith($p))][0].sessionId // empty')
-    else
-      full_id=$(echo "$json" | jq -r --arg cwd "$cwd" \
-        '[.[] | select(.kind == "background" and .cwd == $cwd)]
-         | sort_by(.startedAt) | last // {} | .sessionId // empty')
-    fi
-    if [[ -n "$full_id" ]]; then
-      echo "$full_id"
-      return 0
-    fi
-    sleep 0.2
-  done
-  return 1
-}
+source "${_BG_SESSION_DIR}/claude-bg.sh"
 
 # ── Session API ──
 
@@ -149,7 +97,7 @@ bg_session_spawn() {
   cwd_real=$(cd "$worktree" && pwd -P)
 
   local session_id
-  if ! session_id=$(_bg_session_capture_id "$short_id" "$cwd_real"); then
+  if ! session_id=$(claude_bg_capture_session_id "$short_id" "$cwd_real"); then
     if [[ -n "$short_id" ]]; then
       # Degraded: the short ID is a usable prefix token (liveness/stop work),
       # but transcript direct lookup needs the full UUID — warn, don't fail.
@@ -208,7 +156,7 @@ bg_session_status() {
   fi
 
   local state
-  if ! state=$(_bg_session_state_for_token "$token"); then
+  if ! state=$(claude_bg_state_for_token "$token"); then
     echo "missing"
     return 1
   fi
@@ -231,10 +179,9 @@ bg_session_alive() {
     for handle_file in "${CEKERNEL_IPC_DIR}"/handle-"${issue}".*; do
       [[ -f "$handle_file" ]] || continue
       found=1
-      local token state
+      local token
       token=$(cat "$handle_file")
-      state=$(_bg_session_state_for_token "$token" 2>/dev/null) || continue
-      if [[ "$state" == "busy" || "$state" == "blocked" ]]; then
+      if claude_bg_token_alive "$token" 2>/dev/null; then
         return 0
       fi
     done

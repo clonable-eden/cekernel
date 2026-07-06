@@ -415,44 +415,90 @@ worker_state() {
   assert_match "output includes cleaned count" "cleaned" "$output"
 }
 
-# ── gc: stale orchestrator.pid cleanup (issue #513) ──
+# ── gc: stale orchestrator session cleanup (ADR-0016 Phase 2) ──
+# Orchestrator liveness is session-ID based. A dead session (done/stopped/
+# unlisted) is reaped via `claude stop` — done sessions linger until
+# explicitly stopped (ADR-0016) — and its metadata files are removed.
 
-@test "gc removes stale orchestrator metadata (pid, spawned, repo) when dead" {
+@test "gc stops and removes a dead orchestrator session's metadata" {
+  mock_claude
   local session_dir="${IPC_BASE}/session-gc-orch1"
   mkdir -p "$session_dir"
-  echo "99999999" > "${session_dir}/orchestrator.pid"
+  echo "$SESSION_TOKEN" > "${session_dir}/orchestrator.claude-session-id"
   echo "1711000000" > "${session_dir}/orchestrator.spawned"
   echo "my-repo" > "${session_dir}/repo"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$SESSION_TOKEN" background /repo 1700000000000 done)]"
+
   run bash "$ORCHCTL" gc
-  assert_not_exists "stale orchestrator.pid removed" "${session_dir}/orchestrator.pid"
+  assert_file_exists "lingering done session reaped via claude stop" \
+    "${MOCK_CLAUDE_STATE_DIR}/stop.log"
+  assert_eq "stop called with the token" "$SESSION_TOKEN" \
+    "$(cat "${MOCK_CLAUDE_STATE_DIR}/stop.log")"
+  assert_not_exists "orchestrator.claude-session-id removed" \
+    "${session_dir}/orchestrator.claude-session-id"
   assert_not_exists "orchestrator.spawned removed" "${session_dir}/orchestrator.spawned"
   assert_not_exists "repo file removed" "${session_dir}/repo"
 }
 
-@test "gc preserves orchestrator.pid when process is alive" {
+@test "gc preserves orchestrator metadata when the session is alive (busy/blocked)" {
+  mock_claude
   local session_dir="${IPC_BASE}/session-gc-orch2"
   mkdir -p "$session_dir"
-  echo "$$" > "${session_dir}/orchestrator.pid"
+  echo "$SESSION_TOKEN" > "${session_dir}/orchestrator.claude-session-id"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$SESSION_TOKEN" background /repo 1700000000000 busy)]"
+
   run bash "$ORCHCTL" gc
-  assert_file_exists "live orchestrator.pid preserved" "${session_dir}/orchestrator.pid"
+  assert_file_exists "live orchestrator metadata preserved" \
+    "${session_dir}/orchestrator.claude-session-id"
+  assert_not_exists "no stop for a live session" "${MOCK_CLAUDE_STATE_DIR}/stop.log"
+
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$SESSION_TOKEN" background /repo 1700000000000 blocked)]"
+  run bash "$ORCHCTL" gc
+  assert_file_exists "blocked orchestrator metadata preserved" \
+    "${session_dir}/orchestrator.claude-session-id"
 }
 
-@test "gc --dry-run preserves stale orchestrator metadata" {
+@test "gc --dry-run preserves stale orchestrator metadata and does not stop" {
+  mock_claude
   local session_dir="${IPC_BASE}/session-gc-orch5"
   mkdir -p "$session_dir"
-  echo "99999999" > "${session_dir}/orchestrator.pid"
+  echo "$SESSION_TOKEN" > "${session_dir}/orchestrator.claude-session-id"
   echo "1711000000" > "${session_dir}/orchestrator.spawned"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$SESSION_TOKEN" background /repo 1700000000000 done)]"
+
   run bash "$ORCHCTL" gc --dry-run
-  assert_file_exists "stale orchestrator.pid preserved" "${session_dir}/orchestrator.pid"
-  assert_file_exists "stale orchestrator.spawned preserved" "${session_dir}/orchestrator.spawned"
-  assert_match "output mentions orchestrator.pid" "orchestrator.pid" "$output"
+  assert_file_exists "stale claude-session-id preserved" \
+    "${session_dir}/orchestrator.claude-session-id"
+  assert_file_exists "stale orchestrator.spawned preserved" \
+    "${session_dir}/orchestrator.spawned"
+  assert_not_exists "dry-run must not stop the session" \
+    "${MOCK_CLAUDE_STATE_DIR}/stop.log"
+  assert_match "output mentions orchestrator metadata" \
+    "orchestrator.claude-session-id" "$output"
 }
 
-@test "gc removes empty session dir after orchestrator metadata cleanup" {
+@test "gc removes empty session dir after orchestrator session cleanup" {
+  mock_claude
   local session_dir="${IPC_BASE}/session-gc-orch6"
   mkdir -p "$session_dir"
-  echo "99999999" > "${session_dir}/orchestrator.pid"
+  echo "$SESSION_TOKEN" > "${session_dir}/orchestrator.claude-session-id"
   echo "1711000000" > "${session_dir}/orchestrator.spawned"
+  # queue empty → agents --json replies [] → session missing → dead
+
   run bash "$ORCHCTL" gc
   assert_not_exists "session dir removed after cleanup" "$session_dir"
+}
+
+@test "gc removes a legacy orchestrator.pid file (v2 is session-ID based)" {
+  mock_claude
+  local session_dir="${IPC_BASE}/session-gc-orch7"
+  mkdir -p "$session_dir"
+  echo "$$" > "${session_dir}/orchestrator.pid"
+
+  run bash "$ORCHCTL" gc
+  assert_not_exists "legacy pid file swept" "${session_dir}/orchestrator.pid"
 }

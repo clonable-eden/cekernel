@@ -7,13 +7,20 @@
 #   tests/ctl/test-orchctl-ps.sh    — ps command
 #   tests/ctl/test-orchctl-count.sh — count command
 #
-# NOTE: ps/count are tested against current behavior; #549 (Phase 4:
-# claude agents --json view layer) replaces their contract when it lands.
+# ps/count are session-ID based (ADR-0016 Phase 2, #547): orchestrator
+# liveness maps to `claude agents --json` state via the token captured in
+# orchestrator.claude-session-id — orchestrator.pid is gone. #549 (Phase 4:
+# agents --json view layer) further evolves the ps contract when it lands.
 #
 # Mutating subcommands (term/suspend/resume/kill/nice/recover/gc) are
 # covered in orchctl-mutating.bats.
 
 load '../helpers/assertions'
+load '../helpers/mock-bin'
+load '../helpers/mock-claude'
+
+ORCH_TOKEN_A="aaaa1111-2222-4333-8444-555566667777"
+ORCH_TOKEN_B="bbbb2222-3333-4444-8555-666677778888"
 
 setup() {
   CEKERNEL_DIR="$(cd "${BATS_TEST_DIRNAME}/../.." && pwd)"
@@ -30,16 +37,10 @@ setup() {
   IPC_A="${IPC_BASE}/${SESSION_A}"
   IPC_B="${IPC_BASE}/${SESSION_B}"
 
-  BGPIDS=""
+  mock_claude
 }
 
 teardown() {
-  local p
-  for p in $BGPIDS; do
-    pkill -P "$p" 2>/dev/null || true  # reap children of process trees
-    kill "$p" 2>/dev/null || true
-    wait "$p" 2>/dev/null || true
-  done
   rm -rf "$IPC_BASE" "$CEKERNEL_VAR_DIR"
 }
 
@@ -52,32 +53,12 @@ make_worker() {
   echo "10" > "${ipc_dir}/worker-${issue}.priority"
 }
 
-# Start a long-lived background process; sets SPAWNED_PID and registers it in
-# BGPIDS for teardown. Not usable via $(...) — a command-substitution subshell
-# would drop the BGPIDS update and leak the process past teardown.
-# FDs are detached so bats does not block on the background child.
-spawn_bg() {
-  sleep 300 </dev/null >/dev/null 2>&1 3>&- &
-  SPAWNED_PID=$!
-  BGPIDS="$BGPIDS$SPAWNED_PID "
-}
-
-# Like spawn_bg, but the process spawns <n> sleeping children (process tree).
-spawn_bg_tree() {
-  local n="$1" i cmd=""
-  for ((i = 0; i < n; i++)); do
-    cmd+="sleep 300 & "
-  done
-  bash -c "${cmd}wait" </dev/null >/dev/null 2>&1 3>&- &
-  SPAWNED_PID=$!
-  BGPIDS="$BGPIDS$SPAWNED_PID "
-}
-
-# Register an orchestrator PID file for a session dir.
+# Register an orchestrator session token for a session dir (ADR-0016
+# Phase 2: liveness is session-ID based — no PID file).
 make_orchestrator() {
-  local ipc_dir="$1" pid="$2"
+  local ipc_dir="$1" token="$2"
   mkdir -p "$ipc_dir"
-  echo "$pid" > "${ipc_dir}/orchestrator.pid"
+  echo "$token" > "${ipc_dir}/orchestrator.claude-session-id"
   date +%s > "${ipc_dir}/orchestrator.spawned"
 }
 
@@ -266,62 +247,74 @@ make_orchestrator() {
   assert_match "elapsed from .spawned (epoch 0 → hours)" '"elapsed":"[0-9]+h' "$output"
 }
 
-# ── ps ──
+# ── ps (session-ID based, ADR-0016 Phase 2) ──
 
 @test "ps with no sessions prints 'no orchestrators.'" {
   run bash "$ORCHCTL" ps
   assert_eq "ps no sessions" "no orchestrators." "$output"
 }
 
-@test "ps with session but no orchestrator.pid prints 'no orchestrators.'" {
+@test "ps with session but no orchestrator.claude-session-id prints 'no orchestrators.'" {
   mkdir -p "$IPC_A"
   run bash "$ORCHCTL" ps
-  assert_eq "ps no pid file" "no orchestrators." "$output"
+  assert_eq "ps no session token" "no orchestrators." "$output"
 }
 
-@test "ps with dead PID shows not-running" {
-  make_orchestrator "$IPC_A" 99999
-  run bash "$ORCHCTL" ps
-  assert_match "dead PID shows not-running" "not-running" "$output"
-}
-
-@test "ps with live PID shows session, PID, and running status" {
-  spawn_bg
-  make_orchestrator "$IPC_A" "$SPAWNED_PID"
+@test "ps shows session, claude token, and busy state" {
+  make_orchestrator "$IPC_A" "$ORCH_TOKEN_A"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$ORCH_TOKEN_A" background /repo 1700000000000 busy)]"
   run bash "$ORCHCTL" ps
   assert_match "shows session" "$SESSION_A" "$output"
-  assert_match "shows PID" "PID=${SPAWNED_PID}" "$output"
-  assert_match "shows running" "running" "$output"
+  assert_match "shows claude token" "$ORCH_TOKEN_A" "$output"
+  assert_match "shows busy state" "busy" "$output"
+}
+
+@test "ps surfaces a blocked session distinctly (ADR-0016)" {
+  make_orchestrator "$IPC_A" "$ORCH_TOKEN_A"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$ORCH_TOKEN_A" background /repo 1700000000000 blocked)]"
+  run bash "$ORCHCTL" ps
+  assert_match "shows blocked state" "blocked" "$output"
+}
+
+@test "ps shows missing when the session is not listed" {
+  make_orchestrator "$IPC_A" "$ORCH_TOKEN_A"
+  # queue empty → agents --json replies []
+  run bash "$ORCHCTL" ps
+  assert_match "shows missing" "missing" "$output"
+}
+
+@test "ps elapsed reads from orchestrator.spawned" {
+  make_orchestrator "$IPC_A" "$ORCH_TOKEN_A"
+  echo "0" > "${IPC_A}/orchestrator.spawned"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$ORCH_TOKEN_A" background /repo 1700000000000 busy)]"
+  run bash "$ORCHCTL" ps
+  assert_match "elapsed from .spawned (epoch 0 → hours)" 'elapsed=[0-9]+h' "$output"
 }
 
 @test "ps lists multiple sessions" {
-  spawn_bg
-  make_orchestrator "$IPC_A" "$SPAWNED_PID"
-  spawn_bg
-  make_orchestrator "$IPC_B" "$SPAWNED_PID"
+  make_orchestrator "$IPC_A" "$ORCH_TOKEN_A"
+  make_orchestrator "$IPC_B" "$ORCH_TOKEN_B"
+  mock_claude_enqueue_agents "[
+    $(mock_claude_agent_record "$ORCH_TOKEN_A" background /repo 1700000000000 busy),
+    $(mock_claude_agent_record "$ORCH_TOKEN_B" background /repo 1700000001000 done)
+  ]"
   run bash "$ORCHCTL" ps
   local line_count
   line_count=$(echo "$output" | grep -c "orchestrator" || true)
   assert_eq "two orchestrators" "2" "$line_count"
-}
-
-@test "ps shows child processes as tree lines" {
-  spawn_bg_tree 2
-  sleep 0.3  # Give children time to spawn
-  make_orchestrator "$IPC_A" "$SPAWNED_PID"
-
-  run bash "$ORCHCTL" ps
-  assert_match "shows orchestrator" "orchestrator" "$output"
-  local child_lines
-  child_lines=$(echo "$output" | grep -cE '├──|└──' || true)
-  assert_match "shows child processes" "^[1-9][0-9]*$" "$child_lines"
+  assert_match "done state shown as-is" "done" "$output"
 }
 
 @test "ps --session filters to the given session" {
-  spawn_bg
-  make_orchestrator "$IPC_A" "$SPAWNED_PID"
-  spawn_bg
-  make_orchestrator "$IPC_B" "$SPAWNED_PID"
+  make_orchestrator "$IPC_A" "$ORCH_TOKEN_A"
+  make_orchestrator "$IPC_B" "$ORCH_TOKEN_B"
+  mock_claude_enqueue_agents "[
+    $(mock_claude_agent_record "$ORCH_TOKEN_A" background /repo 1700000000000 busy),
+    $(mock_claude_agent_record "$ORCH_TOKEN_B" background /repo 1700000001000 busy)
+  ]"
   run bash "$ORCHCTL" ps --session "$SESSION_B"
   assert_match "shows filtered session" "$SESSION_B" "$output"
   if [[ "$output" == *"$SESSION_A"* ]]; then
@@ -331,109 +324,60 @@ make_orchestrator() {
 }
 
 @test "ps --session with non-existent session prints 'no orchestrators.'" {
-  spawn_bg
-  make_orchestrator "$IPC_A" "$SPAWNED_PID"
+  make_orchestrator "$IPC_A" "$ORCH_TOKEN_A"
   run bash "$ORCHCTL" ps --session "nonexistent-session"
   assert_eq "nonexistent session" "no orchestrators." "$output"
 }
 
-@test "ps shows managed processes from handle files" {
-  spawn_bg
-  make_orchestrator "$IPC_A" "$SPAWNED_PID"
-  spawn_bg
-  local managed_pid="$SPAWNED_PID"
-  echo "$managed_pid" > "${IPC_A}/handle-999.worker"
-
+@test "ps ignores a legacy orchestrator.pid file (v2 is session-ID based)" {
+  mkdir -p "$IPC_A"
+  echo "$$" > "${IPC_A}/orchestrator.pid"
   run bash "$ORCHCTL" ps
-  assert_match "shows managed marker" '\(managed' "$output"
-  assert_match "managed shows PID" "PID=${managed_pid}" "$output"
-  assert_match "managed shows issue" "#999" "$output"
-  assert_match "managed shows worker type" "worker #999" "$output"
+  assert_eq "legacy pid file alone shows nothing" "no orchestrators." "$output"
 }
 
-@test "ps does not duplicate a child process that also has a handle" {
-  spawn_bg_tree 1
-  local parent_pid="$SPAWNED_PID"
-  sleep 0.3  # Give child time to spawn
-  make_orchestrator "$IPC_A" "$parent_pid"
-
-  local child_pid
-  child_pid=$(pgrep -P "$parent_pid" 2>/dev/null | head -1)
-  if [[ -z "$child_pid" ]]; then
-    skip "could not get child PID for dedup test"
-  fi
-  echo "$child_pid" > "${IPC_A}/handle-888.worker"
-
-  run bash "$ORCHCTL" ps
-  local managed_count
-  managed_count=$(echo "$output" | grep -c '(managed' || true)
-  assert_eq "child+handle not shown as managed" "0" "$managed_count"
-}
-
-@test "ps does not show managed process with dead PID" {
-  spawn_bg
-  make_orchestrator "$IPC_A" "$SPAWNED_PID"
-  echo "99999" > "${IPC_A}/handle-777.worker"
-  run bash "$ORCHCTL" ps
-  local managed_count
-  managed_count=$(echo "$output" | grep -c '(managed' || true)
-  assert_eq "dead managed not shown" "0" "$managed_count"
-}
-
-@test "ps shows multiple managed processes (worker + reviewer)" {
-  spawn_bg
-  make_orchestrator "$IPC_A" "$SPAWNED_PID"
-  spawn_bg
-  echo "$SPAWNED_PID" > "${IPC_A}/handle-555.worker"
-  spawn_bg
-  echo "$SPAWNED_PID" > "${IPC_A}/handle-555.reviewer"
-
-  run bash "$ORCHCTL" ps
-  local managed_count
-  managed_count=$(echo "$output" | grep -c '(managed' || true)
-  assert_eq "both worker and reviewer shown" "2" "$managed_count"
-  assert_match "shows worker" "worker #555" "$output"
-  assert_match "shows reviewer" "reviewer #555" "$output"
-}
-
-# ── count ──
+# ── count (session-ID based, ADR-0016 Phase 2 / ADR-0014) ──
 
 @test "count with no sessions is 0" {
   run bash "$ORCHCTL" count
   assert_eq "count no sessions" "0" "$output"
 }
 
-@test "count with session but no orchestrator.pid is 0" {
+@test "count with session but no orchestrator.claude-session-id is 0" {
   mkdir -p "$IPC_A"
   run bash "$ORCHCTL" count
-  assert_eq "count no pid file" "0" "$output"
+  assert_eq "count no session token" "0" "$output"
 }
 
-@test "count does not count dead PID" {
+@test "count ignores a legacy orchestrator.pid file (v2 is session-ID based)" {
   mkdir -p "$IPC_A"
-  echo "99999" > "${IPC_A}/orchestrator.pid"
+  echo "$$" > "${IPC_A}/orchestrator.pid"
   run bash "$ORCHCTL" count
-  assert_eq "count dead PID" "0" "$output"
+  assert_eq "legacy pid file not counted" "0" "$output"
 }
 
-@test "count counts live orchestrators across sessions, ignoring dead ones" {
-  mkdir -p "$IPC_A"
-  spawn_bg
-  echo "$SPAWNED_PID" > "${IPC_A}/orchestrator.pid"
+@test "count does not count a done or missing session" {
+  make_orchestrator "$IPC_A" "$ORCH_TOKEN_A"
+  make_orchestrator "$IPC_B" "$ORCH_TOKEN_B"
+  # A is done; B is not listed at all
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$ORCH_TOKEN_A" background /repo 1700000000000 done)]"
   run bash "$ORCHCTL" count
-  assert_eq "count 1 live" "1" "$output"
+  assert_eq "done/missing not counted" "0" "$output"
+}
 
-  mkdir -p "$IPC_B"
-  spawn_bg
-  echo "$SPAWNED_PID" > "${IPC_B}/orchestrator.pid"
-  run bash "$ORCHCTL" count
-  assert_eq "count 2 live" "2" "$output"
-
+@test "count counts busy and blocked sessions, ignoring dead ones" {
+  make_orchestrator "$IPC_A" "$ORCH_TOKEN_A"
+  make_orchestrator "$IPC_B" "$ORCH_TOKEN_B"
   local ipc_c="${IPC_BASE}/test-orchctl-repo3-00000003"
-  mkdir -p "$ipc_c"
-  echo "99998" > "${ipc_c}/orchestrator.pid"
+  make_orchestrator "$ipc_c" "cccc3333-4444-4555-8666-777788889999"
+  mock_claude_enqueue_agents "[
+    $(mock_claude_agent_record "$ORCH_TOKEN_A" background /repo 1700000000000 busy),
+    $(mock_claude_agent_record "$ORCH_TOKEN_B" background /repo 1700000001000 blocked),
+    $(mock_claude_agent_record "cccc3333-4444-4555-8666-777788889999" background /repo 1700000002000 stopped)
+  ]"
   run bash "$ORCHCTL" count
-  assert_eq "count 2 live + 1 dead" "2" "$output"
+  assert_eq "busy + blocked counted, stopped ignored" "2" "$output"
   assert_match "output is a plain integer" '^[0-9]+$' "$output"
 }
 

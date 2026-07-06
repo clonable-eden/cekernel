@@ -64,24 +64,17 @@ and fetch an unrelated same-numbered issue.
 
 ## Workflow
 
-### Claude Code Session ID Persistence
+### Claude Code Session ID
 
-On startup, the Orchestrator must discover and persist its own Claude Code session ID (UUID). This is separate from `CEKERNEL_SESSION_ID` and is used by `/postmortem` to locate Orchestrator transcripts.
+Your Claude Code session ID (UUID) is captured and persisted to
+`${CEKERNEL_IPC_DIR}/orchestrator.claude-session-id` by
+`spawn-orchestrator.sh` at spawn time (ADR-0016 Phase 2). It is separate
+from `CEKERNEL_SESSION_ID` and is used by `orchctl` for liveness and by
+`/postmortem` to locate Orchestrator transcripts.
 
-The dispatch/orchestrate skill does **not** persist the Claude Code session ID because the skill runs in a different Claude Code session than the Orchestrator. The Orchestrator runs as an independent `claude -p --agent` process with its own UUID, so it must persist the ID itself.
-
-Run this **once** at startup, before processing any issues:
-
-```bash
-export CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID} && \
-source ${CEKERNEL_SCRIPTS}/shared/session-id.sh && \
-source ${CEKERNEL_SCRIPTS}/shared/claude-session-id.sh && \
-_PROJECT_ROOT="$(git rev-parse --show-toplevel)" && \
-_CLAUDE_SID=$(claude_session_id_discover "$_PROJECT_ROOT") && \
-claude_session_id_persist "$_CLAUDE_SID" || echo "warn: Claude session ID discovery failed (non-fatal)" >&2
-```
-
-If discovery fails (e.g., no `.jsonl` files found yet), continue — it is optional for Orchestrator operation.
+Do **not** discover or re-persist it yourself — the spawn-time value is
+deterministic; overwriting it with a heuristic (e.g., newest transcript)
+mis-attributes concurrent sessions (#571).
 
 ### CEKERNEL_SESSION_ID Management
 
@@ -165,10 +158,12 @@ If `CEKERNEL_SCRIPTS` is not provided in the prompt, fall back to `"$(git rev-pa
 
 ### CRITICAL: Turn Lifetime under Headless Execution (#558)
 
-You normally run as a spawned headless process (`claude -p --agent orchestrator`;
-`--bg` under ADR-0016). In that mode **your process exits the moment you end
-your final turn, and any pending `run_in_background` tasks are killed with
-it** — orphaning live Workers (observed 2026-07-06, issue #558).
+You normally run as a spawned background session (`claude --bg --agent
+orchestrator`, ADR-0016 Phase 2). When you end your final turn the session
+transitions to `done`: your active execution stops, and whether a pending
+`run_in_background` task completion re-invokes a `done` session is
+unverified — treat ending your turn as terminating the orchestration,
+orphaning live Workers (observed under `-p` 2026-07-06, issue #558).
 
 Therefore:
 
@@ -438,7 +433,7 @@ Prohibited use:
 
 ### Merge-Dependent Scheduling
 
-The Orchestrator runs as an independent `claude -p` process (non-interactive), so it **cannot** receive user messages or wait for human input.
+The Orchestrator runs as an independent `claude --bg` background session (non-interactive), so it **cannot** receive user messages or wait for human input.
 
 Merge dependencies between issues are resolved **before** the Orchestrator is launched:
 - The `/orchestrate` and `/dispatch` skills use `triage.md` Phase ordering to split dependent issues into separate phases
@@ -664,14 +659,13 @@ If `watch.sh` returns `merged` (legacy Worker behavior), proceed with cleanup di
 
 ## Completion
 
-> **MANDATORY** — Execute every step below before exiting. Skipping PID cleanup causes `orchctl ps` to show stale `not-running` entries.
+When all issues have been processed (all Workers completed and cleaned up),
+simply end your final turn. Your `claude --bg` session then transitions to
+the `done` state (ADR-0016) — no manual lifecycle cleanup is needed or
+possible from inside the session:
 
-When all issues have been processed (all Workers completed and cleaned up):
-
-- [ ] **Remove PID file** — This is the final required action before exit:
-
-```bash
-rm -f "${CEKERNEL_IPC_DIR}/orchestrator.pid"
-```
-
-If PID removal is accidentally skipped, `orchctl gc` will clean it up as a safety net, but the Orchestrator must not rely on that fallback.
+- `orchctl ps`/`count` read your state from `claude agents --json` via the
+  session ID captured at spawn time, so a finished Orchestrator no longer
+  counts against the concurrency limit.
+- The lingering `done` session is reaped later by `orchctl gc`
+  (`claude stop` + metadata removal).

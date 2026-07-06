@@ -75,23 +75,19 @@ Format the output as a readable table for the user:
 bash "$ORCHCTL" ps [--session <id>]
 ```
 
-Shows all Orchestrator processes across all sessions with their child process trees. Unlike `ls` (which shows Workers from IPC state files), `ps` reads `orchestrator.pid` files and queries the OS process table directly.
+Shows all Orchestrator sessions across all cekernel sessions. Unlike `ls` (which shows Workers from IPC state files), `ps` reads the `orchestrator.claude-session-id` token captured at spawn time and resolves its state via `claude agents --json` (ADR-0016 Phase 2).
 
 Output format:
 
 ```
-orchestrator  PID=61565  session=cekernel-7069bc3d  elapsed=5m  running
-├── watch.sh 439  PID=61570  S
-├── sleep 120  PID=61575  S
-└── claude -p --agent worker  PID=61580  S
+orchestrator  claude=aaaa1111-2222-4333-8444-555566667777  session=cekernel-7069bc3d  elapsed=5m  busy
 ```
 
 - `--session <id>`: Filter to a specific session
-- Shows `running` or `not-running` status based on whether the PID is alive
-- Child processes are listed as a tree with `├──` / `└──` connectors
+- The trailing state is the raw `claude agents --json` state (`busy`, `blocked`, `done`, `stopped`, ...); `missing` means the session is no longer listed. `blocked` means the session is stalled on a permission dialog — surface it to the user prominently.
 - If no orchestrators are found, outputs `no orchestrators.`
 
-Present the output as-is (pre-formatted tree) to the user.
+Present the output as-is (pre-formatted) to the user.
 
 #### inspect — Detailed Worker view
 

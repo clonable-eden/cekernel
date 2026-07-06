@@ -149,7 +149,7 @@ echo "CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID}"
 
 Capture `CEKERNEL_SESSION_ID` from the Bash output (the line `CEKERNEL_SESSION_ID=...`) and use it in the Orchestrator prompt.
 
-Note: Claude Code session ID (`orchestrator.claude-session-id`) persistence is handled by the Orchestrator itself after startup. The dispatch skill does not persist it because the skill's UUID differs from the Orchestrator's UUID (the Orchestrator runs as a separate `claude -p --agent` process).
+Note: Claude Code session ID (`orchestrator.claude-session-id`) persistence is handled by `spawn-orchestrator.sh` itself: it captures the daemon-assigned session ID from the `claude --bg` spawn and persists it deterministically (ADR-0016 Phase 2). Neither this skill nor the Orchestrator writes it.
 
 **Construct the Orchestrator prompt** from the following template. Replace `<placeholders>` with actual values determined in previous steps:
 
@@ -180,7 +180,7 @@ export CEKERNEL_AGENT_REVIEWER=<agent-name> && \
 "${CEKERNEL_SCRIPTS}/ctl/spawn-orchestrator.sh" "<prompt>"
 ```
 
-The script launches the Orchestrator as a background `claude -p --agent` process that runs independently of the parent session. The Orchestrator PID is returned on stdout.
+The script launches the Orchestrator as a `claude --bg --agent` background agent session that runs independently of the parent session, supervised by the on-demand daemon. The captured Claude Code session token is returned on stdout.
 
 The Orchestrator autonomously executes:
 

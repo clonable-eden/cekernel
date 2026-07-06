@@ -30,6 +30,7 @@ source "${SCRIPT_DIR}/../shared/load-env.sh"
 source "${SCRIPT_DIR}/../shared/worker-state.sh"
 source "${SCRIPT_DIR}/../shared/worker-priority.sh"
 source "${SCRIPT_DIR}/../shared/checkpoint-file.sh"
+source "${SCRIPT_DIR}/../shared/claude-bg.sh"
 
 CEKERNEL_VAR_DIR="${CEKERNEL_VAR_DIR:-$HOME/.local/var/cekernel}"
 IPC_BASE="${CEKERNEL_IPC_BASE:-${CEKERNEL_VAR_DIR}/ipc}"
@@ -290,7 +291,12 @@ cmd_ls() {
   fi
 }
 
-# ── ps: Show orchestrator process trees ──
+# ── ps: Show orchestrator sessions (session-ID based, ADR-0016 Phase 2) ──
+# Liveness comes from `claude agents --json` state via the token captured
+# in orchestrator.claude-session-id. States are shown as-is so `blocked`
+# (permission-dialog stall) is surfaced distinctly; an unlisted token shows
+# as `missing`. The former PID process tree / managed-process display was
+# PID-based and is gone — #549 (Phase 4) rebuilds the view on agents --json.
 cmd_ps() {
   local session_filter=""
 
@@ -319,12 +325,12 @@ cmd_ps() {
       continue
     fi
 
-    local pid_file="${session_dir}orchestrator.pid"
-    [[ -f "$pid_file" ]] || continue
+    local sid_file="${session_dir}orchestrator.claude-session-id"
+    [[ -f "$sid_file" ]] || continue
 
-    local orch_pid
-    orch_pid=$(tr -d '[:space:]' < "$pid_file")
-    [[ -n "$orch_pid" ]] || continue
+    local token
+    token=$(tr -d '[:space:]' < "$sid_file")
+    [[ -n "$token" ]] || continue
 
     # Compute elapsed from orchestrator.spawned
     local elapsed=""
@@ -344,186 +350,17 @@ cmd_ps() {
       fi
     fi
 
-    # Check if the process is alive
-    local status
-    if kill -0 "$orch_pid" 2>/dev/null; then
-      status="running"
-    else
-      status="not-running"
-    fi
+    local state
+    state=$(claude_bg_state_for_token "$token" 2>/dev/null) || state="missing"
 
     found=$((found + 1))
 
-    # Print orchestrator header line
-    echo "orchestrator  PID=${orch_pid}  session=${sid}  elapsed=${elapsed}  ${status}"
-
-    # If running, list child processes and managed processes
-    if [[ "$status" == "running" ]]; then
-      # Collect all descendant PIDs to avoid duplicating managed processes
-      local child_pids_file
-      child_pids_file=$(mktemp /tmp/cekernel-ps-children.XXXXXX)
-      _ps_collect_descendants "$orch_pid" "$child_pids_file"
-
-      # Count managed processes to adjust tree connectors
-      local has_managed=0
-      _ps_has_managed "$session_dir" "$child_pids_file" && has_managed=1
-
-      _ps_print_children "$orch_pid" "  " "$has_managed"
-      _ps_print_managed "$session_dir" "$child_pids_file" "  "
-
-      rm -f "$child_pids_file"
-    fi
+    echo "orchestrator  claude=${token}  session=${sid}  elapsed=${elapsed}  ${state}"
   done
 
   if [[ "$found" -eq 0 ]]; then
     echo "no orchestrators."
   fi
-}
-
-# ── Helper: recursively print child processes ──
-# Args: parent_pid indent [has_more_after]
-#   has_more_after: if "1", the last child uses ├── instead of └── (managed entries follow)
-_ps_print_children() {
-  local parent_pid="$1" indent="$2" has_more_after="${3:-0}"
-
-  local children
-  children=$(pgrep -P "$parent_pid" 2>/dev/null || true)
-  [[ -n "$children" ]] || return 0
-
-  # Collect children into an array for last-child detection
-  local child_pids=()
-  while IFS= read -r cpid; do
-    [[ -n "$cpid" ]] && child_pids+=("$cpid")
-  done <<< "$children"
-
-  local total=${#child_pids[@]}
-  local idx=0
-
-  for cpid in "${child_pids[@]}"; do
-    idx=$((idx + 1))
-    local connector="├──"
-    local child_indent="${indent}│   "
-    local is_last=0
-    if [[ "$idx" -eq "$total" ]]; then
-      is_last=1
-    fi
-
-    # Use └── only if truly the last entry (no managed processes follow)
-    if [[ "$is_last" -eq 1 && "$has_more_after" -eq 0 ]]; then
-      connector="└──"
-      child_indent="${indent}    "
-    fi
-
-    # Get process command
-    local cmd
-    cmd=$(ps -o command= -p "$cpid" 2>/dev/null || echo "(unknown)")
-
-    # Get process state
-    local pstate
-    pstate=$(ps -o state= -p "$cpid" 2>/dev/null || echo "?")
-    # Trim to first character for brevity
-    pstate="${pstate:0:1}"
-
-    echo "${indent}${connector} ${cmd}  PID=${cpid}  ${pstate}"
-
-    # Recurse for grandchildren (no managed processes at deeper levels)
-    _ps_print_children "$cpid" "$child_indent"
-  done
-}
-
-# ── Helper: collect all descendant PIDs recursively into a file ──
-_ps_collect_descendants() {
-  local parent_pid="$1" outfile="$2"
-
-  local children
-  children=$(pgrep -P "$parent_pid" 2>/dev/null || true)
-  [[ -n "$children" ]] || return 0
-
-  while IFS= read -r cpid; do
-    [[ -n "$cpid" ]] || continue
-    echo "$cpid" >> "$outfile"
-    _ps_collect_descendants "$cpid" "$outfile"
-  done <<< "$children"
-}
-
-# ── Helper: check if any managed processes exist (for tree connector logic) ──
-_ps_has_managed() {
-  local session_dir="$1" child_pids_file="$2"
-
-  for handle_file in "${session_dir}"handle-*.*; do
-    [[ -f "$handle_file" ]] || continue
-    local pid
-    pid=$(tr -d '[:space:]' < "$handle_file")
-    [[ -n "$pid" ]] || continue
-    kill -0 "$pid" 2>/dev/null || continue
-    if ! grep -qxF "$pid" "$child_pids_file" 2>/dev/null; then
-      return 0
-    fi
-  done
-  return 1
-}
-
-# ── Helper: print managed processes from handle files ──
-# Reads handle-{issue}.{type} files from the session IPC directory.
-# Skips processes that are already shown as children (dedup via child_pids_file).
-# Skips dead processes (PID not alive).
-_ps_print_managed() {
-  local session_dir="$1" child_pids_file="$2" indent="$3"
-
-  # Collect managed entries: issue, type, pid
-  local managed_entries=()
-  for handle_file in "${session_dir}"handle-*.*; do
-    [[ -f "$handle_file" ]] || continue
-    local fname
-    fname=$(basename "$handle_file")
-    # Parse handle-{issue}.{type}
-    local issue_type="${fname#handle-}"
-    local issue="${issue_type%%.*}"
-    local type="${issue_type#*.}"
-
-    local pid
-    pid=$(tr -d '[:space:]' < "$handle_file")
-    [[ -n "$pid" ]] || continue
-
-    # Skip if PID is not alive
-    kill -0 "$pid" 2>/dev/null || continue
-
-    # Skip if already shown as a child process
-    if grep -qxF "$pid" "$child_pids_file" 2>/dev/null; then
-      continue
-    fi
-
-    managed_entries+=("${type}:${issue}:${pid}")
-  done
-
-  [[ ${#managed_entries[@]} -gt 0 ]] || return 0
-
-  local total=${#managed_entries[@]}
-  local idx=0
-
-  for entry in "${managed_entries[@]}"; do
-    idx=$((idx + 1))
-    local type="${entry%%:*}"
-    local rest="${entry#*:}"
-    local issue="${rest%%:*}"
-    local pid="${rest#*:}"
-
-    local connector="├──"
-    if [[ "$idx" -eq "$total" ]]; then
-      connector="└──"
-    fi
-
-    # Get actual PPID
-    local ppid
-    ppid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d '[:space:]' || echo "?")
-
-    # Get process state
-    local pstate
-    pstate=$(ps -o state= -p "$pid" 2>/dev/null || echo "?")
-    pstate="${pstate:0:1}"
-
-    echo "${indent}${connector} ${type} #${issue}  PID=${pid}  ${pstate}  (managed, PPID=${ppid})"
-  done
 }
 
 # ── inspect: Detailed worker view ──
@@ -1013,34 +850,43 @@ cmd_gc() {
     done
   }
 
-  # ── 3. Clean stale orchestrator metadata ──
-  # When the orchestrator process is dead, remove orchestrator.pid,
-  # orchestrator.spawned, and repo files from the session directory.
+  # ── 3. Clean stale orchestrator sessions (ADR-0016 Phase 2) ──
+  # Liveness is session-ID based: a session whose captured token is not
+  # busy/blocked in `claude agents --json` is dead. Dead sessions are
+  # reaped via `claude stop` (done sessions linger until explicitly
+  # stopped — ADR-0016) and their metadata files removed. Legacy
+  # orchestrator.pid files (pre-v2) are swept unconditionally.
   if [[ -d "$IPC_BASE" ]]; then
     for session_dir in "$IPC_BASE"/*/; do
       [[ -d "$session_dir" ]] || continue
-      local orch_pid_file="${session_dir}orchestrator.pid"
-      [[ -f "$orch_pid_file" ]] || continue
+      local orch_sid_file="${session_dir}orchestrator.claude-session-id"
+      local orch_legacy_pid_file="${session_dir}orchestrator.pid"
+      [[ -f "$orch_sid_file" || -f "$orch_legacy_pid_file" ]] || continue
 
-      local orch_pid
-      orch_pid=$(tr -d '[:space:]' < "$orch_pid_file")
-      [[ -n "$orch_pid" ]] || continue
+      local orch_token=""
+      if [[ -f "$orch_sid_file" ]]; then
+        orch_token=$(tr -d '[:space:]' < "$orch_sid_file")
+      fi
 
-      # Skip if orchestrator is still alive
-      if kill -0 "$orch_pid" 2>/dev/null; then
+      # Skip if the orchestrator session is still alive (busy/blocked).
+      # A legacy pid file without a token is always stale under v2.
+      if [[ -n "$orch_token" ]] && claude_bg_token_alive "$orch_token" 2>/dev/null; then
         continue
       fi
 
-      # Orchestrator is dead — clean up metadata files
+      # Orchestrator session is dead — reap it and clean up metadata
       if [[ "$dry_run" -eq 1 ]]; then
-        echo "[dry-run] would remove stale orchestrator.pid: $orch_pid_file" >&2
+        if [[ -n "$orch_token" ]]; then
+          echo "[dry-run] would stop dead orchestrator session: $orch_token" >&2
+        fi
       else
-        rm -f "$orch_pid_file"
+        if [[ -n "$orch_token" ]]; then
+          claude stop "$orch_token" >/dev/null 2>&1 || true
+        fi
       fi
-      cleaned=$((cleaned + 1))
 
-      # Also remove orchestrator.spawned and repo if present
-      for meta_file in "${session_dir}orchestrator.spawned" "${session_dir}repo"; do
+      for meta_file in "$orch_sid_file" "$orch_legacy_pid_file" \
+        "${session_dir}orchestrator.spawned" "${session_dir}repo"; do
         if [[ -f "$meta_file" ]]; then
           if [[ "$dry_run" -eq 1 ]]; then
             echo "[dry-run] would remove stale metadata: $meta_file" >&2
@@ -1094,7 +940,9 @@ cmd_gc() {
   fi
 }
 
-# ── count: Count running orchestrators (internal) ──
+# ── count: Count running orchestrators (internal, ADR-0014) ──
+# Session-ID based (ADR-0016 Phase 2): a session counts when its captured
+# token maps to a busy or blocked session in `claude agents --json`.
 cmd_count() {
   local count=0
 
@@ -1102,14 +950,14 @@ cmd_count() {
     for session_dir in "$IPC_BASE"/*/; do
       [[ -d "$session_dir" ]] || continue
 
-      local pid_file="${session_dir}orchestrator.pid"
-      [[ -f "$pid_file" ]] || continue
+      local sid_file="${session_dir}orchestrator.claude-session-id"
+      [[ -f "$sid_file" ]] || continue
 
-      local orch_pid
-      orch_pid=$(tr -d '[:space:]' < "$pid_file")
-      [[ -n "$orch_pid" ]] || continue
+      local token
+      token=$(tr -d '[:space:]' < "$sid_file")
+      [[ -n "$token" ]] || continue
 
-      if kill -0 "$orch_pid" 2>/dev/null; then
+      if claude_bg_token_alive "$token" 2>/dev/null; then
         count=$((count + 1))
       fi
     done
