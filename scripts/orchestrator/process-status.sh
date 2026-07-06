@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# process-status.sh — List active processes (Workers and Reviewers)
+# process-status.sh — List active Worker processes
 #
 # Usage: process-status.sh
 # Output: JSON Lines (1 line = 1 process)

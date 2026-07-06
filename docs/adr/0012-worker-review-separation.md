@@ -431,6 +431,27 @@ assumptions; CLAUDE.md feasibility-check rule applies):
    assumption recorded in CLAUDE.md); re-verify when rewriting the
    nesting/worktree constraints (non-blocking).
 
+**Verification results (2026-07-06, #551 implementation; claude v2.1.201):**
+
+1. **Auto-cleanup after detached checkout: confirmed safe.** The removal
+   routine (`removeAgentWorktree`, inspected in the v2.1.201 binary) aborts
+   only when `git status --porcelain` reports a dirty working tree. Fetches
+   and HEAD movement (detached checkout) leave porcelain output empty, so a
+   read-only Reviewer worktree is auto-removed. No explicit Orchestrator
+   cleanup step is needed.
+2. **`.claude/worktrees/` ignore mechanism: identified.** On agent-worktree
+   creation, Claude Code appends `**/.claude/worktrees/` (and other runtime
+   paths) to the repository's `.git/info/exclude` under a
+   `# claude-code-runtime` marker (`ensureClaudeRuntimeFilesExcluded`). No
+   project `.gitignore` entry is required, and the mechanism is per-clone —
+   a fresh clone regains it on first agent-worktree creation.
+3. **Symlinks resolve: confirmed.** `.claude/rules/` relative symlinks
+   (`../../docs/*.md`) resolve correctly inside a full worktree checkout
+   (verified by reading through them in a live worktree). The stale
+   CLAUDE.md note was corrected; the extracted Review section in CLAUDE.md
+   is retained because rules auto-loading inside agent worktrees is still
+   not guaranteed.
+
 ### Amendment 3: `CEKERNEL_KEEP_WORKTREE` — Optional Worktree Retention After Approval (2026-07)
 
 The Worktree Lifetime table above mandates immediate worktree removal on

@@ -12,8 +12,8 @@ graph LR
     H[Human / Scheduler] -->|/orchestrate<br/>/dispatch| O[Orchestrator<br/>main working tree]
     O -->|spawn-worker.sh| W[Worker<br/>git worktree]
     W -->|notify ci-passed| O
-    O -->|spawn-reviewer.sh| R[Reviewer<br/>same worktree]
-    R -->|notify approved| O
+    O -->|Agent tool<br/>isolation: worktree| R[Reviewer<br/>subagent worktree]
+    R -->|return approved| O
     O -->|cleanup + notify| H
 ```
 
@@ -99,10 +99,9 @@ scripts/
     send-signal.sh         # Send signal (TERM/SUSPEND) to a running Worker
     spawn.sh               # Common process spawning logic (concurrency guard, FIFO, state, backend, Type)
     spawn-worker.sh        # Spawn Worker (thin wrapper for spawn.sh --agent worker)
-    spawn-reviewer.sh      # Spawn Reviewer (wrapper for spawn.sh --agent reviewer)
     watch-logs.sh          # Real-time Worker log monitoring
     watch.sh               # Monitor process completion (FIFO + state file + crash detection)
-    process-status.sh       # List active processes (Workers and Reviewers)
+    process-status.sh       # List active Worker processes
   scheduler/
     at-backend.sh          # At backend adapter (launchd/atd)
     at-backends/
@@ -137,12 +136,12 @@ scripts/
     worker-priority.sh     # Worker priority (nice value) management
     worker-state.sh        # Worker process state management
   process/
-    check-signal.sh        # Check for pending signal (Worker/Reviewer-side)
+    check-signal.sh        # Check for pending signal (Worker-side)
     clear-resume-marker.sh # Clear resume marker after successful resume
     create-checkpoint.sh   # Create checkpoint file for suspend/resume
     notify-complete.sh     # Process → Orchestrator completion notification
     phase-transition.sh    # Atomic phase boundary: signal check + state write
-    worker-state-write.sh  # Write Worker state from Worker/Reviewer side
+    worker-state-write.sh  # Write Worker state from Worker side
 skills/
   at/
     SKILL.md               # /at skill — one-shot schedule management
@@ -168,11 +167,14 @@ skills/
     SKILL.md               # /unix-architect skill — ADR authoring and review
 tests/
   ctl/test-*.sh            # Control script tests (orchctl, spawn-orchestrator)
-  helpers.sh               # Assertion helpers
+  helpers.sh               # Assertion helpers (legacy harness)
+  helpers/
+    assertions.bash        # Assertion helpers (bats lane)
   orchestrator/test-*.sh   # Orchestrator script tests
-  run-tests.sh             # Test runner
+  run-tests.sh             # Dual-lane test runner (legacy test-*.sh + *.bats)
   scheduler/test-*.sh      # Scheduler script tests
   shared/test-*.sh         # Shared helper tests
+  shared/*.bats            # bats-core tests (ADR-0017 migration)
   process/test-*.sh        # Process script tests
 ```
 
@@ -187,6 +189,7 @@ tests/
 | [WezTerm](https://wezfurlong.org/wezterm/) | Worker window launch/management (wezterm backend) | No* |
 | [tmux](https://github.com/tmux/tmux) | Worker pane management (tmux backend) | No* |
 | git | Worktree creation/management | Yes |
+| [bats-core](https://bats-core.readthedocs.io/) | Test framework (development only) — `brew install bats-core`; CI pins v1.13.0 | No (dev) |
 
 \* One backend is required: headless (default), WezTerm, or tmux. Set `CEKERNEL_BACKEND` env var to select. Headless requires no terminal.
 

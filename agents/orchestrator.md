@@ -1,7 +1,7 @@
 ---
 name: orchestrator
 description: Orchestrator agent that manages issue lifecycle in the main working tree. Handles issue intake, worktree creation, Worker spawning, completion monitoring, review coordination, and cleanup.
-tools: Read, Edit, Write, Bash
+tools: Read, Edit, Write, Bash, Agent(reviewer)
 ---
 
 # Orchestrator Agent
@@ -29,7 +29,7 @@ cd "$WORKTREE" && git log --oneline -10
 2. Create git worktree (from main or specified branch)
 3. Spawn Worker (via backend)
 4. Monitor completion (via named pipe)
-5. Review coordination (spawn Reviewer + FIFO)
+5. Review coordination (foreground Reviewer subagent)
 6. Merge decision and worktree cleanup
 
 ## Issue Triage
@@ -85,21 +85,14 @@ export CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID} && export CEKERNEL_AGENT_WORKE
 
 `spawn-worker.sh` defaults `CEKERNEL_AGENT_WORKER` to `worker` if unset, ensuring safe fallback for direct execution.
 
-### CEKERNEL_AGENT_REVIEWER Propagation
+### CEKERNEL_AGENT_REVIEWER (Reviewer Subagent Type)
 
-Similarly to `CEKERNEL_AGENT_WORKER`, the `/orchestrate` skill determines the Reviewer agent name and passes `CEKERNEL_AGENT_REVIEWER` to the Orchestrator. The Orchestrator propagates this to all `spawn-reviewer.sh` invocations.
+Similarly to `CEKERNEL_AGENT_WORKER`, the `/orchestrate` skill determines the Reviewer agent name and passes `CEKERNEL_AGENT_REVIEWER` to the Orchestrator. The Reviewer is **not** spawned via scripts — the Orchestrator invokes it with the **Agent tool**, using `CEKERNEL_AGENT_REVIEWER` as the subagent type:
 
 - Plugin mode: `cekernel:reviewer`
 - Local mode: `reviewer`
 
-If `CEKERNEL_AGENT_REVIEWER` is not provided, derive it from `CEKERNEL_AGENT_WORKER` by replacing `worker` with `reviewer` (e.g., `cekernel:worker` → `cekernel:reviewer`).
-
-```bash
-# Example: propagate agent name to spawn-reviewer.sh
-export CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID} && export CEKERNEL_AGENT_REVIEWER=${CEKERNEL_AGENT_REVIEWER} && ${CEKERNEL_SCRIPTS}/orchestrator/spawn-reviewer.sh 4 <pr-number>
-```
-
-`spawn-reviewer.sh` defaults `CEKERNEL_AGENT_REVIEWER` to `reviewer` if unset, ensuring safe fallback for direct execution.
+If `CEKERNEL_AGENT_REVIEWER` is not provided, derive it from `CEKERNEL_AGENT_WORKER` by replacing `worker` with `reviewer` (e.g., `cekernel:worker` → `cekernel:reviewer`), falling back to `reviewer`.
 
 ### CEKERNEL_ENV (Env Profile) Propagation
 
@@ -140,7 +133,6 @@ ${CEKERNEL_SCRIPTS}/orchestrator/cleanup-worktree.sh
 ${CEKERNEL_SCRIPTS}/orchestrator/process-status.sh
 ${CEKERNEL_SCRIPTS}/orchestrator/health-check.sh
 ${CEKERNEL_SCRIPTS}/orchestrator/send-signal.sh
-${CEKERNEL_SCRIPTS}/orchestrator/spawn-reviewer.sh
 ${CEKERNEL_SCRIPTS}/orchestrator/watch-logs.sh
 
 # Shared scripts (source)
@@ -498,27 +490,35 @@ ${CEKERNEL_SCRIPTS}/orchestrator/cleanup-worktree.sh --force 4
 
 ## Reviewer Phase
 
-When `watch.sh` returns `ci-passed`, the Orchestrator spawns a Reviewer process to evaluate the PR before merge. The Reviewer runs as an independent process (via `spawn-reviewer.sh`) and communicates its result back through a FIFO, following the same spawn + FIFO pattern used for Workers.
+When `watch.sh` returns `ci-passed`, the Orchestrator invokes the Reviewer to evaluate the PR before merge. The Reviewer runs as an **Orchestrator subagent** with `isolation: worktree` (ADR-0012 Amendment 2): it receives its own temporary worktree, performs a detached PR checkout there, and returns the verdict as its final output line. No spawn script, FIFO, or `watch.sh` is involved.
 
-### Launching the Reviewer
+### Invoking the Reviewer
 
-Use `spawn-reviewer.sh` (Bash) to spawn the Reviewer as an independent process:
+Use the **Agent tool** with the subagent type from `CEKERNEL_AGENT_REVIEWER` (`cekernel:reviewer` in plugin mode, `reviewer` in local mode). The call is made in the **foreground** (no `run_in_background`) — reviews are short, and serialization under concurrent issues is accepted by design; Worker FIFO events are buffered in their FIFOs during the block, not lost.
 
-```bash
-# 1. Spawn Reviewer (CEKERNEL_ENV and CEKERNEL_AGENT_REVIEWER propagated)
-#    Pass both issue number and PR number: state is managed by issue number, PR number is for the reviewer
-export CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID} && export CEKERNEL_ENV=${CEKERNEL_ENV} && export CEKERNEL_AGENT_REVIEWER=${CEKERNEL_AGENT_REVIEWER} && ${CEKERNEL_SCRIPTS}/orchestrator/spawn-reviewer.sh <issue> <pr>
+Include in the Agent prompt:
 
-# 2. Monitor Reviewer completion in background (Bash run_in_background: true)
-export CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID} && export CEKERNEL_ENV=${CEKERNEL_ENV} && ${CEKERNEL_SCRIPTS}/orchestrator/watch.sh <issue>
+- **Issue number**: the issue being reviewed
+- **PR number**: the PR to review
+- **Base branch**: the PR's base ref (e.g. `2.0-dev` — may be non-default; the Reviewer's worktree is branched from the default branch)
+
+Example prompt:
+
+```
+Review PR #<pr> for issue #<issue>. The PR base branch is <base>.
+Follow your agent definition: perform a detached PR checkout, read the
+repository's CLAUDE.md and the changed files, submit the review, and end
+your response with the verdict (approved / changes-requested / failed) as
+the final output line.
 ```
 
-Step 2 MUST use `run_in_background: true` on the Bash tool call. The Reviewer is short-lived (review only, no implementation), so completion is typically fast.
+**Permissions**: The Reviewer inherits the Orchestrator session's tool permissions. `gh pr review` / `gh api` / checkout commands must be pre-authorized in the Orchestrator's context (e.g., the target repository's `.claude/settings.json`); otherwise the review stalls silently, exactly like ADR-0016's `blocked` state.
+
+**Worktree cleanup**: The Reviewer's temporary worktree is removed automatically by Claude Code when the working tree is left clean (detached checkout and fetches do not count as changes). No explicit cleanup step is needed.
 
 ### Handling Reviewer Result
 
-The Reviewer notifies via `notify-complete.sh` with one of: `approved`, `changes-requested`, or `failed`.
-`watch.sh` returns the result to the Orchestrator.
+The Reviewer's **final output line** is the result: `approved`, `changes-requested`, or `failed`. Any unrecognized value — and any Agent tool error — is treated as escalation (see below).
 
 #### approved
 
@@ -570,7 +570,7 @@ Track retry count in the Orchestrator's working memory. After `CEKERNEL_REVIEW_M
 
 #### escalation
 
-Triggered when retry limit is exceeded or the Reviewer returns an unexpected result (error, unrecognized output).
+Triggered when the retry limit is exceeded, the Reviewer returns `failed` or an unrecognized final output line, or the Agent tool call itself errors.
 
 ```bash
 export CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID} && export CEKERNEL_ENV=${CEKERNEL_ENV} && ${CEKERNEL_SCRIPTS}/orchestrator/cleanup-worktree.sh <issue>
@@ -601,7 +601,7 @@ If `watch.sh` returns `merged` (legacy Worker behavior), proceed with cleanup di
 - Worker unresponsive: check log last modification time, detect zombie with `health-check.sh` → send TERM via `send-signal.sh <issue> TERM` → wait `CEKERNEL_TERM_GRACE_PERIOD` (default: 120s) → if still alive, force terminate with `cleanup-worktree.sh --force`
 - Merge conflict: Worker attempts to resolve. If impossible, sends error notification via FIFO
 - CI failure: Worker attempts to fix. After `CEKERNEL_CI_MAX_RETRIES` failures, escalate to human
-- Reviewer failure: GitHub API outage, process crash, or unrecognized output → treat as escalation (cleanup + desktop notification + issue lock release)
+- Reviewer failure: GitHub API outage, Agent tool error, `failed` verdict, or unrecognized final output line → treat as escalation (cleanup + desktop notification + issue lock release)
 - Timeout: When `watch.sh` returns `timeout` status, follow the graceful shutdown escalation:
 
   ```bash

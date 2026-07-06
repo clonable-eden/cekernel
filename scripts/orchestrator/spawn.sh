@@ -74,7 +74,7 @@ fi
 
 # ── Issue Lock (duplicate process prevention) ──
 # In resume mode, the lock is already held by the previous process (e.g.,
-# Worker → Reviewer transition via spawn-reviewer.sh). Re-acquiring would
+# Worker re-spawn after changes-requested or SUSPEND). Re-acquiring would
 # fail because the lock directory already exists. issue_lock_update_pid
 # (called later) transfers ownership to the new process.
 if [[ "$RESUME" -eq 0 ]]; then

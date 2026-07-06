@@ -28,14 +28,17 @@ cekernel's design is rooted in UNIX philosophy and TDD.
 These documents are symlinked in `.claude/rules/` for automatic loading by Claude Code.
 This ensures Worker agents read the content without requiring explicit `Read` calls.
 
-> **Note**: `.claude/rules/` symlinks do not work in git worktrees. Reviewers operating
-> in worktrees should refer to the [Review](#review) section below, which extracts the
+> **Note**: `.claude/rules/` relative symlinks resolve correctly inside full worktree
+> checkouts (verified 2026-07-06, claude v2.1.201), but automatic loading of the rules
+> is only guaranteed for the session's project directory. Reviewers operating in
+> worktrees should refer to the [Review](#review) section below, which extracts the
 > essential review criteria from these documents.
 
 ## Review
 
-Review criteria for Reviewer agents. This section exists in CLAUDE.md because
-Reviewers operate in git worktrees where `.claude/rules/` symlinks are unavailable.
+Review criteria for Reviewer agents. This section exists in CLAUDE.md so that
+Reviewers get the essential criteria directly, without depending on `.claude/rules/`
+auto-loading inside their worktree.
 The criteria below are extracted from `unix-philosophy.md`, `tdd.md`, and
 `claude-code-constraints.md`.
 
@@ -67,7 +70,7 @@ Assess whether changes follow these UNIX philosophy principles:
 - **zsh compatibility**: Scripts `source`d in Claude Code must use `${BASH_SOURCE[0]:-${(%):-%x}}` fallback.
 - **bash 3.2 compatibility**: No `declare -A` (associative arrays). Use temp files with `grep -qxF` instead.
 - **Arithmetic safety**: Use `var=$((var + 1))` instead of `((var++))` (fails under `set -e` when var=0).
-- **Subagent nesting**: Nesting depth ≥ 2 is unreliable. Prefer independent processes with FIFO IPC.
+- **Subagent nesting**: Officially supported since Claude Code v2.1.172 (fixed depth limit: 5). Subagents fit short-lived, session-bound work (e.g., Reviewer); use independent processes with FIFO IPC where cross-session persistence is required (e.g., Workers).
 - **Context window**: Workers must externalize state to files/git — do not rely on conversation history.
 
 ## Scripts
@@ -229,19 +232,49 @@ Exception: When a change adds no executable scripts (e.g., env profile or
 skill definition changes), content-based assertions on configuration files
 are acceptable as regression guards.
 
+**Assert behavior, never emitted script text** (ADR-0017). Tests verify
+executed effects and recorded argv, not the text of generated scripts.
+Grep-testing a generated runner for strings like `exec claude -p` is the
+same anti-pattern as `.md`-grep, one layer down — it breaks on mechanism
+changes even when behavior is preserved.
+
+### Test Harness (dual-lane, ADR-0017 migration)
+
+The suite is migrating from the custom harness to [bats-core](https://bats-core.readthedocs.io/).
+`tests/run-tests.sh` runs **both lanes** during migration:
+
+1. **Legacy lane**: `tests/{category}/test-*.sh` files using `helpers.sh`
+2. **bats lane**: `tests/**/*.bats` files via `bats --recursive tests/`
+
+Local setup: `brew install bats-core` (macOS). CI pins bats-core `v1.13.0`
+via git checkout in `cekernel-tests.yml`.
+
+New tests should be written as `.bats` files. Naming: one `.bats` file per
+script under test, named after the script (e.g. `tests/shared/session-id.bats`
+for `scripts/shared/session-id.sh`). Do not add new legacy-harness
+`test-*.sh` files. `run-tests.sh` is deleted when the last legacy-harness
+file is gone.
+
+In `.bats` files, use `load '../helpers/assertions'` for the ported
+`assert_*` functions (`bats-assert` is not vendored).
+
 ### Test File Naming
 
 ```
 tests/
-├── run-tests.sh             # Test runner
-├── helpers.sh               # Assertion functions
+├── run-tests.sh             # Dual-lane test runner (legacy + bats)
+├── helpers.sh               # Assertion functions (legacy harness)
+├── helpers/
+│   └── assertions.bash      # Assertion functions (bats lane)
 ├── orchestrator/
 │   ├── test-concurrency-guard.sh
-│   └── test-{feature}.sh   # Orchestrator script tests
+│   ├── test-{feature}.sh   # Orchestrator script tests (legacy)
+│   └── {script-name}.bats  # bats tests, named after the script under test
 ├── process/
 │   └── test-{feature}.sh   # Process script tests
 ├── shared/
-│   ├── test-session-id.sh   # session-id.sh tests
+│   ├── test-session-id.sh   # session-id.sh tests (legacy)
+│   ├── session-id.bats      # session-id.sh tests (bats)
 │   └── test-{feature}.sh   # Shared helper tests
 └── scheduler/
     └── test-{feature}.sh   # Scheduler script tests
@@ -249,7 +282,11 @@ tests/
 
 ### Assertion Functions
 
-Use the functions provided by `helpers.sh`:
+In `.bats` files, `load '../helpers/assertions'` provides the same
+`assert_*` API (failures return 1 and fail the surrounding `@test`;
+bats tracks pass/fail counts, so `report_results` does not exist there).
+
+In legacy-harness files, use the functions provided by `helpers.sh`:
 
 ```bash
 assert_eq <label> <expected> <actual>
