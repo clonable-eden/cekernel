@@ -10,7 +10,9 @@
 # Monitors each process via triple-path detection:
 #   1. FIFO (primary, sub-second latency)
 #   2. State file polling (fallback, up to POLL_INTERVAL latency)
-#   3. Process crash detection (backend_worker_alive check)
+#   3. Process crash detection (backend status / liveness check);
+#      blocked sessions (permission-dialog stall) are surfaced as a
+#      distinct "blocked" result (ADR-0016)
 # Outputs results to stdout as JSON Lines.
 set -euo pipefail
 
@@ -98,19 +100,42 @@ watch_one() {
       break
     fi
 
-    # Crash detection: if any handle file exists but process is dead, it crashed
-    # Only check when handle file is present (without it, we can't verify process status)
+    # Crash/blocked detection: only when a handle file is present (without
+    # it, we can't verify the worker). When the backend provides a status
+    # (headless: `claude agents --json` state, ADR-0016), `blocked`
+    # (permission-dialog stall) MUST be surfaced as a distinct result —
+    # nobody approves a dialog in a headless session, so it is terminal.
     local has_handle=0
     for _hf in "${CEKERNEL_IPC_DIR}"/handle-"${issue}".*; do
       [[ -f "$_hf" ]] && has_handle=1 && break
     done
-    if [[ "$has_handle" -eq 1 ]] && ! backend_worker_alive "$issue" 2>/dev/null; then
-      result="{\"issue\":${issue},\"result\":\"crashed\",\"detail\":\"Worker process died without completing\"}"
-      echo "Error: issue #${issue} Worker process crashed (state: ${state})." >&2
-      log_event "$issue" "WORKER_CRASH" "issue=#${issue} state=${state}"
-      [[ $has_fifo -eq 1 ]] && exec 3>&-
-      rm -f "$fifo"
-      break
+    if [[ "$has_handle" -eq 1 ]]; then
+      local worker_dead=0 worker_detail="Worker process died without completing"
+      if declare -F backend_worker_status >/dev/null 2>&1; then
+        local wstatus
+        wstatus=$(backend_worker_status "$issue" 2>/dev/null) || wstatus="missing"
+        if [[ "$wstatus" == "blocked" ]]; then
+          result="{\"issue\":${issue},\"result\":\"blocked\",\"detail\":\"Worker session is waiting on a permission dialog\"}"
+          echo "Error: issue #${issue} Worker session is blocked (permission dialog)." >&2
+          log_event "$issue" "WORKER_BLOCKED" "issue=#${issue} state=${state}"
+          [[ $has_fifo -eq 1 ]] && exec 3>&-
+          rm -f "$fifo"
+          break
+        elif [[ "$wstatus" != "busy" ]]; then
+          worker_dead=1
+          worker_detail="Worker session ended without completing (session state: ${wstatus})"
+        fi
+      elif ! backend_worker_alive "$issue" 2>/dev/null; then
+        worker_dead=1
+      fi
+      if [[ "$worker_dead" -eq 1 ]]; then
+        result="{\"issue\":${issue},\"result\":\"crashed\",\"detail\":\"${worker_detail}\"}"
+        echo "Error: issue #${issue} Worker process crashed (state: ${state})." >&2
+        log_event "$issue" "WORKER_CRASH" "issue=#${issue} state=${state}"
+        [[ $has_fifo -eq 1 ]] && exec 3>&-
+        rm -f "$fifo"
+        break
+      fi
     fi
 
     elapsed=$((elapsed + wait_time))
@@ -129,7 +154,7 @@ watch_one() {
   local result_status
   local result_value
   result_value=$(echo "$result" | jq -r '.result')
-  [[ "$result_value" != "timeout" && "$result_value" != "error" && "$result_value" != "crashed" ]]
+  [[ "$result_value" != "timeout" && "$result_value" != "error" && "$result_value" != "crashed" && "$result_value" != "blocked" ]]
 }
 
 for issue in "${ISSUE_NUMBERS[@]}"; do
