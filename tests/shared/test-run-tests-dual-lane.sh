@@ -83,7 +83,7 @@ OUTPUT=$(
   # Hide any real bats by restricting PATH to a dir with only required tools
   TOOLS_DIR="${SANDBOX}/tools-bin"
   mkdir -p "$TOOLS_DIR"
-  for tool in bash mktemp rm find sort dirname basename cat echo; do
+  for tool in bash mktemp rm find sort dirname basename cat echo wc tr; do
     tool_path="$(command -v "$tool" 2>/dev/null)" || continue
     ln -s "$tool_path" "${TOOLS_DIR}/${tool}" 2>/dev/null || true
   done

@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# run-tests.sh — Test runner that sequentially executes tests/{shared,orchestrator,ctl,process,scheduler}/test-*.sh
+# run-tests.sh — Dual-lane test runner (ADR-0017 migration step 1):
+#   lane 1: legacy-harness tests/{shared,orchestrator,ctl,process,scheduler}/test-*.sh
+#   lane 2: bats-core *.bats files under tests/ (requires bats; brew install bats-core)
+# This runner is deleted when the last legacy-harness test-*.sh file is gone.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -37,6 +40,24 @@ for category in shared orchestrator ctl process scheduler; do
     echo ""
   done
 done
+
+# ── bats lane ──
+BATS_FILE_COUNT=$(find "$SCRIPT_DIR" -name '*.bats' -type f | wc -l | tr -d ' ')
+if [[ "$BATS_FILE_COUNT" -gt 0 ]]; then
+  echo "=== bats ==="
+  echo ""
+  if ! command -v bats >/dev/null 2>&1; then
+    echo "ERROR: ${BATS_FILE_COUNT} .bats file(s) found but bats is not installed." >&2
+    echo "  Install bats-core: brew install bats-core (macOS) or see https://bats-core.readthedocs.io/" >&2
+    FAILED_FILES+=("bats (bats-core not installed)")
+  elif bats --recursive "$SCRIPT_DIR"; then
+    echo "  => OK"
+  else
+    echo "  => FAILED"
+    FAILED_FILES+=("bats")
+  fi
+  echo ""
+fi
 
 # Cleanup test runtime state directory
 if [[ "${_CEKERNEL_VAR_DIR_CREATED:-}" == "1" ]]; then
