@@ -228,14 +228,20 @@ and documentation files are NOT executable scripts — do not write tests for th
 This rule takes precedence over TDD: do not write a RED test for non-executable file changes.
 TDD applies only to executable scripts.
 
-Exception: When a change adds no executable scripts (e.g., env profile or
-skill definition changes), content-based assertions on configuration files
-are acceptable as regression guards.
+There is **no exception**. Content-based assertions on markdown or
+configuration files are not acceptable even as regression guards for
+doc-only changes — this was tried in the project's earliest days and
+proved meaningless (removed 2026-07-07). Such tests pin prose, not
+behavior, and force future edits to contort documents to satisfy greps.
+(Note: runtime artifacts named `*.md` — `.cekernel-task.md`,
+`.cekernel-checkpoint.md` — are script *outputs*; asserting on them is
+normal behavior testing and is fine.)
 
-**Assert behavior, never emitted script text** (ADR-0017). Tests verify
-executed effects and recorded argv, not the text of generated scripts.
-Grep-testing a generated runner for strings like `exec claude -p` is the
-same anti-pattern as `.md`-grep, one layer down — it breaks on mechanism
+**Assert behavior, never text** (ADR-0017). Tests verify executed effects
+and recorded argv — not the text of generated scripts, and not the source
+text of scripts either. Grep-testing a generated runner for strings like
+`exec claude -p`, or grepping `spawn.sh` source for `resolve_repo_root`,
+is the same anti-pattern as `.md`-grep — it breaks on mechanism or wording
 changes even when behavior is preserved.
 
 ### Test Harness (dual-lane, ADR-0017 migration)
