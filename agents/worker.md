@@ -217,9 +217,11 @@ Repeat the cycle for each incremental change. The parenthesized sub-detail is ba
 
 **Sync with the base branch first.** Sibling PRs may have merged into the
 base branch while you were implementing; a stale base causes conflicts and
-missed-integration bugs (#562). Determine the base branch (from the issue
-body/comments or the repository default) and integrate the latest state
-before pushing:
+missed-integration bugs (#562). Determine the base branch from the `base:`
+frontmatter field of `.cekernel-task.md` (recorded at spawn time — the
+branch the worktree was created from). If the field is absent, fall back
+to the issue body/comments, then the repository default. Integrate the
+latest state before pushing:
 
 ```bash
 BASE=<base-branch>
