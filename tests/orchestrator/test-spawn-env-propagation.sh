@@ -57,15 +57,11 @@ else
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-# ── Test 5: runner.sh sources .cekernel-env in generated script ──
-RUNNER_SCRIPT="${CEKERNEL_DIR}/scripts/shared/runner.sh"
-if grep -q 'source .cekernel-env' "$RUNNER_SCRIPT"; then
-  echo "  PASS: runner.sh generates scripts that source .cekernel-env"
-  TESTS_PASSED=$((TESTS_PASSED + 1))
-else
-  echo "  FAIL: runner.sh does not source .cekernel-env"
-  TESTS_FAILED=$((TESTS_FAILED + 1))
-fi
+# ── (former Test 5 removed) ──
+# runner.sh was removed in ADR-0016 Phase 5. The ".cekernel-env is sourced
+# on spawn" contract is asserted behaviorally in
+# tests/shared/backend-headless.bats ("spawn sources .cekernel-env from the
+# worktree") — no script-text grep needed (ADR-0017).
 
 # ── Test 6: Worker script directories are computed from SCRIPT_DIR ──
 if [[ "$SCRIPT_CONTENT" == *'CEKERNEL_WORKER_SCRIPTS="$(cd "${SCRIPT_DIR}/../process" && pwd)"'* ]]; then

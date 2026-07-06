@@ -707,29 +707,39 @@ cmd_kill() {
   local backend
   backend=$(detect_backend "$CEKERNEL_IPC_DIR" "$RESOLVED_ISSUE")
 
-  # Kill all handle files for this issue (Worker + Reviewer)
+  # Stop all sessions for this issue (Worker + Reviewer).
+  # v2: the handle is an opaque session token on ALL backends — the daemon
+  # owns the process, so termination delegates to claude stop
+  # (ADR-0005 Amendment 1, ADR-0016 Phase 1/5)
   for handle_file in "${CEKERNEL_IPC_DIR}"/handle-"${RESOLVED_ISSUE}".*; do
     [[ -f "$handle_file" ]] || continue
     local handle_content
     handle_content=$(tr -d '[:space:]' < "$handle_file")
+    claude stop "$handle_content" >/dev/null 2>&1 || true
+  done
+
+  # Terminal backends: also close the attach-only visualization pane/window
+  # recorded in pane-{issue}.{type} (ADR-0001 Amendment 1)
+  for pane_file in "${CEKERNEL_IPC_DIR}"/pane-"${RESOLVED_ISSUE}".*; do
+    [[ -f "$pane_file" ]] || continue
+    local pane_content
+    pane_content=$(tr -d '[:space:]' < "$pane_file")
 
     case "$backend" in
       tmux)
         local window_target
-        window_target=$(echo "$handle_content" | sed 's/\.[0-9]*$//')
+        window_target=$(echo "$pane_content" | sed 's/\.[0-9]*$//')
         tmux kill-window -t "$window_target" 2>/dev/null || true
         ;;
       headless)
-        # v2: handle is an opaque session token — the daemon owns the
-        # process, so termination delegates to claude stop
-        # (ADR-0005 Amendment 1, ADR-0016 Phase 1)
-        claude stop "$handle_content" >/dev/null 2>&1 || true
+        # No visualization layer — nothing to close
         ;;
       *)
         # wezterm or unknown — try wezterm pane kill
-        wezterm cli kill-pane --pane-id "$handle_content" 2>/dev/null || true
+        wezterm cli kill-pane --pane-id "$pane_content" 2>/dev/null || true
         ;;
     esac
+    rm -f "$pane_file"
   done
 
   # Mark as terminated
@@ -1049,6 +1059,7 @@ cmd_gc() {
 
       _gc_clean_orphan_files "$session_dir" "worker-*.*"   "worker-"  "IPC file"
       _gc_clean_orphan_files "$session_dir" "handle-*.*"   "handle-"  "handle"
+      _gc_clean_orphan_files "$session_dir" "pane-*.*"     "pane-"    "pane"
       _gc_clean_orphan_files "$session_dir" "payload-*.b64" "payload-" "payload"
 
       # Log files live in a subdirectory

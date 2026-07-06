@@ -84,6 +84,9 @@ rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.type"
 rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.signal"
 # Handle file cleanup (in case not already removed)
 rm -f "${CEKERNEL_IPC_DIR}"/handle-"${ISSUE_NUMBER}".*
+# Pane file cleanup (terminal backends: attach-pane bookkeeping; normally
+# removed by backend_kill_worker, kept here for when the backend is unavailable)
+rm -f "${CEKERNEL_IPC_DIR}"/pane-"${ISSUE_NUMBER}".*
 # Backend file cleanup
 rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.backend"
 # Priority file cleanup
