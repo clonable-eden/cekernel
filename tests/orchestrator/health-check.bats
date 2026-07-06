@@ -66,3 +66,24 @@ _active_worker() {
   assert_eq "exit 1 (zombie)" "1" "$status"
   assert_match "status zombie" '"status":"zombie"' "$output"
 }
+
+@test "health-check does not zombie-flag on a failing agents query (ADR-0018)" {
+  # Degradation policy: query-failed is inconclusive, not evidence of a
+  # crash — report "unknown" without counting the worker unhealthy.
+  _active_worker 93
+  mock_bin claude 'exit 1'
+
+  run bash "$HEALTH_SCRIPT" 93
+  assert_eq "exit 0 (inconclusive is not unhealthy)" "0" "$status"
+  assert_match "status unknown" '"status":"unknown"' "$output"
+}
+
+@test "health-check does not zombie-flag on an unknown (status, state) pair (ADR-0018)" {
+  _active_worker 94
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record_pair "$TOKEN" background /tmp/wt 1700000000000 idle working)]"
+
+  run bash "$HEALTH_SCRIPT" 94
+  assert_eq "exit 0 (inconclusive is not unhealthy)" "0" "$status"
+  assert_match "status unknown" '"status":"unknown"' "$output"
+}

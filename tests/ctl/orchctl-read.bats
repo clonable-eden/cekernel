@@ -272,14 +272,14 @@ make_handle() {
   assert_eq "ps no session token" "no orchestrators." "$output"
 }
 
-@test "ps shows session, claude token, and busy state" {
+@test "ps shows session, claude token, and the alive verdict" {
   make_orchestrator "$IPC_A" "$ORCH_TOKEN_A"
   mock_claude_enqueue_agents \
     "[$(mock_claude_agent_record "$ORCH_TOKEN_A" background /repo 1700000000000 busy)]"
   run bash "$ORCHCTL" ps
   assert_match "shows session" "$SESSION_A" "$output"
   assert_match "shows claude token" "$ORCH_TOKEN_A" "$output"
-  assert_match "shows busy state" "busy" "$output"
+  assert_match "shows alive verdict" "alive" "$output"
 }
 
 @test "ps surfaces a blocked session distinctly (ADR-0016)" {
@@ -290,11 +290,11 @@ make_handle() {
   assert_match "shows blocked state" "blocked" "$output"
 }
 
-@test "ps shows missing when the session is not listed" {
+@test "ps shows not-listed when the session is absent (ADR-0018 vocabulary)" {
   make_orchestrator "$IPC_A" "$ORCH_TOKEN_A"
   # queue empty → agents --json replies []
   run bash "$ORCHCTL" ps
-  assert_match "shows missing" "missing" "$output"
+  assert_match "shows not-listed" "not-listed" "$output"
 }
 
 @test "ps elapsed reads from orchestrator.spawned" {
@@ -365,7 +365,7 @@ make_handle() {
   assert_match "row shows claude token" "claude=${WORKER_TOKEN}" "$worker_line"
   assert_match "row joins phase from state file" "phase=phase1:implement" "$worker_line"
   assert_match "row joins priority from priority file" "priority=10" "$worker_line"
-  assert_match "row shows busy state" "busy" "$worker_line"
+  assert_match "row shows alive verdict" "alive" "$worker_line"
 }
 
 @test "ps surfaces a blocked worker session distinctly (ADR-0016 MUST)" {
@@ -380,14 +380,14 @@ make_handle() {
   assert_match "worker row shows blocked" "blocked" "$(echo "$output" | grep "#10")"
 }
 
-@test "ps shows missing for a worker token not listed in agents --json" {
+@test "ps shows not-listed for a worker token absent from the roster" {
   make_orchestrator "$IPC_A" "$ORCH_TOKEN_A"
   make_worker "$IPC_A" 10
   make_handle "$IPC_A" 10 worker "$WORKER_TOKEN"
   mock_claude_enqueue_agents \
     "[$(mock_claude_agent_record "$ORCH_TOKEN_A" background /repo 1700000000000 busy)]"
   run bash "$ORCHCTL" ps
-  assert_match "worker row shows missing" "missing" "$(echo "$output" | grep "#10")"
+  assert_match "worker row shows not-listed" "not-listed" "$(echo "$output" | grep "#10")"
 }
 
 @test "ps shows worker rows in a session without an orchestrator token" {
@@ -399,7 +399,7 @@ make_handle() {
     "[$(mock_claude_agent_record "$WORKER_TOKEN" background /repo 1700000001000 busy)]"
   run bash "$ORCHCTL" ps
   assert_match "worker row shown" "#10" "$output"
-  assert_match "worker row shows busy" "busy" "$(echo "$output" | grep "#10")"
+  assert_match "worker row shows alive" "alive" "$(echo "$output" | grep "#10")"
   if [[ "$output" == *"no orchestrators."* ]]; then
     echo "FAIL: worker rows found — must not print 'no orchestrators.'" >&2
     return 1
@@ -494,6 +494,17 @@ make_handle() {
   run bash "$ORCHCTL" count
   assert_eq "busy + blocked counted, stopped ignored" "2" "$output"
   assert_match "output is a plain integer" '^[0-9]+$' "$output"
+}
+
+@test "count counts an unknown-value session conservatively (ADR-0018)" {
+  # Degradation policy: for a concurrency guard, over-counting is safe
+  # (refuses a spawn) and under-counting is not (duplicate orchestrators)
+  # — schema drift counts as alive.
+  make_orchestrator "$IPC_A" "$ORCH_TOKEN_A"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record_pair "$ORCH_TOKEN_A" background /repo 1700000000000 idle working)]"
+  run --separate-stderr bash "$ORCHCTL" count
+  assert_eq "unknown-value counted as alive" "1" "$output"
 }
 
 @test "count fetches agents --json exactly once per invocation (single-fetch view)" {

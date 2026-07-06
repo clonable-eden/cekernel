@@ -110,6 +110,43 @@ teardown() {
     "detected-via-state-fallback" "$(cat "$out")"
 }
 
+@test "watch escalates after repeated consecutive agents query failures (ADR-0018)" {
+  # Degradation policy: query-failed is retried, but a PERSISTENT failure
+  # must escalate to the caller instead of silently polling to the
+  # generic timeout — the detail warns the worker may still be running.
+  worker_state_write 593 RUNNING "phase1:implement"
+  echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-593.worker"
+  mock_bin claude 'exit 1'
+  export CEKERNEL_WATCH_QUERY_RETRY_MAX=2
+
+  run bash "$WATCH_SCRIPT" 593
+  assert_eq "watch exits non-zero" "1" "$status"
+  assert_match "result is error" '"result":"error"' "$output"
+  assert_match "detail names the query failure" "query" "$output"
+  assert_match "detail warns the worker may still be running" \
+    "may still be running" "$output"
+}
+
+@test "watch retries an unknown (status, state) pair instead of crash-flagging (ADR-0018)" {
+  # Schema drift (unknown-value) is not evidence of death — watch keeps
+  # polling and completion arrives via the state-file fallback.
+  worker_state_write 594 RUNNING "phase1:implement"
+  echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-594.worker"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record_pair "$TOKEN" background /tmp/wt 1700000000000 idle working)]"
+  export CEKERNEL_WATCH_QUERY_RETRY_MAX=10
+
+  local out="${BATS_TEST_TMPDIR}/watch-out.json"
+  bash "$WATCH_SCRIPT" 594 > "$out" 2>/dev/null &
+  local watch_pid=$!
+  sleep 2
+  worker_state_write 594 TERMINATED "merged:#999"
+  wait "$watch_pid"
+
+  assert_match "completion detected via state fallback" \
+    "detected-via-state-fallback" "$(cat "$out")"
+}
+
 @test "watch resolves the headless backend from the env profile (#182 regression)" {
   worker_state_write 183 RUNNING "phase1:implement"
   echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-183.worker"

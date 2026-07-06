@@ -22,6 +22,7 @@ if [[ ! -f "${_ISSUE_LOCK_DIR}/load-env.sh" && -n "${CEKERNEL_SCRIPTS:-}" ]]; th
   _ISSUE_LOCK_DIR="${CEKERNEL_SCRIPTS}/shared"
 fi
 source "${_ISSUE_LOCK_DIR}/load-env.sh"
+source "${_ISSUE_LOCK_DIR}/claude-bg.sh"
 
 CEKERNEL_VAR_DIR="${CEKERNEL_VAR_DIR:-$HOME/.local/var/cekernel}"
 
@@ -37,19 +38,20 @@ issue_lock_repo_hash() {
 # _issue_lock_holder_alive <holder>
 # exit 0 when the lock holder is alive, exit 1 when it is verifiably dead.
 # Numeric holders are PIDs (kill -0). Non-numeric holders are opaque
-# session tokens (ADR-0005 Amendment 1): alive iff a session whose
-# sessionId starts with the token is busy or blocked in
-# `claude agents --json` — read via `(.status // .state)` since live
-# sessions report liveness in `status` (#581). When the query fails,
-# assume alive —
-# never steal a lock on doubt (duplicate Workers are worse than a
-# lock held until explicit release).
+# session tokens (ADR-0005 Amendment 1) resolved via the claude-bg.sh
+# verdict predicate (ADR-0018 — this module never parses agents --json).
+#
+# Degradation policy (ADR-0018 — the consumer decides): query-failed and
+# unknown-value both count as ALIVE. Never steal a lock on doubt —
+# duplicate Workers are worse than a lock held until explicit release,
+# and schema drift (unknown-value) is not evidence of death.
 _issue_lock_holder_alive() {
   local holder="$1"
 
   # Empty holder = corrupt/partial write (pid files are always written
   # with content). Guard it here: an empty token would fall into the
-  # session path below where startswith("") matches EVERY session (#573).
+  # session path below where a prefix match on "" matches EVERY session
+  # (#573).
   if [[ -z "$holder" ]]; then
     return 1
   fi
@@ -59,13 +61,12 @@ _issue_lock_holder_alive() {
     return $?
   fi
 
-  local json state
-  if ! json=$(claude agents --json 2>/dev/null); then
-    return 0
-  fi
-  state=$(echo "$json" | jq -r --arg p "$holder" \
-    '[.[] | select(.sessionId | startswith($p))][0] | (.status // .state) // empty' 2>/dev/null) || return 0
-  [[ "$state" == "busy" || "$state" == "blocked" ]]
+  local verdict
+  verdict=$(claude_bg_token_verdict "$holder" 2>/dev/null) || true
+  case "$verdict" in
+    alive|blocked|query-failed|unknown-value) return 0 ;;
+    *) return 1 ;;  # done | stopped | not-listed — verifiably dead
+  esac
 }
 
 issue_lock_acquire() {
