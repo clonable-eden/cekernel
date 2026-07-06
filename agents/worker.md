@@ -214,9 +214,24 @@ Repeat the cycle for each incremental change. The parenthesized sub-detail is ba
 
 > Transition: `phase-transition.sh <issue> RUNNING "phase2:create-pr"`
 
+**Sync with the base branch first.** Sibling PRs may have merged into the
+base branch while you were implementing; a stale base causes conflicts and
+missed-integration bugs (#562). Determine the base branch (from the issue
+body/comments or the repository default) and integrate the latest state
+before pushing:
+
+```bash
+BASE=<base-branch>
+git fetch origin "$BASE"
+git merge --no-edit "origin/$BASE"   # resolve conflicts here, NOT in the PR
+# re-run the test suite after integration before pushing
+```
+
+Then push and open the PR **against that base branch explicitly**:
+
 ```bash
 git push -u origin HEAD
-gh pr create --title "..." --body "..."
+gh pr create --base "$BASE" --title "..." --body "..."
 ```
 
 PR title, body, and issue link format follow the target repository's conventions.
