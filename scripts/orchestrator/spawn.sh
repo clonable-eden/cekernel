@@ -293,13 +293,16 @@ fi
 # Callers pass (issue, type, worktree, prompt, agent-name) — the backend decides how to launch.
 backend_spawn_worker "$ISSUE_NUMBER" "$AGENT_TYPE" "$WORKTREE" "$PROMPT" "$AGENT_NAME"
 
-# ── Update lock PID with the real process PID ──
+# ── Update lock holder with the worker token ──
 # spawn.sh ($$) is short-lived and exits after launching the process.
-# Without this update, stale detection (kill -0) would always see a dead PID,
+# Without this update, stale detection would always see a dead holder,
 # causing false stale-lock recovery and potential duplicate spawns.
-BACKEND_PID=$(backend_get_pid "$ISSUE_NUMBER" "$AGENT_TYPE" 2>/dev/null) || true
-if [[ -n "$BACKEND_PID" && "$BACKEND_PID" != "null" ]]; then
-  issue_lock_update_pid "$REPO_ROOT" "$ISSUE_NUMBER" "$BACKEND_PID"
+# Terminal backends return a numeric PID (kill -0 checkable); headless
+# returns an opaque session token verified via `claude agents --json`
+# (ADR-0005 Amendment 1) — issue-lock handles both.
+BACKEND_HANDLE=$(backend_get_handle "$ISSUE_NUMBER" "$AGENT_TYPE" 2>/dev/null) || true
+if [[ -n "$BACKEND_HANDLE" && "$BACKEND_HANDLE" != "null" ]]; then
+  issue_lock_update_pid "$REPO_ROOT" "$ISSUE_NUMBER" "$BACKEND_HANDLE"
 fi
 
 # ── State: READY (Worktree ready, Claude agent starting) ──

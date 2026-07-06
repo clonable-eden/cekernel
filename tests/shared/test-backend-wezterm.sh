@@ -239,7 +239,7 @@ backend_kill_worker "$ISSUE" 2>/dev/null
 assert_not_exists "Payload file cleaned up after kill" "$PAYLOAD_FILE"
 rm -f "$MOCK_LOG"
 
-# ── Test 12: backend_get_pid — uses tty_name when pid is null (#297) ──
+# ── Test 12: backend_get_handle — uses tty_name when pid is null (#297) ──
 echo "42" > "${CEKERNEL_IPC_DIR}/handle-300.worker"
 wezterm() {
   if [[ "$1" == "cli" && "$2" == "list" ]]; then
@@ -261,11 +261,11 @@ ps() {
 }
 export -f ps
 
-RESULT=$(backend_get_pid "300" "worker" 2>/dev/null) || true
-assert_eq "backend_get_pid returns PID via tty_name when pid is null" "12345" "$RESULT"
+RESULT=$(backend_get_handle "300" "worker" 2>/dev/null) || true
+assert_eq "backend_get_handle returns PID via tty_name when pid is null" "12345" "$RESULT"
 unset -f ps 2>/dev/null || true
 
-# ── Test 13: backend_get_pid — returns empty when pid is null and no matching process on tty ──
+# ── Test 13: backend_get_handle — returns empty when pid is null and no matching process on tty ──
 echo "42" > "${CEKERNEL_IPC_DIR}/handle-300.worker"
 wezterm() {
   if [[ "$1" == "cli" && "$2" == "list" ]]; then
@@ -285,11 +285,11 @@ ps() {
 }
 export -f ps
 
-RESULT=$(backend_get_pid "300" "worker" 2>/dev/null) || true
-assert_eq "backend_get_pid returns empty when no claude process on tty" "" "$RESULT"
+RESULT=$(backend_get_handle "300" "worker" 2>/dev/null) || true
+assert_eq "backend_get_handle returns empty when no claude process on tty" "" "$RESULT"
 unset -f ps 2>/dev/null || true
 
-# ── Test 14: backend_get_pid — uses pid field when it is not null ──
+# ── Test 14: backend_get_handle — uses pid field when it is not null ──
 echo "42" > "${CEKERNEL_IPC_DIR}/handle-300.worker"
 wezterm() {
   if [[ "$1" == "cli" && "$2" == "list" ]]; then
@@ -302,8 +302,8 @@ MOCK_JSON
 }
 export -f wezterm
 
-RESULT=$(backend_get_pid "300" "worker" 2>/dev/null) || true
-assert_eq "backend_get_pid returns pid directly when not null" "77777" "$RESULT"
+RESULT=$(backend_get_handle "300" "worker" 2>/dev/null) || true
+assert_eq "backend_get_handle returns pid directly when not null" "77777" "$RESULT"
 
 # ── Test 15: backend_spawn_worker — payload includes command field ──
 MOCK_LOG=$(mktemp)

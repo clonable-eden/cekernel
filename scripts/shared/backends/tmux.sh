@@ -59,9 +59,10 @@ backend_spawn_worker() {
   echo "$main_pane" > "${CEKERNEL_IPC_DIR}/handle-${issue}.${type}"
 }
 
-# backend_get_pid <issue> [type]
-# Returns the PID of the process running in the tmux pane.
-backend_get_pid() {
+# backend_get_handle <issue> [type]
+# Returns the worker token (ADR-0005 Amendment 1). For tmux this is the
+# PID of the process running in the pane — numeric, kill -0 checkable.
+backend_get_handle() {
   local issue="$1"
   local type="${2:-}"
 

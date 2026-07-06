@@ -9,15 +9,21 @@
 # Environment:
 #   CEKERNEL_BACKEND — Backend to use (default: headless)
 #
-# External API (5 functions, provided by backends):
+# External API (5 functions, provided by backends — ADR-0005 Amendment 1):
 #   backend_available       — Check if backend is usable
 #   backend_spawn_worker    — Start a Worker process (issue, type, worktree, prompt, agent-name)
-#   backend_get_pid         — Get Worker process PID (issue)
+#   backend_get_handle      — Get the opaque worker token (issue): numeric PID
+#                             for terminal backends, session token for headless
 #   backend_worker_alive    — Check if Worker is alive (issue)
 #   backend_kill_worker     — Terminate a Worker (issue)
 #
+# Optional API (feature-detect with `declare -F` before calling):
+#   backend_worker_status   — Echo the session state (busy|blocked|done|...).
+#                             Provided by headless (ADR-0016); terminal
+#                             backends gain it in Phase 5.
+#
 # Handle files are managed internally by each backend.
-# Callers pass only the issue number — never raw pane IDs or PIDs.
+# Callers pass only the issue number — never raw pane IDs or session tokens.
 
 # Resolve the directory where this script lives
 _BACKEND_ADAPTER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"

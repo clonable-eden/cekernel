@@ -3,12 +3,17 @@
 #
 # Runs spawn.sh end-to-end with mocked gh/claude in a temp clone
 # (headless backend) and asserts the recorded claude argv (ADR-0017) —
-# never the text of generated scripts.
+# never the text of generated scripts. The claude shim is the canonical
+# mock-claude helper emulating the --bg delegated-spawn contract
+# (ADR-0016 Phase 1).
 #
-# Covers --fallback-model / CEKERNEL_FALLBACK_MODEL passthrough (#529)
-# and --repo cross-repo issue support (#440).
+# Covers --fallback-model / CEKERNEL_FALLBACK_MODEL passthrough (#529),
+# --repo cross-repo issue support (#440), and issue-lock token update
+# (ADR-0005 Amendment 1).
 
 load '../helpers/assertions'
+load '../helpers/mock-bin'
+load '../helpers/mock-claude'
 
 setup() {
   CEKERNEL_DIR="$(cd "${BATS_TEST_DIRNAME}/../.." && pwd)"
@@ -23,26 +28,18 @@ setup() {
 
   # Mock gh: spawn.sh reads the title, task-file.sh reads full JSON.
   # Records argv so tests can assert executed effects (ADR-0017).
-  MOCK_BIN="${TMP}/bin"
-  mkdir -p "$MOCK_BIN"
   GH_ARGS_FILE="${TMP}/gh-args.txt"
-  cat > "${MOCK_BIN}/gh" <<GH
-#!/usr/bin/env bash
-echo "\$*" >> '${GH_ARGS_FILE}'
-if [[ "\$*" == *"-q"* ]]; then
-  echo "Test issue"
+  mock_bin gh "echo \"\$*\" >> '${GH_ARGS_FILE}'
+if [[ \"\$*\" == *\"-q\"* ]]; then
+  echo \"Test issue\"
 else
-  echo '{"title":"Test issue","body":"test body","labels":[],"comments":[]}'
-fi
-GH
-  # Mock claude: record argv (executed effect, not generated text)
-  ARGS_FILE="${TMP}/claude-args.txt"
-  cat > "${MOCK_BIN}/claude" <<CLAUDE
-#!/usr/bin/env bash
-printf '%s\n' "\$@" > '${ARGS_FILE}'
-CLAUDE
-  chmod +x "${MOCK_BIN}/gh" "${MOCK_BIN}/claude"
-  export PATH="${MOCK_BIN}:${PATH}"
+  echo '{\"title\":\"Test issue\",\"body\":\"test body\",\"labels\":[],\"comments\":[]}'
+fi"
+  # Canonical claude shim: --bg spawn line + agents --json + stop (ADR-0017).
+  # With an empty agents queue, capture degrades to the default short ID
+  # ("deadbeef") — spawn.sh still succeeds and records the token.
+  mock_claude
+  ARGS_FILE="${MOCK_CLAUDE_STATE_DIR}/bg-argv.log"
 
   # Isolation: session/IPC/locks under TMP, trust file, bare auth, backend
   export CEKERNEL_SESSION_ID="test-spawn-fallback-$$"
@@ -163,6 +160,28 @@ run_spawn() {
   local task_file="${TMP}/repo/.worktrees/issue/42-test-issue/.cekernel-task.md"
   assert_file_exists "task file created in worktree" "$task_file"
   assert_match "task file has base field" "base: main" "$(cat "$task_file")"
+}
+
+# ── Issue-lock token update (ADR-0005 Amendment 1) ──
+
+@test "spawn.sh updates the issue lock with the captured session token" {
+  run_spawn
+  assert_eq "spawn exits 0" "0" "$status"
+  local pid_file
+  pid_file=$(find "${CEKERNEL_VAR_DIR}/locks" -path "*/42.lock/pid" | head -1)
+  assert_file_exists "lock holder file exists" "$pid_file"
+  # Empty agents queue → capture degrades to the mock's default short ID
+  assert_eq "lock holder is the session token" "deadbeef" "$(cat "$pid_file")"
+}
+
+@test "spawn.sh handle file contains the captured session token" {
+  run_spawn
+  assert_eq "spawn exits 0" "0" "$status"
+  local ipc_dir
+  ipc_dir=$(find "${CEKERNEL_VAR_DIR}/ipc" -maxdepth 1 -type d -name "test-spawn-*" | head -1)
+  assert_file_exists "handle file exists" "${ipc_dir}/handle-42.worker"
+  assert_eq "handle is the session token" "deadbeef" \
+    "$(cat "${ipc_dir}/handle-42.worker")"
 }
 
 @test "spawn.sh without --repo keeps current-repo behavior" {

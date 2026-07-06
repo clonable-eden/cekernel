@@ -45,7 +45,7 @@ fi
 REQUIRED_FUNCTIONS=(
   backend_available
   backend_spawn_worker
-  backend_get_pid
+  backend_get_handle
   backend_worker_alive
   backend_kill_worker
 )
