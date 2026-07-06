@@ -143,6 +143,28 @@ source ${CEKERNEL_SCRIPTS}/shared/desktop-notify.sh
 
 If `CEKERNEL_SCRIPTS` is not provided in the prompt, fall back to `"$(git rev-parse --show-toplevel)/scripts"`.
 
+### CRITICAL: Turn Lifetime under Headless Execution (#558)
+
+You normally run as a spawned headless process (`claude -p --agent orchestrator`;
+`--bg` under ADR-0016). In that mode **your process exits the moment you end
+your final turn, and any pending `run_in_background` tasks are killed with
+it** — orphaning live Workers (observed 2026-07-06, issue #558).
+
+Therefore:
+
+- **NEVER end your turn while any issue is still in a non-terminal state**
+  (anything other than merged / failed / cancelled). Ending your turn IS
+  terminating the orchestration.
+- "Waiting" must be a **foreground blocking call**: when you have no other
+  pending work, run `watch.sh <issue>` as a normal (foreground) Bash call
+  with a generous timeout, handling one notification at a time in a loop.
+- `run_in_background: true` for `watch.sh` is safe **only** while you still
+  have further foreground work in the same turn (e.g., spawning the next
+  Worker). Before you would otherwise end your turn, switch to foreground
+  watch until all issues are terminal.
+- Only after ALL issues reach a terminal state may you output the final
+  summary and end your turn.
+
 ### Single Issue Processing
 
 ```bash
@@ -163,9 +185,9 @@ export CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID} && export CEKERNEL_ENV=${CEKER
 #    cancelled → SUSPEND handling (existing)
 ```
 
-Step 2 MUST use `run_in_background: true` on the Bash tool call. This makes `watch.sh` non-blocking, allowing the Orchestrator to remain active in the foreground.
+Step 2 may use `run_in_background: true` **only while further foreground work remains in the same turn** (see "Turn Lifetime under Headless Execution" above). When nothing else is pending, run `watch.sh` in the **foreground** instead — in headless execution, "waiting" by ending your turn kills the process and every background watcher with it (#558).
 
-**After launching `watch.sh` in background, the Orchestrator must wait for its completion notification.** Do NOT start a `sleep && process-status.sh` polling loop — `watch.sh` already monitors the Worker via FIFO, state file fallback, and crash detection. Manual polling wastes tokens, triggers excessive background task notifications, and provides no additional information. If there are other pending tasks (e.g., spawning additional Workers, handling other completions), the Orchestrator may proceed with those. Otherwise, simply wait.
+Do NOT start a `sleep && process-status.sh` polling loop — `watch.sh` already monitors the Worker via FIFO, state file fallback, and crash detection. Manual polling wastes tokens, triggers excessive background task notifications, and provides no additional information.
 
 ### Parallel Multi-Issue Processing
 
@@ -180,7 +202,9 @@ export CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID} && export CEKERNEL_ENV=${CEKER
 export CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID} && export CEKERNEL_ENV=${CEKERNEL_ENV} && export CEKERNEL_AGENT_WORKER=${CEKERNEL_AGENT_WORKER} && ${CEKERNEL_SCRIPTS}/orchestrator/spawn-worker.sh 6
 export CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID} && export CEKERNEL_ENV=${CEKERNEL_ENV} && ${CEKERNEL_SCRIPTS}/orchestrator/watch.sh 6  # run_in_background: true
 
-# 2. Wait for background task completion notifications
+# 2. Wait for completion notifications — in the FOREGROUND once spawning is done.
+#    After the last spawn, do not end your turn: run watch.sh <issue> as a
+#    blocking foreground call for the remaining issues, one at a time (#558).
 #    DO NOT poll with sleep && process-status.sh — watch.sh handles monitoring.
 #    As each notification arrives, handle that Worker (cleanup, review, etc.)
 export CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID} && export CEKERNEL_ENV=${CEKERNEL_ENV} && ${CEKERNEL_SCRIPTS}/orchestrator/cleanup-worktree.sh 5  # Worker 5 completed first
