@@ -326,8 +326,21 @@ cannot provide.
 
 ```
 Orchestrator (main thread, --bg) → Agent(reviewer, isolation: worktree)
-                                      ↓ gh pr checkout <N> in its worktree
+                                      ↓ gh pr checkout <N> --detach
                                    [review → gh pr review] → return value
+```
+
+**Detached checkout is mandatory, not stylistic.** The PR branch is already
+checked out in the Worker's worktree — the Worktree Lifetime table above
+deliberately keeps that worktree alive at `ci-passed` for the reject →
+re-spawn path — and git forbids checking out the same branch in two
+worktrees simultaneously. A plain `gh pr checkout <N>` would therefore
+fail on every review. The Reviewer uses `gh pr checkout <N> --detach`
+(flag verified present in gh CLI, 2026-07-06), with the flag-independent
+equivalent as fallback:
+
+```bash
+git fetch origin "pull/<N>/head" && git checkout --detach FETCH_HEAD
 ```
 
 **Changes from Amendment 1 (spawn + FIFO)**:
@@ -335,12 +348,22 @@ Orchestrator (main thread, --bg) → Agent(reviewer, isolation: worktree)
 | Aspect | Amendment 1 (spawn + FIFO) | Amendment 2 (subagent) |
 |--------|----------------------------|------------------------|
 | Execution model | Independent process via `spawn-reviewer.sh` | `Agent(reviewer)` subagent of the Orchestrator |
-| Address space | Reuses Worker's worktree | Own temporary worktree (`isolation: worktree`), `gh pr checkout <N>` inside it |
+| Address space | Reuses Worker's worktree | Own temporary worktree (`isolation: worktree`), detached PR checkout inside it (see above) |
 | Communication | FIFO via `notify-complete.sh` | Subagent return value (`approved` / `changes-requested` / `failed`) |
 | Orchestrator tools | Bash only | Bash + `Agent(reviewer)` |
 | Diff access | `gh pr diff` (truncation issues, see #521) | Full local checkout — reads files directly |
-| Monitoring | `watch.sh` FIFO loop | Foreground/background Agent call result |
-| Cleanup | `cleanup-worktree.sh` consideration | Automatic (worktree removed when unchanged; Reviewer never edits) |
+| Monitoring | `watch.sh` FIFO loop | **Foreground** Agent call (see below) |
+| Cleanup | `cleanup-worktree.sh` consideration | Automatic (worktree removed when unchanged; Reviewer never edits — verify the post-checkout "unchanged" assumption, see verification items) |
+
+**Monitoring is foreground, serialization accepted.** A foreground Agent
+call blocks the Orchestrator for the duration of the review (minutes), so
+under concurrent issues reviews serialize. This is chosen deliberately:
+background subagent notifications are cooperative with known
+delay/loss issues (`docs/claude-code-constraints.md` § Background Tasks,
+Confidence: Evolving), while reviews are short and the Orchestrator's
+Worker FIFO events are buffered in the FIFO, not lost, during the block.
+Simplicity wins (Rule of Simplicity); revisit only if review throughput
+becomes a measured bottleneck.
 
 **Benefits**:
 
@@ -348,8 +371,13 @@ Orchestrator (main thread, --bg) → Agent(reviewer, isolation: worktree)
   tracking are retired — less mechanism (Rule of Parsimony).
 - The Reviewer reads the PR branch from a full local checkout, eliminating
   the `gh pr diff` truncation → redundant-read loop (#521).
-- Reviewer result delivery becomes synchronous and typed instead of a
-  parsed FIFO line (Rule of Repair: failures surface as Agent tool errors).
+- Reviewer result delivery becomes synchronous with a **structured return
+  contract** — the Reviewer's final output line is exactly one of
+  `approved` / `changes-requested` / `failed` — instead of a parsed FIFO
+  line. This is still string interpretation, not type enforcement; the
+  existing rule in § Reviewer Error Handling applies unchanged to the new
+  channel: an unrecognized return value is treated as escalation (Rule of
+  Repair: process failures additionally surface as Agent tool errors).
 
 **Trade-offs**:
 
@@ -365,14 +393,37 @@ Orchestrator (main thread, --bg) → Agent(reviewer, isolation: worktree)
 
 - `agents/orchestrator.md`: add `Agent(reviewer)` to `tools`; Reviewer phase
   uses the Agent tool instead of `spawn-reviewer.sh` + `watch.sh`
-- `agents/reviewer.md`: frontmatter gains `isolation: worktree`; FIFO
-  notification instructions replaced by return-value contract; diff reading
-  switches to `gh pr checkout` + local file reads
+- `agents/reviewer.md`: frontmatter gains `isolation: worktree` **and
+  `Read` in `tools`** (local file reads replace `gh pr diff`); FIFO
+  notification instructions replaced by the return contract (final output
+  line is exactly one of `approved` / `changes-requested` / `failed`);
+  diff reading switches to detached PR checkout + local file reads
+- Permissions: the Reviewer inherits the parent's tool permissions.
+  `gh pr review` (and the checkout commands) must be pre-authorized in the
+  Orchestrator's context, or the review stalls exactly like ADR-0016's
+  `blocked` state — ADR-0016's supervision requirements apply to the
+  Orchestrator session that hosts the Reviewer
 - `scripts/orchestrator/spawn-reviewer.sh`: removed in 2.0.0 (breaking
   change, ADR-0016), together with its tests
 - `docs/claude-code-constraints.md` and `CLAUDE.md`: the subagent-nesting
   constraint must be rewritten (obsolete as of v2.1.172)
 - Tests: reviewer spawn tests re-target the new orchestration contract
+
+**Verification items for the implementation issue** (unverified platform
+assumptions; CLAUDE.md feasibility-check rule applies):
+
+1. Worktree auto-cleanup after a detached checkout: confirm that fetching
+   and moving HEAD still counts as "unchanged" for the auto-removal of
+   `.claude/worktrees/agent-<id>` (only a dirty working tree should count
+   as a change). If not, the Orchestrator needs an explicit cleanup step.
+2. `.claude/worktrees/` hygiene: main-tree `git status` was observed clean
+   after a subagent worktree PoC (2026-07-06) despite no project
+   `.gitignore` entry — confirm the ignore mechanism so it doesn't
+   silently regress.
+3. Symlink behavior in the full checkout: `.claude/rules/` relative
+   symlinks may actually resolve inside an agent worktree (unlike the bare
+   assumption recorded in CLAUDE.md); re-verify when rewriting the
+   nesting/worktree constraints (non-blocking).
 
 ## Alternatives Considered
 
