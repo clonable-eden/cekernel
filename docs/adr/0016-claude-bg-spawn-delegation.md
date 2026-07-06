@@ -105,21 +105,23 @@ the daemon. cekernel keeps only what the standard primitive does not provide:
 | 4 | `orchctl ps` view layer → thin wrapper over `claude agents --json` | #527 / ADR-0015 |
 | 5 | wezterm/tmux backends → spawn `--bg` then `claude attach <id>` in the pane | ADR-0001 amendment |
 
-During migration, `CEKERNEL_SPAWN_MODE=legacy|delegated` (default `legacy`
-until Phase 1–2 are validated, then `delegated`) switches the spawn path.
+**2.0.0 is a breaking release — there is no runtime compatibility mode.**
+The `claude -p` spawn paths are removed outright; no
+`CEKERNEL_SPAWN_MODE`-style switch ships. The **1.x line is the legacy
+mode**: users who need `-p` spawning stay on `cekernel-v1.9.x`. This is
+exactly what the major version exists for, and it removes an entire class
+of complexity (4 spawn paths × 2 modes, a legacy test lane, a retirement
+process for the switch).
 
-**Legacy-mode retirement criteria** (all must hold; tracked by a dedicated
-removal issue):
+The hedge against `--bg`'s research-preview instability is **not** a
+runtime fallback but the release gate below: development happens on the
+`2.0-dev` branch, validated by self-hosting; if the platform primitive
+proves unfit, 2.0.0 does not ship (or a scope reduction — e.g. `wrapper.sh`
+keeping `-p` — is recorded as an amendment here).
 
-1. Phases 1–4 have shipped with `delegated` as the default.
-2. cekernel's own issues have been processed end-to-end in `delegated`
-   mode (self-hosting) for at least one full release cycle with no
-   delegation-attributable failures.
-3. The next minor release after (1) and (2) removes `legacy`, the `-p`
-   spawn paths, and their tests (ADR-0017 §3).
-
-A compatibility mode without a death date becomes permanent; this one has
-both a date shape and an owner.
+**Release gate for 2.0.0**: the Open questions below — above all
+daemon-lifetime vs. Worker survival — are verified with positive results.
+Verification failures block the release, not soften it into dual-mode.
 
 ### Impact on open issues
 
@@ -152,8 +154,9 @@ both a date shape and an owner.
   **structured** data is read from `agents --json` only; the human-oriented
   spawn line is parsed solely to extract the short-ID token, and the
   `kind`+`cwd`+`startedAt` fallback covers a format change there. Pin the
-  minimum claude version; keep `legacy` mode until the retirement criteria
-  are met.
+  minimum claude version. There is no runtime fallback — the 1.x release
+  line covers users the preview instability would strand, and the 2.0.0
+  release gate covers cekernel itself.
 - `blocked` (permission-wait) is a new silent-stall failure mode; requires
   explicit monitoring and correct `--allowedTools`/`--permission-mode`
   configuration per agent.
@@ -170,7 +173,7 @@ both a date shape and an owner.
   exit? (`claude daemon stop --keep-workers` implies detached sessions can
   survive a stop, but the default interaction is unverified.) This is
   load-bearing for the Worker-stays-independent decision (#531) and MUST
-  be verified in Phase 1 before `delegated` becomes the default.
+  be verified in Phase 1 — it is the primary 2.0.0 release gate.
 - `--bg --bare` combination behavior.
 - launchd/crontab → on-demand daemon reachability (`/tmp/cc-daemon-501/...`
   socket path assumptions under cron environments).

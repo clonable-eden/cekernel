@@ -357,9 +357,9 @@ Orchestrator (main thread, --bg) → Agent(reviewer, isolation: worktree)
   short (minutes), and the Orchestrator already outlives the review window
   in the monitoring loop, so this is acceptable.
 - Requires Claude Code ≥ v2.1.172 (nested subagents) — effectively pinned
-  higher by ADR-0016's `--bg` requirements. Legacy spawn mode
-  (`CEKERNEL_SPAWN_MODE=legacy`) keeps `spawn-reviewer.sh` available during
-  migration.
+  higher by ADR-0016's `--bg` requirements. 2.0.0 is a breaking release
+  (ADR-0016): the subagent Reviewer fully replaces the spawned one; users
+  needing the old model stay on the 1.x line.
 
 **Impacted components** (implementation issues to follow):
 
@@ -368,8 +368,8 @@ Orchestrator (main thread, --bg) → Agent(reviewer, isolation: worktree)
 - `agents/reviewer.md`: frontmatter gains `isolation: worktree`; FIFO
   notification instructions replaced by return-value contract; diff reading
   switches to `gh pr checkout` + local file reads
-- `scripts/orchestrator/spawn-reviewer.sh`: retained for legacy mode, removed
-  after migration
+- `scripts/orchestrator/spawn-reviewer.sh`: removed in 2.0.0 (breaking
+  change, ADR-0016), together with its tests
 - `docs/claude-code-constraints.md` and `CLAUDE.md`: the subagent-nesting
   constraint must be rewritten (obsolete as of v2.1.172)
 - Tests: reviewer spawn tests re-target the new orchestration contract

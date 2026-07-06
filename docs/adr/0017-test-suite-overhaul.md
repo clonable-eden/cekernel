@@ -82,12 +82,12 @@ worse bats (Rule of Least Surprise: contributors already know bats).
 - The ~15 `claude -p` argv/text-grep files are **not migrated**. Their
   subjects are rewritten under ADR-0016; their replacements test the new
   observable contract: session-ID capture from `agents --json`, `blocked`
-  state surfacing, `claude stop` on cleanup, `CEKERNEL_SPAWN_MODE`
-  switching, and FIFO/state/lock behavior (which is spawn-agnostic and
-  carries over).
-- Reviewer spawn tests (`test-spawn-reviewer.sh`) retire together with
-  `spawn-reviewer.sh` (ADR-0012 Amendment 2); while legacy mode exists they
-  keep running in the legacy lane.
+  state surfacing, `claude stop` on cleanup, and FIFO/state/lock behavior
+  (which is spawn-agnostic and carries over). 2.0.0 is a breaking release
+  (ADR-0016): there is no runtime legacy mode, so these files are simply
+  **deleted with their subjects** in the same PR.
+- Reviewer spawn tests (`test-spawn-reviewer.sh`) are deleted together with
+  `spawn-reviewer.sh` (ADR-0012 Amendment 2).
 - Rule going forward: **assert behavior (executed effects, recorded argv),
   never emitted script text.** Text-grep of generated runners is the same
   anti-pattern as `.md`-grep, one layer down.
@@ -123,8 +123,10 @@ Target shape: **one `.bats` file per script under test**, variants become
    mechanical batches, each PR deletes what it replaces.
 3. v2 contract tests land **with** each ADR-0016 phase (spawn/watch/backends
    rewrite in the same PR as the script change, TDD where applicable).
-4. Delete `run-tests.sh` legacy lane + remaining `-p` era tests when
-   `CEKERNEL_SPAWN_MODE=legacy` is removed.
+4. Delete `run-tests.sh` when the last legacy-harness `test-*.sh` file has
+   been migrated or deleted. (`-p`-era tests don't reach this step — they
+   are deleted with their subjects in step 3, per the ADR-0016 breaking
+   change.)
 
 ## Alternatives Considered
 
