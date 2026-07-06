@@ -206,6 +206,27 @@ STATE_CONTENT=$(cat "${IPC_A}/worker-10.state")
 assert_match "kill marks worker as TERMINATED" "^TERMINATED:" "$STATE_CONTENT"
 assert_match "kill detail says killed" ":killed$" "$STATE_CONTENT"
 
+# ── Test 23b: kill stops a headless session via claude stop (v2 contract) ──
+# The headless handle is an opaque session token (ADR-0005 Amendment 1);
+# kill must delegate to `claude stop <token>`, not kill(1).
+KILL_TOKEN="dddd1111-2222-4333-8444-555566667777"
+echo "RUNNING:2026-02-28T10:00:00Z:working" > "${IPC_A}/worker-10.state"
+echo "headless" > "${IPC_A}/worker-10.backend"
+echo "$KILL_TOKEN" > "${IPC_A}/handle-10.worker"
+KILL_MOCK_DIR=$(mktemp -d)
+cat > "${KILL_MOCK_DIR}/claude" <<MOCK_SCRIPT
+#!/usr/bin/env bash
+if [[ "\${1:-}" == "stop" ]]; then
+  echo "\${2:-}" >> "${KILL_MOCK_DIR}/stop.log"
+fi
+MOCK_SCRIPT
+chmod +x "${KILL_MOCK_DIR}/claude"
+PATH="${KILL_MOCK_DIR}:${PATH}" bash "$ORCHCTL" kill 10 --session "$SESSION_A" 2>/dev/null
+STOPPED=$(cat "${KILL_MOCK_DIR}/stop.log" 2>/dev/null || true)
+assert_eq "kill delegates to claude stop with the session token" "$KILL_TOKEN" "$STOPPED"
+rm -rf "$KILL_MOCK_DIR"
+rm -f "${IPC_A}/handle-10.worker" "${IPC_A}/worker-10.backend"
+
 # ══════════════════════════════════════════════
 # inspect command
 # ══════════════════════════════════════════════
