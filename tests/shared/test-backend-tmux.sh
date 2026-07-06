@@ -210,7 +210,7 @@ tmux() {
 export -f tmux
 backend_spawn_worker "412" "worker" "$WORKTREE" "test prompt" "worker"
 RUNNER_CONTENT=$(cat "${CEKERNEL_IPC_DIR}/run-412.sh")
-assert_match "runner script uses exec claude" "exec claude -p --agent" "$RUNNER_CONTENT"
+assert_match "runner script uses exec claude" "exec claude -p --bare" "$RUNNER_CONTENT"
 if echo "$RUNNER_CONTENT" | grep -q "exec script "; then
   echo "  FAIL: runner script should not use script command"
   TESTS_FAILED=$((TESTS_FAILED + 1))
