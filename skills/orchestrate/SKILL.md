@@ -22,9 +22,29 @@ Examples:
 /orchestrate #108
 /orchestrate --env headless #108 #109
 /orchestrate --env ci #42
+/orchestrate https://github.com/org/planning/issues/578
 ```
 
 Note: In plugin mode, `/cekernel:orchestrate` also works.
+
+### Cross-repo Issue References (#440)
+
+Issue references may be plain numbers (`#108`) or full references to another
+repository (issue URL `https://github.com/owner/repo/issues/N`, path
+`/owner/repo/issues/N`, or `owner/repo#N` notation). For each non-plain
+reference, extract `owner/repo` and the issue number, then compare
+`owner/repo` with the current repository (from `git config --get
+remote.origin.url`):
+
+- **Same repository** → treat as a plain issue number (no special handling)
+- **Different repository (cross-repo)** → record `owner/repo` as the issue
+  repo for that issue. Pass `--repo <owner/repo>` to all issue-related `gh`
+  commands in triage, and include the issue repo in the Orchestrator prompt
+  (see Step 2) so it is propagated to `spawn-worker.sh --repo`
+
+The working repository (current directory) always hosts the worktrees,
+branches, and PRs — run `/orchestrate` from the implementation repository,
+not from the meta-repository that hosts the issues.
 
 ## Workflow
 
@@ -128,6 +148,7 @@ Note: Claude Code session ID (`orchestrator.claude-session-id`) persistence is h
 Process the following issues: <#N title, #M title, ...>
 <Execution order if determined in Step 1, otherwise omit this line>
 <Base branch: <branch> if specified, otherwise omit this line>
+<Issue repo: <owner/repo> — pass --repo <owner/repo> to spawn-worker.sh and to issue-related gh commands. Only for cross-repo issues, otherwise omit this line>
 
 Environment values to propagate in ALL script invocations:
 - CEKERNEL_SESSION_ID=<session-id>

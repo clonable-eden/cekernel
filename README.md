@@ -220,12 +220,25 @@ cekernel is primarily designed for **monorepo** structures. While it may work wi
 | crontab | Linux/WSL | Untested — unit tests pass, but no live execution verification yet |
 | atd | Linux/WSL | Untested — unit tests pass, but no live execution verification yet |
 
-**Cross-repository issues:** If you manage issues in a separate meta-repository, pass the full path or URL to `/orchestrate`:
+**Cross-repository issues:** If you manage issues in a separate meta-repository, run `/orchestrate` from the **implementation repository** (worktrees, branches, and PRs are created there) and pass the full path or URL of the issue:
 
 ```bash
-/cekernel:orchestrate /org/repo/issues/123
+/cekernel:orchestrate /org/planning/issues/123
 # or
-/cekernel:orchestrate https://github.com/org/repo/issues/123
+/cekernel:orchestrate https://github.com/org/planning/issues/123
+```
+
+The issue repository is extracted from the reference and propagated via `spawn-worker.sh --repo org/planning`, so the Worker reads and comments on the correct issue while implementing in the current repository.
+
+If you use `--permission-mode auto`, declare the meta-repository as a trusted external dependency so the auto-mode classifier does not block `gh` writes targeting it:
+
+```jsonc
+// .claude/settings.local.json
+{
+  "autoMode": {
+    "environment": "Trust this working repo and the meta-repo at org/planning. gh commands targeting either repo are expected operations."
+  }
+}
 ```
 
 > **Note**: Cross-repository issue resolution has not been extensively tested. Please [open an issue](https://github.com/clonable-eden/cekernel/issues/new) if you encounter any problems.

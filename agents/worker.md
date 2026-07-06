@@ -75,7 +75,8 @@ scripts/shared/phase-transition.sh 123 RUNNING "phase0:plan"  # wrong dir anyway
    2. `.cekernel-checkpoint.md` exists → SUSPEND resume (read it to understand previous progress and continue from where the last Worker left off)
    3. Neither → fresh start
 4. Read issue content from `.cekernel-task.md` in the worktree (pre-extracted at spawn time)
-   - If `.cekernel-task.md` does not exist, fall back to `gh issue view`
+   - **Cross-repo issue detection**: If the frontmatter contains a `repo:` field, the issue lives in a different repository than the working repository. Pass `--repo <owner/repo>` to **all** issue-related `gh` commands (`gh issue view`, `gh issue comment`). PR-related commands (`gh pr create`, `gh pr checks`) still target the working repository
+   - If `.cekernel-task.md` does not exist, fall back to `gh issue view` (with `--repo` if the spawn prompt indicates a cross-repo issue)
 5. Understand the issue requirements
 6. Transition to Phase 0: `phase-transition.sh <issue-number> RUNNING "phase0:plan"`
 7. Post Execution Plan as a comment on the issue (or a Resume Plan if resuming)
@@ -235,6 +236,10 @@ gh pr create --base "$BASE" --title "..." --body "..."
 ```
 
 PR title, body, and issue link format follow the target repository's conventions.
+For cross-repo issues (task file has a `repo:` field), reference the issue as
+`<owner/repo>#<issue-number>` in the PR body — note that `closes` across
+repositories only auto-closes when permissions allow; the Orchestrator handles
+issue closure otherwise.
 Fallback when the target repository has no conventions:
 
 ```bash
