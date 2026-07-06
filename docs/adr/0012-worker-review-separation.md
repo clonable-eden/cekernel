@@ -480,6 +480,62 @@ The default (`false`) preserves the original behavior in this ADR. Humans
 who keep worktrees are responsible for removing them eventually
 (`git worktree remove`).
 
+### Amendment 4: Permission Portability — Surface Gaps, Don't Resolve (2026-07)
+
+A cross-transcript postmortem of 24 self-hosted PRs (2026-07-07) found the
+Worker permission surface is three layers (see
+`docs/claude-code-constraints.md` § Permission Model): (1) the target
+repo's `settings.json` allowlist, (2) a safety classifier that rejects
+dangerous patterns even when layer 1 allows a tool broadly (mechanism
+unconfirmed — supervisor-inherited vs headless-intrinsic), (3) silent
+`blocked` / denial when the first two are not satisfied.
+
+Every self-hosted Worker completed only because cekernel's own settings
+and the runtime classifier happened to align. This is **not portable**: a
+target repo without a Worker allowlist strands the Worker at layer 3 as a
+silent `blocked` — the failure ADR-0012's "delegate to the operator"
+principle does not cover. It is that principle's blind spot: delegating is
+correct, but breaking *silently* when the delegated prerequisite is absent
+violates the Rule of Repair.
+
+**Decision** — cekernel surfaces the gap early but does **not** resolve
+permissions (it cannot: there is no platform query API, only bypass flags):
+
+1. **Coarse spawn preflight (full resolution is a Non-Goal).** `spawn.sh`
+   checks only that the target repo has a `.claude/settings.json` with a
+   non-empty `permissions.allow`; if not, it emits a **noisy warning**
+   (example allowlist, or the `--permission-mode acceptEdits` escape) and
+   proceeds. Per-tool permit/deny is left to the platform and caught at
+   layer 3 via `bg_is_blocked` (ADR-0018). Reimplementing the platform's
+   resolution engine — settings hierarchy, `Bash(cmd)` glob semantics,
+   the classifier — is explicitly rejected: it would produce a *worse*
+   failure (preflight passes yet the Worker blocks, or false-fails) than
+   the gap it closes.
+2. **Layer 2 recorded as Evolving, mechanism unconfirmed.** No inheritance
+   claim is asserted. A minimal experiment (auto-mode vs non-auto
+   supervisor → does the Worker's classifier behavior change?) is a
+   verification item, foldable into #587.
+3. **Worker keeps avoidance-first on denial.** On a classifier denial the
+   Worker first attempts a workaround (as in `#543`, which fell back from
+   `bats` to a `ruby` check and still reached ci-passed); only when no
+   workaround exists does it surface `blocked`. Forcing an immediate
+   `blocked` on every denial is rejected — it would kill that good
+   behavior.
+4. **`bypassPermissions` is not made the default.** Papering over the gap
+   with a blanket bypass maximizes blast radius under autonomous (goal)
+   loops. The `blocked` surface (ADR-0018 `bg_is_blocked`) stays the
+   safety net; the "denial → workaround vs stop" policy for goal loops is
+   deferred to a goal-design ADR.
+
+**Non-Goals**: reimplementing the platform permission engine; per-call
+pre-spawn permit decisions; controlling or bypassing the layer-2
+classifier.
+
+**Scope**: the coarse preflight (Decision 1) and the setup-skill allowlist
+guidance are 2.0-sized. Layer-2 verification and goal-loop permission
+policy are post-2.0 (v2.1). **2.0 release is not blocked on this
+Amendment.**
+
 ## Alternatives Considered
 
 ### Alternative: Human-Only Review

@@ -486,11 +486,40 @@ Tool execution requires permission grants. These can be pre-configured via
 `.claude/settings.json` (per-project) or granted interactively. The
 `allowedTools` patterns support glob matching.
 
+**No query API**: there is no claude CLI command to ask "would this tool be
+permitted?" — only `--permission-mode` and the `--dangerously-skip-*`
+bypass flags exist (verified v2.1.201). Code that needs to know permission
+outcomes must either try the action and observe, or coarsely inspect
+`settings.json` itself; it cannot delegate resolution to the platform.
+
+**Three-layer permission structure** (observed across 24 self-hosted PRs,
+2026-07-07): a headless Worker's tool call passes through three gates:
+
+1. **settings.json allowlist** — `permissions.allow` in the target repo's
+   `.claude/settings.json`. Depends on the *target repo* having one
+   (`#543` passed normal Bash/Edit/Write/Read via `allow:[...]`).
+2. **Safety classifier** — a classifier still rejects dangerous patterns
+   even when layer 1 allows the tool broadly. Observed: `#543` had `bats`
+   (external-repo code) rejected as "[Code from External]"; `#593` had
+   `rm -rf /tmp/...` "denied". **The mechanism is unconfirmed** — whether
+   it is inherited from the spawning supervisor's auto mode, or is a
+   classifier intrinsic to headless sessions, is not yet distinguished
+   (an earlier spawn mix-up, #545, warns against asserting inheritance).
+3. **blocked / denied** — when layers 1–2 are not satisfied, the session
+   either stalls silently on a permission dialog (`blocked`) or the tool
+   returns a denial the agent must handle.
+
 **Implications for cekernel**:
 - Worker automation requires pre-configured permissions in the target
-  repository's `.claude/settings.json`
+  repository's `.claude/settings.json`. **A target repo without a Worker
+  allowlist strands the Worker at layer 3 (silent `blocked`)** — the
+  self-hosting case hides this because cekernel's own settings happen to
+  suit. cekernel should surface the gap early, not resolve permissions.
 - cekernel delegates permission configuration to the target repository
-  (separation of authority)
+  (separation of authority) — and cannot reimplement the resolution engine
+  (no query API). See ADR-0012 Amendment 4.
+- Layer 2 is outside cekernel's control; its mechanism is Evolving and
+  should be re-verified (supervisor-auto-mode vs headless-intrinsic).
 
 ## Concurrency and Multi-Session
 
