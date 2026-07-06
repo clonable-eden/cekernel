@@ -376,11 +376,12 @@ cmd_ps() {
       local mstate
       mstate=$(claude_bg_state_from_json "$agents_json" "$mtoken") || mstate="missing"
 
-      # Join cekernel-specific columns from state/priority files
-      export CEKERNEL_IPC_DIR="$session_dir"
+      # Join cekernel-specific columns from state/priority files.
+      # CEKERNEL_IPC_DIR is scoped to each command substitution (subshell)
+      # — a read-only view must not mutate the global session context.
       local phase priority
-      phase=$(worker_state_read "$issue" | jq -r '.detail')
-      priority=$(worker_priority_read "$issue" | jq -r '.priority')
+      phase=$(CEKERNEL_IPC_DIR="$session_dir" worker_state_read "$issue" | jq -r '.detail')
+      priority=$(CEKERNEL_IPC_DIR="$session_dir" worker_priority_read "$issue" | jq -r '.priority')
 
       found=$((found + 1))
       echo "  ${mtype}  #${issue}  claude=${mtoken}  phase=${phase}  priority=${priority}  ${mstate}"
