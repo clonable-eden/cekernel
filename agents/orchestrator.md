@@ -210,6 +210,7 @@ Each Worker is watched individually via `run_in_background: true`. Cleanup proce
 | `CEKERNEL_MIN_RUNTIME` | 300 | Minimum Worker runtime (seconds) before suspension allowed |
 | `CEKERNEL_AUTO_MERGE` | false | `true`: Orchestrator merges after Reviewer approval; `false`: human merges |
 | `CEKERNEL_REVIEW_MAX_RETRIES` | 2 | Max reject → re-implement cycles before escalation |
+| `CEKERNEL_KEEP_WORKTREE` | false | `true`: `cleanup-worktree.sh` preserves the worktree and local branch (Worker still killed, IPC still removed); `--force` always removes |
 
 ### Concurrency Limit
 
@@ -588,6 +589,8 @@ The branch and PR remain on the remote for human action.
 | Reviewer approved → merged | **Yes** | Lifecycle complete |
 | Reviewer approved (`auto_merge=false`) | **Yes** | Branch and PR exist on remote; local worktree no longer needed |
 | Escalation (retry limit exceeded) | **Yes** | Branch and PR exist on remote for human action |
+
+When `CEKERNEL_KEEP_WORKTREE=true`, the "Yes" rows above still run `cleanup-worktree.sh` as usual, but the script itself preserves the worktree and local branch (only the Worker process and IPC resources are cleaned). No Orchestrator-side branching is needed — invoke `cleanup-worktree.sh` exactly as documented. This is useful with `CEKERNEL_AUTO_MERGE=false` when humans verify the worktree before merging; the human removes the worktree later.
 
 ### Backward Compatibility
 

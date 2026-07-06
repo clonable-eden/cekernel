@@ -431,6 +431,34 @@ assumptions; CLAUDE.md feasibility-check rule applies):
    assumption recorded in CLAUDE.md); re-verify when rewriting the
    nesting/worktree constraints (non-blocking).
 
+### Amendment 3: `CEKERNEL_KEEP_WORKTREE` — Optional Worktree Retention After Approval (2026-07)
+
+The Worktree Lifetime table above mandates immediate worktree removal on
+Reviewer approval, including the `auto_merge=false` case ("local worktree is
+no longer needed"). Operational experience showed this assumption does not
+hold for `CEKERNEL_AUTO_MERGE=false` deployments: humans often want to run
+final verification or extra manual steps in the existing worktree before
+merging, and recreating it via `git worktree add` loses the checkpoint and
+task files (#524).
+
+`CEKERNEL_KEEP_WORKTREE` (default: `false`) is added to opt out of worktree
+removal. It is read by `cleanup-worktree.sh` itself rather than decided by
+the Orchestrator agent, keeping the behavior deterministic (Rule of
+Separation: the env var is policy, the script is mechanism). When `true`:
+
+- The Worker process is still killed and all IPC resources (FIFO, state,
+  handle files) are still removed — FIFOs feed the concurrency guard, so
+  keeping them would leak scheduling slots
+- The worktree and its local branch are preserved; checkpoint and task
+  files inside the worktree survive
+- `--force` overrides the setting and always removes the worktree, so the
+  zombie-recovery path (`cleanup-worktree.sh --force`) keeps freeing the
+  worktree for a fresh spawn
+
+The default (`false`) preserves the original behavior in this ADR. Humans
+who keep worktrees are responsible for removing them eventually
+(`git worktree remove`).
+
 ## Alternatives Considered
 
 ### Alternative: Human-Only Review
