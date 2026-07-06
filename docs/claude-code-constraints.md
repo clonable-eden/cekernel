@@ -220,10 +220,17 @@ Verified 2026-07-07 (31-minute busy probe, session `cada4872`):
   session. Real launchd/crontab verification remains for Phase 3.
 - **Retention**: `agents --json --all` still listed sessions ~3 weeks old.
 
-Unverified (check before relying on them):
-- `--bg --bare` with a **prompt**: untested. The `--exec` path emits
-  `warning: --exec ignores --bare (only --name composes)` — verify the
-  prompt path in Phase 1 (#546).
+Verified 2026-07-07 (Phase 1 probe, #546, session `971e554a`):
+- **`--bg --bare` with a prompt composes without warnings** (unlike the
+  hidden `--exec` path, which emits `--exec ignores --bare`). The session
+  spawns and appears in `agents --json` normally.
+- `agents --json` records carry **more fields than the normative five**:
+  `pid` (daemon-side session process), `id` (short ID), `name` (prompt
+  excerpt), `status` — do not rely on an exclusive field set. `startedAt`
+  is **epoch milliseconds** (numeric), not an ISO string.
+- The reported `cwd` is **realpath'd** (`/tmp` → `/private/tmp` on macOS)
+  — cwd-based matching must normalize with `pwd -P` first.
+- `claude stop <short-id>` accepts the short ID as the stop token.
 
 **Implications for cekernel**:
 - ADR-0016 delegates spawn/supervision to `--bg`; session IDs are captured
