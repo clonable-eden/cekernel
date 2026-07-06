@@ -92,6 +92,21 @@ setup() {
   fi
 }
 
+@test "agent records emit startedAt as a JSON number (real epoch-millis shape)" {
+  # Real `agents --json` records carry a NUMERIC epoch-millis startedAt
+  # (verified 2026-07-07, #546 probe) — the mock must match the shape,
+  # not just the sort order (PR #572 follow-up, #573).
+  run mock_claude_agent_record \
+    "cafe0001-0000-4000-8000-000000000001" background /tmp/wt 1700000000000 busy
+  assert_eq "live record startedAt is a JSON number" "number" \
+    "$(echo "$output" | jq -r '.startedAt | type')"
+
+  run mock_claude_agent_record \
+    "cafe0001-0000-4000-8000-000000000001" background /tmp/wt 1700000000000 done
+  assert_eq "terminal record startedAt is a JSON number" "number" \
+    "$(echo "$output" | jq -r '.startedAt | type')"
+}
+
 @test "agents --json emits [] when nothing is enqueued" {
   run claude agents --json
   assert_eq "empty roster" "[]" "$output"
