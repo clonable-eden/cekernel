@@ -47,7 +47,12 @@
 #     paths testable — short-ID prefix match against sessionId, and the
 #     kind+cwd+startedAt fallback including the interactive-session
 #     mis-match regression at repo root.
-#     Real records carry ADDITIONAL fields (pid, id, name, status) and a
+#     The <state> argument is the LOGICAL session state (busy|blocked|
+#     done|stopped|...). It is emitted in the observed field split
+#     (verified 2026-07-07, #581): live states (busy, blocked) become
+#     `"status":"<state>","state":"working"`; terminal states are
+#     emitted as `"state":"<state>"` with NO status field.
+#     Real records carry ADDITIONAL fields (pid, id, name) and a
 #     numeric epoch-millis startedAt with a realpath'd cwd (verified
 #     2026-07-07) — consumers MUST NOT assume an exclusive field set.
 #     Pass numeric startedAt values in tests to mirror the real shape.
@@ -137,6 +142,13 @@ mock_claude_agent_record() {
   local cwd="${3:?missing <cwd>}"
   local started_at="${4:?missing <startedAt>}"
   local state="${5:?missing <state>}"
-  printf '{"sessionId":"%s","kind":"%s","cwd":"%s","startedAt":"%s","state":"%s"}' \
-    "$session_id" "$kind" "$cwd" "$started_at" "$state"
+  # Observed field split (#581): live sessions carry status (busy|blocked)
+  # plus state:"working"; terminal sessions carry state only, no status.
+  if [[ "$state" == "busy" || "$state" == "blocked" ]]; then
+    printf '{"sessionId":"%s","kind":"%s","cwd":"%s","startedAt":"%s","status":"%s","state":"working"}' \
+      "$session_id" "$kind" "$cwd" "$started_at" "$state"
+  else
+    printf '{"sessionId":"%s","kind":"%s","cwd":"%s","startedAt":"%s","state":"%s"}' \
+      "$session_id" "$kind" "$cwd" "$started_at" "$state"
+  fi
 }
