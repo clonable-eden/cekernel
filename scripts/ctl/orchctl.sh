@@ -681,6 +681,21 @@ cmd_gc() {
   # Stale timeout for NEW/READY state (seconds). Default: 30 minutes.
   local stale_timeout="${CEKERNEL_GC_STALE_TIMEOUT:-1800}"
 
+  # ── Helper: lazy single `agents --json` fetch per gc run (#573) ──
+  # Returns 0 with gc_agents_json populated when the query succeeded;
+  # returns 1 when it failed (transient or no CLI) — callers must then
+  # stay conservative (assume alive, never gc on doubt).
+  local gc_agents_json="" gc_agents_fetched=0 gc_agents_ok=0
+  _gc_agents_json_once() {
+    if [[ "$gc_agents_fetched" -eq 0 ]]; then
+      gc_agents_fetched=1
+      if gc_agents_json=$(claude_bg_agents_json); then
+        gc_agents_ok=1
+      fi
+    fi
+    [[ "$gc_agents_ok" -eq 1 ]]
+  }
+
   # ── Helper: check if a FIFO is stale ──
   # Returns 0 (stale) or 1 (active).
   # A FIFO is stale when:
@@ -702,8 +717,10 @@ cmd_gc() {
       # (UUID/short ID) on ALL backends. Legacy sessions may still hold a
       # tmux pane target (session:window.pane), a numeric wezterm pane ID,
       # or a headless PID.
-      # Simple heuristic: numeric → kill -0; tmux target → has-session;
-      # anything else (session tokens included) → assume alive to be safe
+      # Heuristic: numeric → kill -0; tmux target → has-session; anything
+      # else is a session token → alive iff busy/blocked in
+      # `claude agents --json` (single lazy fetch per gc run, #573); a
+      # failed query stays conservative (assume alive, never gc on doubt)
       if [[ "$handle_content" =~ ^[0-9]+$ ]]; then
         if kill -0 "$handle_content" 2>/dev/null; then
           has_live_handle=1
@@ -716,9 +733,16 @@ cmd_gc() {
           break
         fi
       else
-        # Unknown handle format — assume alive to be safe
-        has_live_handle=1
-        break
+        # Opaque session token
+        if ! _gc_agents_json_once; then
+          # Query failed — cannot verify, assume alive
+          has_live_handle=1
+          break
+        fi
+        if claude_bg_token_alive_from_json "$gc_agents_json" "$handle_content"; then
+          has_live_handle=1
+          break
+        fi
       fi
     done
 
