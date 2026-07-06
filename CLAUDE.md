@@ -265,7 +265,10 @@ tests/
 ├── run-tests.sh             # Dual-lane test runner (legacy + bats)
 ├── helpers.sh               # Assertion functions (legacy harness)
 ├── helpers/
-│   └── assertions.bash      # Assertion functions (bats lane)
+│   ├── assertions.bash      # Assertion functions (bats lane)
+│   ├── mock-bin.bash        # mock_bin PATH-shim helper (bats lane)
+│   ├── mock-claude.bash     # Canonical claude shim for v2 spawn tests
+│   └── session.bash         # Per-test unique CEKERNEL_SESSION_ID
 ├── orchestrator/
 │   ├── test-concurrency-guard.sh
 │   ├── test-{feature}.sh   # Orchestrator script tests (legacy)
@@ -298,11 +301,50 @@ assert_not_exists <label> <path>
 report_results  # "Results: N passed, M failed"
 ```
 
+### Mocking
+
+**PATH shims are the only sanctioned mock style** (ADR-0017). Shell-function
+overrides are banned — they silently fail across `exec`/subshell boundaries.
+Do not add new function-override mocks.
+
+In `.bats` files, use the canonical helpers:
+
+```bash
+load '../helpers/mock-bin'      # mock_bin <cmd> <script-body>
+load '../helpers/mock-claude'   # canonical claude shim (--bg / agents --json / stop)
+```
+
+`mock-claude.bash` emulates the ADR-0016 delegated-spawn contract. Any PR
+updating the "Background Agent Sessions" section of
+`docs/claude-code-constraints.md` must update the mock in the same PR.
+
+`git` and `git worktree` stay **real** against temp repos (ADR-0017): mocking
+them would fake the exact behavior worktree tests exist to verify.
+
 ### Test Isolation
 
 Isolate commands with side effects (WezTerm, `gh`, `git worktree`) from tests, or structure them to be mockable.
 
-Use a dedicated `CEKERNEL_SESSION_ID` in tests, and clean up before and after:
+In `.bats` files, use a per-test unique `CEKERNEL_SESSION_ID` (derived from
+`BATS_TEST_NAME`, safe under parallel bats runs):
+
+```bash
+load '../helpers/session'
+
+setup() {
+  set_test_session_id   # exports a per-test unique CEKERNEL_SESSION_ID
+  source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
+  rm -rf "$CEKERNEL_IPC_DIR"
+  mkdir -p "$CEKERNEL_IPC_DIR"
+}
+
+teardown() {
+  rm -rf "$CEKERNEL_IPC_DIR"
+}
+```
+
+In legacy-harness files, use a dedicated fixed `CEKERNEL_SESSION_ID` and
+clean up before and after:
 
 ```bash
 export CEKERNEL_SESSION_ID="test-feature-00000001"
