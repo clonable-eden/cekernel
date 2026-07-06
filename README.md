@@ -56,6 +56,18 @@ graph LR
 
 For details on logging, IPC, and resource governance, see [internals.md](./docs/internals.md).
 
+### cekernel vs `/workflows`
+
+Claude Code's dynamic `/workflows` also runs agents in parallel, so the two can look interchangeable. They are not — the boundary rule is: **state that must survive the session belongs to cekernel; fan-out that completes within a session belongs to `/workflows`** (in one sentence: cekernel persists, `/workflows` fans out). If your task is an issue lifecycle that spans CI waits, human review, and retries over hours or days, use cekernel; if it is a wide parallel pass that starts and finishes inside one session (e.g. a migration sweep or a multi-file analysis), use `/workflows`. See [ADR-0015](./docs/adr/0015-workflows-boundary.md) for the full analysis.
+
+| Axis | cekernel | `/workflows` |
+|------|----------|--------------|
+| Use for | Lifecycles that outlive a session (issue → PR → CI → review → merge) | Fan-out that completes within one session |
+| Survives the session | Yes — OS processes, files, git worktrees | No — a run dies with its session |
+| Time horizon | Hours–days (CI waits, human review, retries) | One session's wall-clock |
+| Identity | Issue number = PID; named branches and PRs | Anonymous agent index |
+| Trigger | Event-driven (FIFO, cron/at, human) | Single deterministic run |
+
 ## Structure
 
 ```
