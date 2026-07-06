@@ -79,3 +79,43 @@ JSON"
     return 1
   fi
 }
+
+# ── Base branch propagation (#562) ──
+
+@test "create_task_file with base arg writes base: field to frontmatter" {
+  mock_gh_issue
+  source "${CEKERNEL_DIR}/scripts/shared/task-file.sh"
+
+  create_task_file "$WORKTREE" 42 "" "2.0-dev"
+
+  assert_file_exists "task file created" "${WORKTREE}/.cekernel-task.md"
+  assert_match "frontmatter has base field" \
+    "base: 2.0-dev" "$(cat "${WORKTREE}/.cekernel-task.md")"
+}
+
+@test "create_task_file with repo and base args writes both fields" {
+  mock_gh_issue
+  source "${CEKERNEL_DIR}/scripts/shared/task-file.sh"
+
+  create_task_file "$WORKTREE" 42 "acme/planning" "2.0-dev"
+
+  local content
+  content="$(cat "${WORKTREE}/.cekernel-task.md")"
+  assert_match "frontmatter has repo field" "repo: acme/planning" "$content"
+  assert_match "frontmatter has base field" "base: 2.0-dev" "$content"
+}
+
+@test "create_task_file without base arg omits base: field" {
+  mock_gh_issue
+  source "${CEKERNEL_DIR}/scripts/shared/task-file.sh"
+
+  create_task_file "$WORKTREE" 42
+
+  local content
+  content="$(cat "${WORKTREE}/.cekernel-task.md")"
+  if [[ "$content" == *"base:"* ]]; then
+    echo "FAIL: base: field must not appear without base arg" >&2
+    return 1
+  fi
+  assert_match "task file still has issue number" "issue: 42" "$content"
+}

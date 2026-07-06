@@ -145,6 +145,26 @@ run_spawn() {
     "acme/planning#42" "$argv"
 }
 
+# ── Base branch propagation (#562) ──
+
+@test "spawn.sh records the base branch in the task file" {
+  # Non-default base branch in upstream
+  git -C "${TMP}/upstream" branch dev
+  run bash -c "cd '${TMP}/repo' && bash '${SPAWN_SCRIPT}' --agent worker 42 dev"
+  assert_eq "spawn exits 0" "0" "$status"
+  local task_file="${TMP}/repo/.worktrees/issue/42-test-issue/.cekernel-task.md"
+  assert_file_exists "task file created in worktree" "$task_file"
+  assert_match "task file has base field" "base: dev" "$(cat "$task_file")"
+}
+
+@test "spawn.sh records the default base branch (main) in the task file" {
+  run_spawn
+  assert_eq "spawn exits 0" "0" "$status"
+  local task_file="${TMP}/repo/.worktrees/issue/42-test-issue/.cekernel-task.md"
+  assert_file_exists "task file created in worktree" "$task_file"
+  assert_match "task file has base field" "base: main" "$(cat "$task_file")"
+}
+
 @test "spawn.sh without --repo keeps current-repo behavior" {
   run_spawn
   assert_eq "spawn exits 0" "0" "$status"
