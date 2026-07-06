@@ -8,8 +8,12 @@
 # Usage: source transcript-locator.sh
 #
 # Functions:
-#   transcript_locate_worker <issue-number> [claude-home]
+#   transcript_locate_worker <issue-number> [claude-home] [var-dir]
 #     — Find Worker/Reviewer transcripts by issue number
+#     — Prefers the session UUID captured at spawn time (ADR-0016 Phase 1):
+#       scans ${var-dir}/ipc/*/{type}-{N}.claude-session-id and resolves
+#       <project>/<UUID>.jsonl directly; falls back to the issue glob when
+#       no UUID is recorded or none resolves (e.g. degraded short-ID capture)
 #     — Outputs one path per line to stdout
 #     — Returns 1 if no transcripts found (error on stderr)
 #
@@ -37,15 +41,25 @@
 #   Orchestrator (claude -p):  ~/.claude/projects/<project>/<session-id>.jsonl
 #   Orchestrator (legacy):     ~/.claude/projects/<project>/<session-id>/subagents/*.jsonl
 
-# transcript_locate_worker <issue-number> [claude-home]
+# transcript_locate_worker <issue-number> [claude-home] [var-dir]
 # Finds Worker/Reviewer transcripts matching the issue number.
 # Workers and Reviewers run in worktrees named .worktrees/issue/{N}-{slug}/
 # (see CLAUDE.md "Worktree Naming" for the full convention).
-# Claude Code maps worktree paths to project directories by replacing / with -,
-# so the glob *-issue-{N}-* matches any worktree for a given issue number.
+#
+# Strategy 1 (deterministic, ADR-0016 Phase 1 / #528): headless spawns
+# persist the captured session UUID to
+# ${var-dir}/ipc/*/{type}-{N}.claude-session-id (survives cleanup, like
+# .spawned files). Each UUID resolves the transcript file directly:
+# <projects>/<worktree-slug>/<UUID>.jsonl.
+#
+# Strategy 2 (fallback): Claude Code maps worktree paths to project
+# directories by replacing / with -, so the glob *-issue-{N}-* matches any
+# worktree for a given issue number. Used when no UUID is recorded or none
+# resolves (degraded short-ID capture, pre-v2 sessions).
 transcript_locate_worker() {
-  local issue_number="${1:?Usage: transcript_locate_worker <issue-number> [claude-home]}"
+  local issue_number="${1:?Usage: transcript_locate_worker <issue-number> [claude-home] [var-dir]}"
   local claude_home="${2:-${HOME}/.claude}"
+  local var_dir="${3:-${CEKERNEL_VAR_DIR:-$HOME/.local/var/cekernel}}"
 
   # Validate issue number is numeric
   if ! [[ "$issue_number" =~ ^[0-9]+$ ]]; then
@@ -56,7 +70,24 @@ transcript_locate_worker() {
   local projects_dir="${claude_home}/projects"
   local found=0
 
-  # Glob: *-issue-{number}-* matches worktree project directories
+  # Strategy 1: direct lookup via captured session UUIDs
+  while IFS= read -r -d '' uuid_file; do
+    local uuid
+    uuid=$(cat "$uuid_file" 2>/dev/null | tr -d '[:space:]')
+    [[ -n "$uuid" ]] || continue
+    while IFS= read -r -d '' file; do
+      echo "$file"
+      found=$((found + 1))
+    done < <(find "$projects_dir" -maxdepth 2 -name "${uuid}.jsonl" \
+      -not -path "*/subagents/*" -print0 2>/dev/null | sort -z)
+  done < <(find "${var_dir}/ipc" -maxdepth 2 -name "*-${issue_number}.claude-session-id" \
+    -not -name "orchestrator.claude-session-id" -print0 2>/dev/null | sort -z)
+
+  if [[ "$found" -gt 0 ]]; then
+    return 0
+  fi
+
+  # Strategy 2 — glob: *-issue-{number}-* matches worktree project directories
   # e.g., -Users-alice-git-repo--worktrees-issue-42-feat-add-widget
   # Use nullglob behavior via find to avoid literal glob in output
   while IFS= read -r -d '' file; do
@@ -310,7 +341,7 @@ transcript_locate_all() {
   local any_found=0
 
   # Worker/Reviewer transcripts
-  if transcript_locate_worker "$issue_number" "$claude_home" 2>/dev/null; then
+  if transcript_locate_worker "$issue_number" "$claude_home" "$var_dir" 2>/dev/null; then
     any_found=1
   else
     echo "Warning: No Worker/Reviewer transcripts found for issue #${issue_number}" >&2
