@@ -253,7 +253,10 @@ lock_with_token() {
   # startswith("") matches EVERY session — an unrelated busy session
   # must not keep a corrupt lock alive (PR #572 follow-up, #573).
   mock_claude
-  lock_with_token ""
+  local lock_dir
+  lock_dir=$(lock_dir_for "$REPO_A" "$ISSUE")
+  mkdir -p "$lock_dir"
+  : > "${lock_dir}/pid"   # empty pid file
   mock_claude_enqueue_agents \
     "[$(mock_claude_agent_record "$TOKEN" background /tmp/wt 1700000000000 busy)]"
   run issue_lock_acquire "$REPO_A" "$ISSUE"

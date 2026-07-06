@@ -47,6 +47,13 @@ issue_lock_repo_hash() {
 _issue_lock_holder_alive() {
   local holder="$1"
 
+  # Empty holder = corrupt/partial write (pid files are always written
+  # with content). Guard it here: an empty token would fall into the
+  # session path below where startswith("") matches EVERY session (#573).
+  if [[ -z "$holder" ]]; then
+    return 1
+  fi
+
   if [[ "$holder" =~ ^[0-9]+$ ]]; then
     kill -0 "$holder" 2>/dev/null
     return $?
