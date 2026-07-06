@@ -1,0 +1,15 @@
+{
+  "description": "cekernel lifecycle hooks (ADR-0018): the Worker Stop guard keeps Worker sessions alive until notify-complete.sh records TERMINATED. Non-Worker sessions are unaffected (the guard detects Worker worktrees by .cekernel-task.md + .cekernel-env in the session cwd).",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/hooks/worker-stop-guard.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
