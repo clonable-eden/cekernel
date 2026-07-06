@@ -39,7 +39,9 @@ issue_lock_repo_hash() {
 # Numeric holders are PIDs (kill -0). Non-numeric holders are opaque
 # session tokens (ADR-0005 Amendment 1): alive iff a session whose
 # sessionId starts with the token is busy or blocked in
-# `claude agents --json`. When the query fails, assume alive —
+# `claude agents --json` — read via `(.status // .state)` since live
+# sessions report liveness in `status` (#581). When the query fails,
+# assume alive —
 # never steal a lock on doubt (duplicate Workers are worse than a
 # lock held until explicit release).
 _issue_lock_holder_alive() {
