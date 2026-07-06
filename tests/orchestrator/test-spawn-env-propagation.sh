@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # test-spawn-env-propagation.sh — Tests that spawn.sh writes .cekernel-env
-# and that PATH is propagated via runner script (not via LLM PROMPT prefix).
+# and that PATH is propagated via the sourced .cekernel-env (not via LLM
+# PROMPT prefix).
 #
 # Verifies:
 # 1. .cekernel-env is written to the worktree with all env vars
@@ -39,9 +40,9 @@ else
 fi
 
 # ── Test 3: BASH_PREFIX removed — spawn.sh must not define BASH_PREFIX ──
-# PATH is now propagated via .cekernel-env sourced by the runner script.
+# PATH is now propagated via .cekernel-env sourced by the spawn path.
 if [[ "$SCRIPT_CONTENT" != *'BASH_PREFIX='* ]]; then
-  echo "  PASS: BASH_PREFIX removed from spawn.sh (PATH via runner script)"
+  echo "  PASS: BASH_PREFIX removed from spawn.sh (PATH via .cekernel-env)"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
   echo "  FAIL: BASH_PREFIX still present in spawn.sh"

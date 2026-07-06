@@ -272,7 +272,7 @@ EOF
 
 # ── Launch process via backend ──
 # If --prompt was provided, use it. Otherwise, use the default Worker prompt.
-# PATH and env vars are propagated via .cekernel-env sourced by the runner script.
+# PATH and env vars are propagated via .cekernel-env sourced by the spawn path (bg-session.sh).
 # Cross-repo issues (#440): the prompt references the issue as owner/repo#N
 # and tells the process to target issue-related gh commands at that repo.
 CROSS_REPO_NOTE=""

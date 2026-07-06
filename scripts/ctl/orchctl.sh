@@ -831,9 +831,10 @@ cmd_gc() {
       has_any_handle=1
       local handle_content
       handle_content=$(tr -d '[:space:]' < "$hf")
-      # For headless (v2), handle is an opaque session token (UUID/short ID)
-      # For tmux, handle is session:window.pane — check if tmux session exists
-      # For wezterm, handle is a numeric pane ID; pre-v2 headless was a PID
+      # v2 (ADR-0016 Phase 5): handle is an opaque session token
+      # (UUID/short ID) on ALL backends. Legacy sessions may still hold a
+      # tmux pane target (session:window.pane), a numeric wezterm pane ID,
+      # or a headless PID.
       # Simple heuristic: numeric → kill -0; tmux target → has-session;
       # anything else (session tokens included) → assume alive to be safe
       if [[ "$handle_content" =~ ^[0-9]+$ ]]; then

@@ -6,6 +6,10 @@
 # liveness/status map to `claude agents --json` state; termination maps to
 # `claude stop`. Asserts recorded argv and executed effects via the
 # canonical mock-claude shim (ADR-0017) — never generated script text.
+#
+# Since ADR-0016 Phase 5, headless.sh is a thin delegation to the shared
+# session core (scripts/shared/bg-session.sh) — this suite doubles as the
+# contract coverage for that core (wezterm/tmux reuse it for spawn).
 
 load '../helpers/assertions'
 load '../helpers/session'
