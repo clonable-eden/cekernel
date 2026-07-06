@@ -284,6 +284,17 @@ FULL_UUID="aaaa1111-2222-4333-8444-555566667777"
   assert_eq "exit status" "1" "$status"
 }
 
+@test "backend_worker_status echoes unknown when the agents query fails (transient)" {
+  # A failed `claude agents --json` (daemon restarting) must be
+  # distinguishable from a session verifiably not listed — supervision
+  # must not treat the former as a crash (PR #572 follow-up, #573).
+  echo "$FULL_UUID" > "${CEKERNEL_IPC_DIR}/handle-500.worker"
+  mock_bin claude 'exit 1'
+  run backend_worker_status 500
+  assert_eq "exit status" "1" "$status"
+  assert_eq "state" "unknown" "$output"
+}
+
 # ── termination: claude stop ──
 
 @test "backend_kill_worker stops the session via claude stop" {

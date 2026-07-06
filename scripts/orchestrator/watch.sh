@@ -113,8 +113,13 @@ watch_one() {
       local worker_dead=0 worker_detail="Worker process died without completing"
       if declare -F backend_worker_status >/dev/null 2>&1; then
         local wstatus
-        wstatus=$(backend_worker_status "$issue" 2>/dev/null) || wstatus="missing"
-        if [[ "$wstatus" == "blocked" ]]; then
+        wstatus=$(backend_worker_status "$issue" 2>/dev/null || true)
+        [[ -n "$wstatus" ]] || wstatus="missing"
+        if [[ "$wstatus" == "unknown" ]]; then
+          # Transient agents-query failure (daemon restarting) — not
+          # evidence of a crash; keep polling (#573).
+          :
+        elif [[ "$wstatus" == "blocked" ]]; then
           result="{\"issue\":${issue},\"result\":\"blocked\",\"detail\":\"Worker session is waiting on a permission dialog\"}"
           echo "Error: issue #${issue} Worker session is blocked (permission dialog)." >&2
           log_event "$issue" "WORKER_BLOCKED" "issue=#${issue} state=${state}"

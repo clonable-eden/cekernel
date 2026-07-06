@@ -384,6 +384,53 @@ worker_state() {
   assert_file_exists "handle preserved" "${session_dir}/handle-299.worker"
 }
 
+# ── gc: token-handle liveness (PR #572 follow-up, #573) ──
+# v2 handles are opaque session tokens; gc resolves them against
+# `claude agents --json` instead of assuming they are always alive.
+# A failed query stays conservative (assume alive — never gc on doubt).
+
+@test "gc removes stale FIFO when the token handle session is not listed" {
+  mock_claude
+  local session_dir="${IPC_BASE}/session-gc-token1"
+  mkdir -p "$session_dir"
+  mkfifo "${session_dir}/worker-573"
+  echo "RUNNING:2026-02-28T10:00:00Z:working" > "${session_dir}/worker-573.state"
+  echo "worker" > "${session_dir}/worker-573.type"
+  echo "$SESSION_TOKEN" > "${session_dir}/handle-573.worker"
+  # empty agents queue → [] → session not listed → dead
+  run bash "$ORCHCTL" gc
+  assert_not_exists "stale FIFO removed" "${session_dir}/worker-573"
+  assert_not_exists "state removed" "${session_dir}/worker-573.state"
+  assert_not_exists "dead token handle removed" "${session_dir}/handle-573.worker"
+}
+
+@test "gc preserves FIFO when the token handle session is busy" {
+  mock_claude
+  local session_dir="${IPC_BASE}/session-gc-token2"
+  mkdir -p "$session_dir"
+  mkfifo "${session_dir}/worker-574"
+  echo "RUNNING:2026-02-28T10:00:00Z:working" > "${session_dir}/worker-574.state"
+  echo "$SESSION_TOKEN" > "${session_dir}/handle-574.worker"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$SESSION_TOKEN" background /tmp/wt 1700000000000 busy)]"
+  run bash "$ORCHCTL" gc
+  assert_fifo_exists "FIFO preserved" "${session_dir}/worker-574"
+  assert_file_exists "live token handle preserved" "${session_dir}/handle-574.worker"
+}
+
+@test "gc preserves FIFO with a token handle when the agents query fails" {
+  local session_dir="${IPC_BASE}/session-gc-token3"
+  mkdir -p "$session_dir"
+  mkfifo "${session_dir}/worker-575"
+  echo "RUNNING:2026-02-28T10:00:00Z:working" > "${session_dir}/worker-575.state"
+  echo "$SESSION_TOKEN" > "${session_dir}/handle-575.worker"
+  mock_bin claude 'exit 1'
+  run bash "$ORCHCTL" gc
+  assert_fifo_exists "FIFO preserved (cannot verify → assume alive)" \
+    "${session_dir}/worker-575"
+  assert_file_exists "token handle preserved" "${session_dir}/handle-575.worker"
+}
+
 # ── gc: --dry-run ──
 
 @test "gc --dry-run reports stale resources without removing them" {

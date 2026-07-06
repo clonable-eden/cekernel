@@ -90,6 +90,26 @@ teardown() {
   assert_match "result carries the state detail" "merged:#999" "$(cat "$out")"
 }
 
+@test "watch does not false-crash on a transient agents query failure" {
+  # `claude agents --json` failing (daemon restarting) is NOT evidence
+  # the session died — watch must keep polling instead of reporting a
+  # crash (PR #572 follow-up, #573). Completion then arrives via the
+  # state-file fallback.
+  worker_state_write 573 RUNNING "phase1:implement"
+  echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-573.worker"
+  mock_bin claude 'exit 1'
+
+  local out="${BATS_TEST_TMPDIR}/watch-out.json"
+  bash "$WATCH_SCRIPT" 573 > "$out" 2>/dev/null &
+  local watch_pid=$!
+  sleep 2
+  worker_state_write 573 TERMINATED "merged:#999"
+  wait "$watch_pid"
+
+  assert_match "completion detected via state fallback" \
+    "detected-via-state-fallback" "$(cat "$out")"
+}
+
 @test "watch resolves the headless backend from the env profile (#182 regression)" {
   worker_state_write 183 RUNNING "phase1:implement"
   echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-183.worker"

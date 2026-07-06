@@ -62,14 +62,14 @@ setup() {
   local rec
   rec=$(mock_claude_agent_record \
     "cafe0001-0000-4000-8000-000000000001" background \
-    "/tmp/repo/.worktrees/issue/42-x" "2026-07-07T00:00:00Z" busy)
+    "/tmp/repo/.worktrees/issue/42-x" 1700000000000 busy)
   mock_claude_enqueue_agents "[${rec}]"
   run claude agents --json
   assert_eq "exit status" "0" "$status"
   assert_match "sessionId" '"sessionId":"cafe0001-0000-4000-8000-000000000001"' "$output"
   assert_match "kind" '"kind":"background"' "$output"
   assert_match "cwd" '"cwd":"/tmp/repo/.worktrees/issue/42-x"' "$output"
-  assert_match "startedAt" '"startedAt":"2026-07-07T00:00:00Z"' "$output"
+  assert_match "startedAt" '"startedAt":1700000000000' "$output"
   # Live sessions carry the status/state field split (#581)
   assert_match "status" '"status":"busy"' "$output"
   assert_match "state" '"state":"working"' "$output"
@@ -92,6 +92,21 @@ setup() {
   fi
 }
 
+@test "agent records emit startedAt as a JSON number (real epoch-millis shape)" {
+  # Real `agents --json` records carry a NUMERIC epoch-millis startedAt
+  # (verified 2026-07-07, #546 probe) — the mock must match the shape,
+  # not just the sort order (PR #572 follow-up, #573).
+  run mock_claude_agent_record \
+    "cafe0001-0000-4000-8000-000000000001" background /tmp/wt 1700000000000 busy
+  assert_eq "live record startedAt is a JSON number" "number" \
+    "$(echo "$output" | jq -r '.startedAt | type')"
+
+  run mock_claude_agent_record \
+    "cafe0001-0000-4000-8000-000000000001" background /tmp/wt 1700000000000 done
+  assert_eq "terminal record startedAt is a JSON number" "number" \
+    "$(echo "$output" | jq -r '.startedAt | type')"
+}
+
 @test "agents --json emits [] when nothing is enqueued" {
   run claude agents --json
   assert_eq "empty roster" "[]" "$output"
@@ -104,7 +119,7 @@ setup() {
   local rec
   rec=$(mock_claude_agent_record \
     "cafe0001-0000-4000-8000-000000000001" background "/tmp/wt" \
-    "2026-07-07T00:00:00Z" busy)
+    1700000000000 busy)
   mock_claude_enqueue_agents "[${rec}]"
   local short_id
   short_id="$(claude --bg "prompt" | sed 's/^backgrounded · //')"
@@ -119,15 +134,15 @@ setup() {
   local interactive background
   interactive=$(mock_claude_agent_record \
     "11111111-0000-4000-8000-000000000001" interactive "/tmp/repo" \
-    "2026-07-07T00:00:00Z" busy)
+    1700000000000 busy)
   background=$(mock_claude_agent_record \
     "22222222-0000-4000-8000-000000000002" background "/tmp/repo" \
-    "2026-07-07T00:01:00Z" busy)
+    1700000060000 busy)
   mock_claude_enqueue_agents "[${interactive},${background}]"
   run claude agents --json
   assert_match "interactive record present" '"kind":"interactive"' "$output"
   assert_match "background record present" '"kind":"background"' "$output"
-  assert_match "distinct startedAt for fallback" '"startedAt":"2026-07-07T00:01:00Z"' "$output"
+  assert_match "distinct startedAt for fallback" '"startedAt":1700000060000' "$output"
 }
 
 # ── scriptable state sequences ──
@@ -136,10 +151,10 @@ setup() {
   local rec_busy rec_done
   rec_busy=$(mock_claude_agent_record \
     "cafe0001-0000-4000-8000-000000000001" background "/tmp/wt" \
-    "2026-07-07T00:00:00Z" busy)
+    1700000000000 busy)
   rec_done=$(mock_claude_agent_record \
     "cafe0001-0000-4000-8000-000000000001" background "/tmp/wt" \
-    "2026-07-07T00:00:00Z" done)
+    1700000000000 done)
   mock_claude_enqueue_agents "[${rec_busy}]"
   mock_claude_enqueue_agents "[${rec_done}]"
   run claude agents --json
@@ -154,7 +169,7 @@ setup() {
   local rec
   rec=$(mock_claude_agent_record \
     "cafe0001-0000-4000-8000-000000000001" background "/tmp/wt" \
-    "2026-07-07T00:00:00Z" busy)
+    1700000000000 busy)
   mock_claude_enqueue_agents "[${rec}]"
   local i
   for i in 1 2 3; do
