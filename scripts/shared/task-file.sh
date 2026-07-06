@@ -8,12 +8,14 @@
 # Usage: source task-file.sh
 #
 # Functions:
-#   create_task_file <worktree> <issue-number> [repo]
+#   create_task_file <worktree> <issue-number> [repo] [base-branch]
 #     — Fetch issue and write .cekernel-task.md. When [repo] (owner/repo)
 #       is given, the issue is fetched from that repository via
 #       `gh issue view --repo` and a `repo:` frontmatter field is written
 #       so Workers can detect cross-repo issues (#440). When omitted,
 #       the current repository is used (unchanged behavior).
+#       When [base-branch] is given, a `base:` frontmatter field is
+#       written so Workers target it with `gh pr create --base` (#562).
 #   task_file_path <worktree>                   — Return the task file path
 #   task_file_exists <worktree>                 — Check if the task file exists (exit 0/1)
 #   task_file_clear_resume_marker <worktree>    — Remove "## Resume Reason:" section
