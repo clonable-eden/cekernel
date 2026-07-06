@@ -23,7 +23,6 @@ CLEANUP_SH="${CEKERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh"
 SPAWN_ORCH_SH="${CEKERNEL_DIR}/scripts/ctl/spawn-orchestrator.sh"
 PROCESS_STATUS_SH="${CEKERNEL_DIR}/scripts/orchestrator/process-status.sh"
 NOTIFY_COMPLETE_SH="${CEKERNEL_DIR}/scripts/process/notify-complete.sh"
-ORCH_MD="${CEKERNEL_DIR}/agents/orchestrator.md"
 
 # ── Test 1: spawn.sh sources resolve-repo-root.sh ──
 if file_contains 'resolve-repo-root.sh' "$SPAWN_SH"; then
@@ -97,25 +96,9 @@ else
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-# ── Test 9: orchestrator.md documents CWD convention ──
-if file_contains 'CWD Convention' "$ORCH_MD"; then
-  echo "  PASS: orchestrator.md documents CWD Convention"
-  TESTS_PASSED=$((TESTS_PASSED + 1))
-else
-  echo "  FAIL: orchestrator.md should document CWD Convention"
-  TESTS_FAILED=$((TESTS_FAILED + 1))
-fi
-
-# ── Test 10: orchestrator.md recommends git -C ──
-if file_contains 'git -C' "$ORCH_MD"; then
-  echo "  PASS: orchestrator.md recommends git -C"
-  TESTS_PASSED=$((TESTS_PASSED + 1))
-else
-  echo "  FAIL: orchestrator.md should recommend git -C"
-  TESTS_FAILED=$((TESTS_FAILED + 1))
-fi
-
-# ── Test 11: _strip_worktree_path correctly handles the exact reproduction case ──
+# ── Test 9: _strip_worktree_path correctly handles the exact reproduction case ──
+# (agents/orchestrator.md content checks were removed: non-executable files
+# must not have content-based tests — see CLAUDE.md "What to Test")
 source "${CEKERNEL_DIR}/scripts/shared/resolve-repo-root.sh"
 RESULT=$(_strip_worktree_path "/path/to/repo/.worktrees/issue/439-xxx")
 assert_eq "reproduction case: spawn from drifted CWD" "/path/to/repo" "$RESULT"

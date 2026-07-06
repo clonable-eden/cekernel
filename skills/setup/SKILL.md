@@ -5,130 +5,40 @@ allowed-tools: Bash, Read, AskUserQuestion
 
 # /setup
 
-Interactive setup for cekernel runtime environment. Creates the directory structure and writes a user profile to `~/.config/cekernel/envs/default.env`.
+Interactive setup for the cekernel runtime environment. Creates the directory structure and writes a user profile to `~/.config/cekernel/envs/default.env`.
 
 ## Workflow
 
 ### Step 1: Ask CEKERNEL_VAR_DIR and CEKERNEL_BACKEND
 
-Use `AskUserQuestion` to ask both questions at once:
+Use `AskUserQuestion` to ask both at once:
 
-1. **Runtime directory**: Use `~/.local/var/cekernel` as default. Present as "Use default?" with the default path shown. If the user selects "Other", they can provide a custom path.
-2. **Backend**: Present the three backend options.
+1. **Runtime directory** (header: "VAR_DIR"): options `~/.local/var/cekernel (Recommended)` ("User-local directory. No sudo required.") and `/usr/local/var/cekernel` ("System-wide directory. May require sudo to create."); "Other" allows a custom path.
+2. **Backend** (header: "Backend"): options `headless (Recommended)` ("No terminal required. Runs in the background."), `wezterm` ("Visualize Workers in WezTerm tabs."), `tmux` ("Run Workers in tmux sessions.").
 
-```
-Question 1: "Use ~/.local/var/cekernel as the runtime directory?"
-  header: "VAR_DIR"
-  options:
-    - label: "~/.local/var/cekernel (Recommended)"
-      description: "User-local directory. No sudo required."
-    - label: "/usr/local/var/cekernel"
-      description: "System-wide directory. May require sudo to create."
-  (User can also select "Other" to provide a custom path)
-
-Question 2: "Which backend should cekernel use?"
-  header: "Backend"
-  options:
-    - label: "headless (Recommended)"
-      description: "No terminal required. Runs in the background."
-    - label: "wezterm"
-      description: "Visualize Workers in WezTerm tabs."
-    - label: "tmux"
-      description: "Run Workers in tmux sessions."
-```
-
-Map the answers:
-- Question 1: extract the path from the selected label, or use the custom input
-- Question 2: extract the backend name (`headless`, `wezterm`, or `tmux`)
+Map the answers: the path from the selected label or custom input; the backend name (`headless`, `wezterm`, or `tmux`).
 
 ### Step 2: Additional variable configuration
 
-Present configurable variables and let the user optionally customize them.
-
-#### 2a. Display variable catalog
-
-Read `envs/README.md` using the `Read` tool and display the **User-configurable Variables** table (Variable, Default, Purpose columns). Exclude `CEKERNEL_VAR_DIR` and `CEKERNEL_BACKEND` since they were already configured in Step 1.
-
-#### 2b. Ask if the user wants to customize
-
-Use `AskUserQuestion`:
-
-```
-Question: "Would you like to customize any additional variables?"
-  header: "Additional Configuration"
-  options:
-    - label: "No, use defaults"
-      description: "Continue with default values for all other variables."
-    - label: "Yes, customize"
-      description: "Set one or more variables interactively."
-```
-
-- If **"No, use defaults"** → skip to Step 3.
-- If **"Yes, customize"** → proceed to 2c.
-
-#### 2c. Accept variable input
-
-Use `AskUserQuestion` with "Other" (free-text input):
-
-```
-Question: "Enter a variable to set (KEY=VALUE format):"
-  header: "Set Variable"
-  (User provides free-text input via "Other")
-```
-
-**Separator normalization**: The user may use any common separator between key and value (`=`, `:`, `;`, `/`, `|`, or space). Normalize the input by replacing the first occurrence of any of these separators with `=` before validation and storage. Examples — all of these are normalized to `CEKERNEL_WORKER_TIMEOUT=1800`:
-
-```
-CEKERNEL_WORKER_TIMEOUT=1800   → as-is
-CEKERNEL_WORKER_TIMEOUT:1800   → replace : with =
-CEKERNEL_WORKER_TIMEOUT 1800   → replace space with =
-```
-
-#### 2d. Validate the input
-
-1. **Variable name check**: Verify the variable name exists in the User-configurable Variables table of `envs/README.md`. If not found, show an error and ask again.
-2. **Value format check**: Validate the value against the "Valid Values" column:
-   - "Positive integer" → must match `^[1-9][0-9]*$`
-   - "`true`, `false`" → must be exactly `true` or `false`
-   - "`wezterm`, `tmux`, `headless`" → must be one of those exact strings
-   - "Directory path" → must be a non-empty path string
-   - "Any filename" → must be a non-empty string
-   - "`none`, `open`, `pbcopy`" → must be one of those exact strings
-3. If validation fails, show the expected format and ask again.
-
-#### 2e. Repeat
-
-After successfully setting a variable, store it and ask:
-
-```
-Question: "Would you like to set another variable?"
-  header: "More Variables"
-  options:
-    - label: "No, continue"
-      description: "Proceed with setup."
-    - label: "Yes"
-      description: "Set another variable."
-```
-
-Repeat from 2c until the user selects **"No, continue"**.
+1. Read `envs/README.md` (Read tool) and display the **User-configurable Variables** table (Variable, Default, Purpose), excluding `CEKERNEL_VAR_DIR` and `CEKERNEL_BACKEND`.
+2. Ask (`AskUserQuestion`, header "Additional Configuration"): "No, use defaults" → skip to Step 3 / "Yes, customize" → continue.
+3. Accept input via `AskUserQuestion` with "Other" free-text: "Enter a variable to set (KEY=VALUE format):"
+   - **Separator normalization**: the user may separate key and value with `=`, `:`, `;`, `/`, `|`, or space — replace the first occurrence with `=` before validation (e.g. `CEKERNEL_WORKER_TIMEOUT 1800` → `CEKERNEL_WORKER_TIMEOUT=1800`).
+4. Validate:
+   - The variable name must exist in the User-configurable Variables table; otherwise show an error and ask again.
+   - The value must match the "Valid Values" column: "Positive integer" → `^[1-9][0-9]*$`; enumerations (e.g. `true`/`false`, backend names, `none`/`open`/`pbcopy`) → exact match; "Directory path" / "Any filename" → non-empty string. On failure, show the expected format and ask again.
+5. After each successful variable, ask (header "More Variables"): "No, continue" → Step 3 / "Yes" → repeat from 3.
 
 ### Step 3: Create directory structure
 
-Run the following commands using the chosen `VAR_DIR`:
-
 ```bash
-mkdir -p "${VAR_DIR}/ipc"
-mkdir -p "${VAR_DIR}/locks"
-mkdir -p "${VAR_DIR}/logs"
-mkdir -p "${VAR_DIR}/runners"
+mkdir -p "${VAR_DIR}/ipc" "${VAR_DIR}/locks" "${VAR_DIR}/logs" "${VAR_DIR}/runners"
 if [ ! -f "${VAR_DIR}/schedules.json" ]; then
   echo '[]' > "${VAR_DIR}/schedules.json"
 fi
 ```
 
 ### Step 4: Write user profile
-
-Write `~/.config/cekernel/envs/default.env`:
 
 ```bash
 mkdir -p "$HOME/.config/cekernel/envs"
@@ -141,34 +51,16 @@ ${ADDITIONAL_VARS}
 EOF
 ```
 
-Where `${ADDITIONAL_VARS}` is the list of `KEY=VALUE` lines collected in Step 2 (one per line). If no additional variables were set, omit the comment and the blank section.
+`${ADDITIONAL_VARS}` is the `KEY=VALUE` lines from Step 2 (one per line); omit the comment and section if none.
 
-**Important**: `VAR_DIR` must be written as an absolute path (e.g., `/Users/alice/.local/var/cekernel`), not with `~`. Tilde is not expanded inside variable values read by `load-env.sh`. If the user specifies `~/.local/var/cekernel`, expand it to `$HOME/.local/var/cekernel` before writing.
+**Important**: write `VAR_DIR` as an absolute path — tilde is not expanded inside values read by `load-env.sh`. Expand `~/...` to `$HOME/...` before writing.
 
 ### Step 5: Summary
 
-Display the result and guide the user to further configuration:
-
-```
-Setup complete:
-  Runtime directory: ${VAR_DIR}
-  Backend: ${BACKEND}
-  Additional variables: ${COUNT} configured  (or "none" if skipped)
-  User profile: ~/.config/cekernel/envs/default.env
-
-See envs/README.md for other configuration options.
-```
-
-If the user selected `wezterm`, also mention:
-
-```
-For WezTerm backend, see config/README.md to install the WezTerm plugin.
-```
-
-Read these files using the Read tool to provide the actual content path relative to the plugin directory.
+Display: runtime directory, backend, count of additional variables (or "none"), profile path — and point to `envs/README.md` for other options. If the user selected `wezterm`, also point to `config/README.md` for the WezTerm plugin installation (read these files to give the actual path relative to the plugin directory).
 
 ## Important
 
-- Do NOT run `sudo` at any point. The purpose of this skill is to avoid `sudo` by using user-local paths.
-- If `~/.config/cekernel/envs/default.env` already exists, show the current content and ask the user whether to overwrite.
-- Use `~` expansion correctly in bash (use `$HOME` in scripts).
+- Do NOT run `sudo` at any point — the purpose of this skill is to avoid it via user-local paths.
+- If `~/.config/cekernel/envs/default.env` already exists, show the current content and ask whether to overwrite.
+- Use `$HOME` (not `~`) inside scripts.
