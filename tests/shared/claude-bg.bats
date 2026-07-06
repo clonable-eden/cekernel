@@ -1,10 +1,17 @@
 #!/usr/bin/env bats
-# claude-bg.bats — tests for scripts/shared/claude-bg.sh
+# claude-bg.bats — contract tests for scripts/shared/claude-bg.sh
 #
-# Shared `claude --bg` session helpers (ADR-0016): agents --json query,
-# token → state resolution, aliveness, and the normative session-ID
-# capture order. Consumers (headless.sh, spawn-orchestrator.sh, orchctl.sh)
-# are covered by their own suites; this file pins the helper contract.
+# ADR-0018: claude-bg.sh is the sole owner of the claude CLI surface.
+# These tests exercise the predicate contract against EVERY row of the
+# observed (status, state) matrix AND the three non-verdict reports
+# (not-listed / query-failed / unknown-value) — each must surface as a
+# distinct echoed token + exit code, never a coerced alive/dead.
+#
+# Exit-code contract (mirrored in the claude-bg.sh header):
+#   0 — verdict (alive | blocked | done | stopped)
+#   3 — not-listed
+#   4 — query-failed
+#   5 — unknown-value (+ stderr warning: drift must be visible)
 
 load '../helpers/assertions'
 load '../helpers/mock-bin'
@@ -18,34 +25,135 @@ setup() {
   source "${CEKERNEL_DIR}/scripts/shared/claude-bg.sh"
 }
 
-# ── claude_bg_state_for_token ──
-
-@test "state_for_token echoes the state for a full-UUID token" {
+# Enqueue a single-record roster with an explicit (status, state) pair
+enqueue_pair() {
   mock_claude_enqueue_agents \
-    "[$(mock_claude_agent_record "$FULL_UUID" background /tmp/x 1700000000000 busy)]"
-  run claude_bg_state_for_token "$FULL_UUID"
+    "[$(mock_claude_agent_record_pair "$FULL_UUID" background /tmp/x 1700000000000 "$1" "$2")]"
+}
+
+# ── claude_bg_token_verdict: matrix rows (verdicts, exit 0) ──
+
+@test "verdict matrix: busy/working is alive" {
+  enqueue_pair busy working
+  run claude_bg_token_verdict "$FULL_UUID"
   assert_eq "exit status" "0" "$status"
-  assert_eq "state" "busy" "$output"
+  assert_eq "verdict" "alive" "$output"
 }
 
-@test "state_for_token prefix-matches a short-ID token" {
-  mock_claude_enqueue_agents \
-    "[$(mock_claude_agent_record "$FULL_UUID" background /tmp/x 1700000000000 blocked)]"
-  run claude_bg_state_for_token "aaaa1111"
+@test "verdict matrix: busy with absent state is alive" {
+  enqueue_pair busy -
+  run claude_bg_token_verdict "$FULL_UUID"
   assert_eq "exit status" "0" "$status"
-  assert_eq "state" "blocked" "$output"
+  assert_eq "verdict" "alive" "$output"
 }
 
-@test "state_for_token fails when no session matches" {
-  # queue empty → []
-  run claude_bg_state_for_token "$FULL_UUID"
-  assert_eq "exit status" "1" "$status"
-  assert_eq "no output" "" "$output"
+@test "verdict matrix: legacy pre-split state:busy (no status) is alive" {
+  enqueue_pair - busy
+  run claude_bg_token_verdict "$FULL_UUID"
+  assert_eq "exit status" "0" "$status"
+  assert_eq "verdict" "alive" "$output"
 }
 
-# ── claude_bg_token_alive ──
+@test "verdict matrix: idle/blocked is blocked (v2.1.202 shape)" {
+  enqueue_pair idle blocked
+  run claude_bg_token_verdict "$FULL_UUID"
+  assert_eq "exit status" "0" "$status"
+  assert_eq "verdict" "blocked" "$output"
+}
 
-@test "token_alive: busy and blocked are alive; done and missing are not" {
+@test "verdict matrix: blocked/working is blocked (v2.1.201 shape)" {
+  enqueue_pair blocked working
+  run claude_bg_token_verdict "$FULL_UUID"
+  assert_eq "exit status" "0" "$status"
+  assert_eq "verdict" "blocked" "$output"
+}
+
+@test "verdict matrix: legacy pre-split state:blocked (no status) is blocked" {
+  enqueue_pair - blocked
+  run claude_bg_token_verdict "$FULL_UUID"
+  assert_eq "exit status" "0" "$status"
+  assert_eq "verdict" "blocked" "$output"
+}
+
+@test "verdict matrix: idle/done is done (#591 — terminality reads state)" {
+  # The #591 regression: `.status // .state` read "idle" here and broke
+  # terminal detection. The verdict must be done.
+  enqueue_pair idle done
+  run claude_bg_token_verdict "$FULL_UUID"
+  assert_eq "exit status" "0" "$status"
+  assert_eq "verdict" "done" "$output"
+}
+
+@test "verdict matrix: absent-status/done is done (--all daemon-restart row)" {
+  enqueue_pair - done
+  run claude_bg_token_verdict "$FULL_UUID"
+  assert_eq "exit status" "0" "$status"
+  assert_eq "verdict" "done" "$output"
+}
+
+@test "verdict matrix: idle/stopped and absent/stopped are stopped" {
+  enqueue_pair idle stopped
+  run claude_bg_token_verdict "$FULL_UUID"
+  assert_eq "idle/stopped exit" "0" "$status"
+  assert_eq "idle/stopped verdict" "stopped" "$output"
+
+  enqueue_pair - stopped
+  run claude_bg_token_verdict "$FULL_UUID"
+  assert_eq "absent/stopped exit" "0" "$status"
+  assert_eq "absent/stopped verdict" "stopped" "$output"
+}
+
+# ── Non-verdict reports: distinct, never coerced ──
+
+@test "verdict: absent session reports not-listed with exit 3" {
+  mock_claude_enqueue_agents "[]"
+  run claude_bg_token_verdict "$FULL_UUID"
+  assert_eq "exit status" "3" "$status"
+  assert_eq "report" "not-listed" "$output"
+}
+
+@test "verdict: failing CLI reports query-failed with exit 4" {
+  mock_claude_fail_agents
+  run claude_bg_token_verdict "$FULL_UUID"
+  assert_eq "exit status" "4" "$status"
+  assert_eq "report" "query-failed" "$output"
+}
+
+@test "verdict: out-of-matrix pair reports unknown-value with exit 5 and stderr warning" {
+  enqueue_pair idle working
+  run --separate-stderr claude_bg_token_verdict "$FULL_UUID"
+  assert_eq "exit status" "5" "$status"
+  assert_eq "report" "unknown-value" "$output"
+  assert_match "stderr warning names the pair" "idle" "$stderr"
+  assert_match "stderr warning names the pair" "working" "$stderr"
+}
+
+@test "verdict_from_json: malformed body reports query-failed" {
+  run claude_bg_token_verdict_from_json "not json at all" "$FULL_UUID"
+  assert_eq "exit status" "4" "$status"
+  assert_eq "report" "query-failed" "$output"
+}
+
+@test "verdict prefix-matches a short-ID token" {
+  enqueue_pair busy working
+  run claude_bg_token_verdict "aaaa1111"
+  assert_eq "exit status" "0" "$status"
+  assert_eq "verdict" "alive" "$output"
+}
+
+@test "verdict_from_json: does not call the claude CLI" {
+  local json
+  json="[$(mock_claude_agent_record "$FULL_UUID" background /tmp/x 1700000000000 busy)]"
+  run claude_bg_token_verdict_from_json "$json" "$FULL_UUID"
+  assert_eq "exit status" "0" "$status"
+  assert_eq "verdict" "alive" "$output"
+  assert_not_exists "no agents --json call recorded" \
+    "${MOCK_CLAUDE_STATE_DIR}/agents-calls"
+}
+
+# ── claude_bg_token_alive: boolean projection of the verdict ──
+
+@test "token_alive: busy and blocked are alive; done and not-listed are not" {
   mock_claude_enqueue_agents \
     "[$(mock_claude_agent_record "$FULL_UUID" background /tmp/x 1700000000000 busy)]"
   run claude_bg_token_alive "$FULL_UUID"
@@ -63,33 +171,26 @@ setup() {
 
   mock_claude_enqueue_agents "[]"
   run claude_bg_token_alive "$FULL_UUID"
-  assert_eq "missing is dead" "1" "$status"
+  assert_eq "not-listed is dead" "1" "$status"
 }
 
-@test "token_alive: live record with status but no state field is alive" {
-  # Observed live shape variant (#581): status:"busy" with NO state field.
-  mock_claude_enqueue_agents \
-    "[{\"sessionId\":\"$FULL_UUID\",\"kind\":\"background\",\"cwd\":\"/tmp/x\",\"startedAt\":1700000000000,\"status\":\"busy\"}]"
+@test "token_alive: query-failed and unknown-value propagate — never coerced to dead" {
+  mock_claude_fail_agents
   run claude_bg_token_alive "$FULL_UUID"
-  assert_eq "status-only busy is alive" "0" "$status"
+  assert_eq "query-failed propagates as 4" "4" "$status"
 }
 
-@test "token_alive: legacy record shape (state:busy, no status) stays alive" {
-  # Backward compat (#581): the pre-split shape put the live state in
-  # `state` with no `status` field. The status-preferring query must
-  # still fall back to `state`.
-  mock_claude_enqueue_agents \
-    "[{\"sessionId\":\"$FULL_UUID\",\"kind\":\"background\",\"cwd\":\"/tmp/x\",\"startedAt\":1700000000000,\"state\":\"busy\"}]"
-  run claude_bg_token_alive "$FULL_UUID"
-  assert_eq "legacy busy is alive" "0" "$status"
+@test "token_alive_from_json: unknown-value propagates as exit 5" {
+  local json
+  json="[$(mock_claude_agent_record_pair "$FULL_UUID" background /tmp/x 1700000000000 idle working)]"
+  run claude_bg_token_alive_from_json "$json" "$FULL_UUID"
+  assert_eq "unknown-value propagates as 5" "5" "$status"
 }
-
-# ── claude_bg_token_alive_from_json ──
 
 @test "token_alive_from_json: busy and blocked are alive; done and missing are not" {
   # Pre-fetched body — no CLI call. Single-fetch views (orchctl ps/count)
   # resolve every token against one response (ADR-0016 Phase 4); the
-  # busy/blocked liveness vocabulary lives HERE, not in the view layers.
+  # verdict vocabulary lives HERE, not in the view layers.
   local json
   json="[
     $(mock_claude_agent_record "$FULL_UUID" background /tmp/x 1700000000000 busy),
@@ -111,22 +212,56 @@ setup() {
 }
 
 @test "token_alive_from_json: real live shape (status:busy + state:working) is alive" {
-  # Real CLI live records carry the normative state in `status` while
-  # `state` reads "working" (#581). The raw literal pins the shape
-  # independently of the mock helper.
+  # Raw literal pins the real v2.1.202 live shape independently of the
+  # mock helper.
   local json
   json="[{\"sessionId\":\"$FULL_UUID\",\"kind\":\"background\",\"cwd\":\"/tmp/x\",\"startedAt\":1700000000000,\"status\":\"busy\",\"state\":\"working\"}]"
   run claude_bg_token_alive_from_json "$json" "$FULL_UUID"
   assert_eq "status busy + state working is alive" "0" "$status"
 }
 
-@test "token_alive_from_json: does not call the claude CLI" {
-  local json
-  json="[$(mock_claude_agent_record "$FULL_UUID" background /tmp/x 1700000000000 busy)]"
-  run claude_bg_token_alive_from_json "$json" "$FULL_UUID"
+# ── claude_bg_spawn (ADR-0018 Decision 1: --bg invocation + spawn-line
+#    parsing live in this module) ──
+
+@test "spawn: invokes claude --bg with the given args and echoes the short ID" {
+  mock_claude_enqueue_short_id "abcd1234"
+  run claude_bg_spawn /tmp --agent myagent "do the thing"
   assert_eq "exit status" "0" "$status"
-  assert_not_exists "no agents --json call recorded" \
-    "${MOCK_CLAUDE_STATE_DIR}/agents-calls"
+  assert_eq "short id" "abcd1234" "$output"
+  assert_file_exists "bg argv recorded" "${MOCK_CLAUDE_STATE_DIR}/bg-argv.log"
+  local argv
+  argv=$(cat "${MOCK_CLAUDE_STATE_DIR}/bg-argv.log")
+  assert_match "argv has --agent" "--agent myagent" "$argv"
+  assert_match "argv has the prompt" "do the thing" "$argv"
+}
+
+@test "spawn: echoes empty when the spawn line is unparseable (degraded capture)" {
+  mock_claude_enqueue_short_id "NOTHEX!!"
+  run claude_bg_spawn /tmp "prompt"
+  assert_eq "exit status" "0" "$status"
+  assert_eq "no short id" "" "$output"
+}
+
+@test "spawn: fails when claude --bg fails" {
+  # Replace the shim with one that always fails (mock_bin re-registers)
+  mock_bin claude 'exit 1'
+  run claude_bg_spawn /tmp "prompt"
+  assert_eq "exit status" "1" "$status"
+}
+
+# ── claude_bg_stop ──
+
+@test "stop: delegates to claude stop and never fails" {
+  run claude_bg_stop "$FULL_UUID"
+  assert_eq "exit status" "0" "$status"
+  assert_file_exists "stop recorded" "${MOCK_CLAUDE_STATE_DIR}/stop.log"
+  assert_eq "stopped token" "$FULL_UUID" "$(cat "${MOCK_CLAUDE_STATE_DIR}/stop.log")"
+}
+
+@test "stop: empty token is a no-op success" {
+  run claude_bg_stop ""
+  assert_eq "exit status" "0" "$status"
+  assert_not_exists "no stop recorded" "${MOCK_CLAUDE_STATE_DIR}/stop.log"
 }
 
 # ── claude_bg_capture_session_id ──
@@ -159,9 +294,9 @@ setup() {
 }
 
 # ── claude_bg_wait_terminal (ADR-0016 Phase 3) ──
-# Polls to a terminal-for-unattended-supervision state. blocked is terminal
-# here: an unattended (cron/at) session waiting on a permission dialog will
-# never be approved, so waiting longer cannot help.
+# Polls to a terminal-for-unattended-supervision verdict. blocked is
+# terminal here: an unattended (cron/at) session waiting on a permission
+# dialog will never be approved, so waiting longer cannot help.
 
 @test "wait_terminal: echoes done when the session completes" {
   mock_claude_enqueue_agents \

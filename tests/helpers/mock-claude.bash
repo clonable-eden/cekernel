@@ -1,17 +1,39 @@
 # mock-claude.bash — canonical `claude` CLI shim for v2 spawn-path tests
-# (ADR-0017 Decision 2, emulating the ADR-0016 delegated-spawn contract)
+# (ADR-0017 Decision 2, emulating the ADR-0016 delegated-spawn contract;
+# executable specification of the ADR-0018 platform interface contract)
 #
 # Contract source: docs/claude-code-constraints.md
 #   § Background Agent Sessions (`--bg` / on-demand daemon)
-# Observed claude version: v2.1.201 (2026-07-06; re-verified 2026-07-07,
-# #546 probe: `--bg --bare` + prompt composes; real `agents --json`
-# records carry extra fields — pid, id, name, status — and a numeric
-# epoch-millis startedAt, with a realpath'd cwd).
+# Observed claude version: v2.1.202 (2026-07-07, #593 roster observation;
+# earlier probes: v2.1.201 #546 — `--bg --bare` + prompt composes; real
+# `agents --json` records carry extra fields — pid, id, name — and a
+# numeric epoch-millis startedAt, with a realpath'd cwd).
 #
-# STALENESS COUPLING (ADR-0017 follow-up): any PR that updates the
-# "Background Agent Sessions" section of docs/claude-code-constraints.md
-# MUST update this mock in the same PR. This file is the single point of
-# update when the real `claude --bg` surface changes.
+# ── Observed (status, state) matrix — v2.1.202, 2026-07-07 (ADR-0018) ──
+#
+#   | `status`  | `state`   | Verdict            |
+#   |-----------|-----------|--------------------|
+#   | busy      | working   | alive              |
+#   | busy      | (absent)  | alive              |
+#   | (absent)  | busy      | alive   (pre-split legacy shape)      |
+#   | blocked   | working   | blocked (v2.1.201 shape)              |
+#   | idle      | blocked   | blocked (v2.1.202 shape)              |
+#   | (absent)  | blocked   | blocked (pre-split legacy shape)      |
+#   | idle      | done      | done               |
+#   | (absent)  | done      | done    (--all, daemon-restart rows)  |
+#   | idle      | stopped   | stopped            |
+#   | (absent)  | stopped   | stopped (--all, daemon-restart rows)  |
+#   | — session absent —    | not-listed         |
+#   | anything else         | unknown-value      |
+#
+# The same table lives in scripts/shared/claude-bg.sh (the sole parser)
+# and docs/claude-code-constraints.md § Background Agent Sessions.
+#
+# STALENESS COUPLING (ADR-0017 follow-up, ADR-0018 Decision 2): any PR
+# that updates the "Background Agent Sessions" section of
+# docs/claude-code-constraints.md MUST update this mock in the same PR.
+# This file is the single point of update when the real `claude --bg`
+# surface changes.
 #
 # Requires mock-bin.bash (PATH shim layer). Function overrides are banned
 # — see mock-bin.bash header.
@@ -48,15 +70,33 @@
 #     kind+cwd+startedAt fallback including the interactive-session
 #     mis-match regression at repo root.
 #     The <state> argument is the LOGICAL session state (busy|blocked|
-#     done|stopped|...). It is emitted in the observed field split
-#     (verified 2026-07-07, #581): live states (busy, blocked) become
-#     `"status":"<state>","state":"working"`; terminal states are
-#     emitted as `"state":"<state>"` with NO status field.
+#     done|stopped). It is emitted in the canonical v2.1.202 field pair
+#     from the matrix above: busy → status:"busy",state:"working";
+#     blocked → status:"idle",state:"blocked"; done → status:"idle",
+#     state:"done"; stopped → status:"idle",state:"stopped".
+#     Non-canonical / legacy / out-of-matrix pairs are emitted with
+#     mock_claude_agent_record_pair below.
 #     Real records carry ADDITIONAL fields (pid, id, name) and a
 #     realpath'd cwd (verified 2026-07-07) — consumers MUST NOT assume
 #     an exclusive field set.
 #     <startedAt> is emitted UNQUOTED to match the real numeric
 #     epoch-millis shape — pass numeric values (e.g. 1700000000000).
+#
+#   mock_claude_agent_record_pair <sessionId> <kind> <cwd> <startedAt> \
+#                                 <status|-> <state|->
+#     Prints one FULL agents record with an EXPLICIT (status, state)
+#     pair; "-" omits the field. Covers the non-canonical matrix rows
+#     (busy/-, -/done, blocked/working, pre-split legacy -/busy) and
+#     out-of-matrix pairs for unknown-value contract tests (ADR-0018).
+#
+#   mock_claude_fail_agents
+#     Makes every subsequent `claude agents --json` call fail (exit 1,
+#     no output) — the query-failed contract report (ADR-0018: CLI
+#     error / daemon unreachable).
+#     NOTE: a NOT-RUNNING daemon is NOT a query failure — the real CLI
+#     returns `[]` exit 0 without starting a daemon (verified v2.1.202,
+#     2026-07-07, isolated-HOME probe, #593). Model that case with an
+#     empty queue instead.
 #
 # Recorded state (files under MOCK_CLAUDE_STATE_DIR):
 #   bg-argv.log   one line per `--bg` call: the full argv, space-joined
@@ -81,6 +121,10 @@ mock_claude() {
   local shim_template
   shim_template=$(cat <<'SHIM'
 if [[ "${1:-}" == "agents" ]]; then
+  # query-failed mode (ADR-0018 contract): CLI error / daemon unreachable
+  if [[ -f "$STATE_DIR/agents-fail" ]]; then
+    exit 1
+  fi
   # Replay the enqueued response sequence: one response per call,
   # repeating the last response after the queue is exhausted.
   n=0
@@ -143,13 +187,38 @@ mock_claude_agent_record() {
   local cwd="${3:?missing <cwd>}"
   local started_at="${4:?missing <startedAt>}"
   local state="${5:?missing <state>}"
-  # Observed field split (#581): live sessions carry status (busy|blocked)
-  # plus state:"working"; terminal sessions carry state only, no status.
-  if [[ "$state" == "busy" || "$state" == "blocked" ]]; then
-    printf '{"sessionId":"%s","kind":"%s","cwd":"%s","startedAt":%s,"status":"%s","state":"working"}' \
-      "$session_id" "$kind" "$cwd" "$started_at" "$state"
-  else
-    printf '{"sessionId":"%s","kind":"%s","cwd":"%s","startedAt":%s,"state":"%s"}' \
-      "$session_id" "$kind" "$cwd" "$started_at" "$state"
-  fi
+  # Canonical v2.1.202 field pairs from the (status, state) matrix above
+  # (#591: liveness lives in `status`, terminality in `state`; blocked
+  # observed as idle/blocked on v2.1.202).
+  case "$state" in
+    busy)
+      mock_claude_agent_record_pair "$session_id" "$kind" "$cwd" "$started_at" busy working ;;
+    blocked)
+      mock_claude_agent_record_pair "$session_id" "$kind" "$cwd" "$started_at" idle blocked ;;
+    done|stopped)
+      mock_claude_agent_record_pair "$session_id" "$kind" "$cwd" "$started_at" idle "$state" ;;
+    *)
+      echo "mock_claude_agent_record: unknown logical state '$state'" \
+        "(use mock_claude_agent_record_pair for out-of-matrix pairs)" >&2
+      return 1 ;;
+  esac
+}
+
+mock_claude_agent_record_pair() {
+  local session_id="${1:?Usage: mock_claude_agent_record_pair <sessionId> <kind> <cwd> <startedAt> <status|-> <state|->}"
+  local kind="${2:?missing <kind>}"
+  local cwd="${3:?missing <cwd>}"
+  local started_at="${4:?missing <startedAt>}"
+  local status="${5:?missing <status|->}"
+  local state="${6:?missing <state|->}"
+  local fields
+  fields=$(printf '"sessionId":"%s","kind":"%s","cwd":"%s","startedAt":%s' \
+    "$session_id" "$kind" "$cwd" "$started_at")
+  [[ "$status" != "-" ]] && fields="${fields},\"status\":\"${status}\""
+  [[ "$state" != "-" ]] && fields="${fields},\"state\":\"${state}\""
+  printf '{%s}' "$fields"
+}
+
+mock_claude_fail_agents() {
+  touch "${MOCK_CLAUDE_STATE_DIR:?call mock_claude first}/agents-fail"
 }
