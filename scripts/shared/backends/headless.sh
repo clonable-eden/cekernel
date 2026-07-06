@@ -31,59 +31,12 @@
 # transcript discovery — like .spawned files, it survives cleanup.
 
 # ── Dependencies ──
+# Session query / token state / capture helpers live in shared/claude-bg.sh
+# (ADR-0016 Phase 2 extraction) — shared with spawn-orchestrator.sh and
+# orchctl.sh.
 _HEADLESS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
 source "${_HEADLESS_DIR}/../bare-mode.sh"
-
-# ── Internal helpers ──
-
-# _headless_agents_json
-# Lists active sessions as JSON. Fails when the claude CLI is unavailable
-# or errors (Rule of Repair: callers decide how to surface it).
-_headless_agents_json() {
-  claude agents --json 2>/dev/null
-}
-
-# _headless_state_for_token <token>
-# Echoes the state of the session whose sessionId starts with <token>.
-# Returns 1 (echoing nothing) when no session matches or the query fails.
-_headless_state_for_token() {
-  local token="$1"
-  local json state
-  json=$(_headless_agents_json) || return 1
-  state=$(echo "$json" | jq -r --arg p "$token" \
-    '[.[] | select(.sessionId | startswith($p))][0].state // empty')
-  [[ -n "$state" ]] || return 1
-  echo "$state"
-}
-
-# _headless_capture_session_id <short-id> <cwd>
-# Echoes the full session UUID. With a short ID, prefix-matches it against
-# agents --json sessionId (primary path). With an empty short ID, falls
-# back to the newest background session at <cwd> (must be realpath'd).
-# Retries briefly to absorb the spawn → daemon registration race.
-_headless_capture_session_id() {
-  local short_id="$1"
-  local cwd="$2"
-  local attempt json full_id
-
-  for attempt in 1 2 3; do
-    json=$(_headless_agents_json) || json="[]"
-    if [[ -n "$short_id" ]]; then
-      full_id=$(echo "$json" | jq -r --arg p "$short_id" \
-        '[.[] | select(.sessionId | startswith($p))][0].sessionId // empty')
-    else
-      full_id=$(echo "$json" | jq -r --arg cwd "$cwd" \
-        '[.[] | select(.kind == "background" and .cwd == $cwd)]
-         | sort_by(.startedAt) | last // {} | .sessionId // empty')
-    fi
-    if [[ -n "$full_id" ]]; then
-      echo "$full_id"
-      return 0
-    fi
-    sleep 0.2
-  done
-  return 1
-}
+source "${_HEADLESS_DIR}/../claude-bg.sh"
 
 # ── External API ──
 
@@ -137,7 +90,7 @@ backend_spawn_worker() {
   cwd_real=$(cd "$worktree" && pwd -P)
 
   local session_id
-  if ! session_id=$(_headless_capture_session_id "$short_id" "$cwd_real"); then
+  if ! session_id=$(claude_bg_capture_session_id "$short_id" "$cwd_real"); then
     if [[ -n "$short_id" ]]; then
       # Degraded: the short ID is a usable prefix token (liveness/stop work),
       # but transcript direct lookup needs the full UUID — warn, don't fail.
@@ -196,7 +149,7 @@ backend_worker_status() {
   fi
 
   local state
-  if ! state=$(_headless_state_for_token "$token"); then
+  if ! state=$(claude_bg_state_for_token "$token"); then
     echo "missing"
     return 1
   fi
@@ -221,7 +174,7 @@ backend_worker_alive() {
       found=1
       local token state
       token=$(cat "$handle_file")
-      state=$(_headless_state_for_token "$token" 2>/dev/null) || continue
+      state=$(claude_bg_state_for_token "$token" 2>/dev/null) || continue
       if [[ "$state" == "busy" || "$state" == "blocked" ]]; then
         return 0
       fi
