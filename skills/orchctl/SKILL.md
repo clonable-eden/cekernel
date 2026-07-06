@@ -69,23 +69,26 @@ Format the output as a readable table for the user:
 | Session | Repo | Issue | State | Priority | Elapsed | Backend |
 |---------|------|-------|-------|----------|---------|---------|
 
-#### ps — Show Orchestrator process trees
+#### ps — Show Orchestrator sessions and their managed Worker/Reviewer sessions
 
 ```bash
 bash "$ORCHCTL" ps [--session <id>]
 ```
 
-Shows all Orchestrator sessions across all cekernel sessions. Unlike `ls` (which shows Workers from IPC state files), `ps` reads the `orchestrator.claude-session-id` token captured at spawn time and resolves its state via `claude agents --json` (ADR-0016 Phase 2).
+Shows all Orchestrator sessions across all cekernel sessions, plus the managed Worker/Reviewer sessions in each. `ps` is a view layer over a single `claude agents --json` fetch (ADR-0016 Phase 4): it resolves the `orchestrator.claude-session-id` token and every `handle-{issue}.{type}` token against that response, and joins the cekernel-specific columns (issue, phase from the state file, priority) that `claude agents` cannot know (ADR-0015).
 
 Output format:
 
 ```
 orchestrator  claude=aaaa1111-2222-4333-8444-555566667777  session=cekernel-7069bc3d  elapsed=5m  busy
+  worker  #42  claude=dddd4444-5555-4666-8777-888899990000  phase=phase1:implement  priority=10  busy
+  reviewer  #43  claude=eeee5555-6666-4777-8888-99990000aaaa  phase=reviewing  priority=10  blocked
 ```
 
 - `--session <id>`: Filter to a specific session
 - The trailing state is the raw `claude agents --json` state (`busy`, `blocked`, `done`, `stopped`, ...); `missing` means the session is no longer listed. `blocked` means the session is stalled on a permission dialog — surface it to the user prominently.
-- If no orchestrators are found, outputs `no orchestrators.`
+- Sessions spawned by an interactive Orchestrator have no `orchestrator` row, but their Worker/Reviewer rows still appear.
+- If nothing is found, outputs `no orchestrators.`
 
 Present the output as-is (pre-formatted) to the user.
 
