@@ -11,6 +11,7 @@
 
 _WRAPPER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${_WRAPPER_DIR}/../shared/load-env.sh"
+source "${_WRAPPER_DIR}/../shared/bare-mode.sh"
 
 CEKERNEL_VAR_DIR="${CEKERNEL_VAR_DIR:-$HOME/.local/var/cekernel}"
 
@@ -27,6 +28,15 @@ schedule_generate_wrapper() {
   local runner_file="${runner_dir}/${id}.sh"
   local syslog_file="${CEKERNEL_VAR_DIR}/logs/schedule.log"
   local run_log="${CEKERNEL_VAR_DIR}/logs/${id}.run.log"
+
+  # --bare requires an explicit auth path — fail at schedule time instead of
+  # generating a runner doomed to die on auth (Rule of Repair, ADR-0016
+  # Phase 0). Exported env vars do NOT reach the cron/at runtime, so use
+  # CEKERNEL_CLAUDE_SETTINGS (captured below as a --settings path with
+  # apiKeyHelper) for scheduled jobs.
+  bare_mode_preflight || return 1
+  local bare_flags
+  bare_flags="$(bare_mode_flags "$repo")"
 
   cat > "$runner_file" <<RUNNER_EOF
 #!/usr/bin/env bash
@@ -49,7 +59,7 @@ source "\${CEKERNEL_DIR}/scripts/shared/desktop-notify.sh"
 echo "\$(date '+%Y-%m-%dT%H:%M:%S%z') cekernel[\$ID]: START prompt=\"${prompt}\" repo=\"${repo}\"" >> "\$SYSLOG_FILE"
 SECONDS=0
 
-if cd "${repo}" && claude -p \\
+if cd "${repo}" && claude -p ${bare_flags} \\
   "${prompt}" >> "\$RUN_LOG" 2>&1; then
   STATUS=0
 else

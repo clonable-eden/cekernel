@@ -19,6 +19,7 @@ These can be set via env profiles or explicit `export`.
 | `CEKERNEL_REVIEW_MAX_RETRIES` | `2` | Positive integer | Orchestrator | Max cycles of Reviewer reject → Worker re-implement. Escalates to human when exceeded |
 | `CEKERNEL_NOTIFY_MACOS_ACTION` | `none` | `none`, `open`, `pbcopy` | `desktop-notify-backend/macos.sh` | macOS notification URL action: `none` = notify only, `open` = open URL in browser, `pbcopy` = copy URL to clipboard |
 | `CEKERNEL_VAR_DIR` | `~/.local/var/cekernel` | Directory path | `registry.sh`, `wrapper.sh` | Runtime state directory (locks, logs, runners, registry) |
+| `CEKERNEL_CLAUDE_SETTINGS` | (unset) | Path to a Claude settings JSON | `bare-mode.sh` (all spawn paths) | Passed to `claude` via `--settings`. All spawns run in `--bare` mode (ADR-0016 Phase 0), which never reads OAuth/keychain — auth is strictly `ANTHROPIC_API_KEY` or `apiKeyHelper` via this settings file. **Required for cron/at scheduled jobs**, where exported env vars do not reach the generated runner (the path is captured at schedule time). Spawn fails fast when neither auth source is available |
 
 ## Internal Variables
 

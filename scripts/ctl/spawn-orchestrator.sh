@@ -23,9 +23,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
 source "${SCRIPT_DIR}/../shared/load-env.sh"
 source "${SCRIPT_DIR}/../shared/session-id.sh"
 source "${SCRIPT_DIR}/../shared/resolve-repo-root.sh"
+source "${SCRIPT_DIR}/../shared/bare-mode.sh"
 
 PROMPT="${1:?Usage: spawn-orchestrator.sh <prompt>}"
 REPO_ROOT="$(resolve_repo_root)"
+
+# --bare requires an explicit auth path — fail before spawning an
+# Orchestrator that would die on auth (Rule of Repair, ADR-0016 Phase 0).
+bare_mode_preflight
+bare_mode_prepare "$REPO_ROOT"
 
 # ── Resolve agent name ──
 AGENT_NAME="${CEKERNEL_AGENT_ORCHESTRATOR:-orchestrator}"
@@ -38,6 +44,8 @@ CEKERNEL_SHARED_SCRIPTS="$(cd "${SCRIPT_DIR}/../shared" && pwd)"
 # ── Launch Orchestrator as background process ──
 # Unset Claude Code session markers to avoid nested-session detection.
 # Export cekernel env vars so the Orchestrator's Bash tool calls inherit them.
+# --bare with explicit context: --plugin-dir (agents/skills) +
+# --add-dir (repo-root CLAUDE.md). ADR-0016 Phase 0.
 # stdout/stderr discarded — analysis uses transcripts.
 (
   cd "$REPO_ROOT" && \
@@ -46,7 +54,7 @@ CEKERNEL_SHARED_SCRIPTS="$(cd "${SCRIPT_DIR}/../shared" && pwd)"
   export CEKERNEL_IPC_DIR="${CEKERNEL_IPC_DIR}" && \
   export CEKERNEL_ENV="${CEKERNEL_ENV}" && \
   export PATH="${CEKERNEL_ORCHESTRATOR_SCRIPTS}:${CEKERNEL_PROCESS_SCRIPTS}:${CEKERNEL_SHARED_SCRIPTS}:${PATH}" && \
-  exec claude -p --agent "$AGENT_NAME" "$PROMPT"
+  exec claude -p "${CEKERNEL_BARE_FLAGS[@]}" --agent "$AGENT_NAME" "$PROMPT"
 ) >/dev/null 2>&1 &
 PID=$!
 

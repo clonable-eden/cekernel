@@ -35,12 +35,21 @@ else
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-# ── Test 3: launches claude -p --agent ──
-if echo "$CONTENT" | grep -q 'claude -p --agent'; then
-  echo "  PASS: launches claude -p --agent"
+# ── Test 3: launches claude -p with explicit --bare context (ADR-0016 Phase 0) ──
+if echo "$CONTENT" | grep -q 'claude -p' && echo "$CONTENT" | grep -q 'CEKERNEL_BARE_FLAGS'; then
+  echo "  PASS: launches claude -p with CEKERNEL_BARE_FLAGS"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
-  echo "  FAIL: should launch claude -p --agent"
+  echo "  FAIL: should launch claude -p with CEKERNEL_BARE_FLAGS"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+
+# ── Test 3b: sources bare-mode.sh and runs auth preflight ──
+if echo "$CONTENT" | grep -q 'bare-mode\.sh' && echo "$CONTENT" | grep -q 'bare_mode_preflight'; then
+  echo "  PASS: sources bare-mode.sh and runs bare_mode_preflight"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+else
+  echo "  FAIL: should source bare-mode.sh and run bare_mode_preflight"
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 

@@ -15,6 +15,9 @@ setup() {
   export CEKERNEL_LAUNCHD_DIR="$(mktemp -d)"
   mkdir -p "${CEKERNEL_VAR_DIR}/runners" "${CEKERNEL_VAR_DIR}/logs"
   echo '[]' > "${CEKERNEL_VAR_DIR}/schedules.json"
+  # --bare preflight requires an auth path (never reads OAuth/keychain)
+  export ANTHROPIC_API_KEY="test-key-bare"
+  unset CEKERNEL_CLAUDE_SETTINGS
 
   source "${CEKERNEL_DIR}/scripts/scheduler/at-backends/launchd.sh"
   source "${CEKERNEL_DIR}/scripts/scheduler/wrapper.sh"

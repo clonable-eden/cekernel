@@ -14,6 +14,9 @@ echo "test: backend-wezterm"
 
 # ── Test session ──
 export CEKERNEL_SESSION_ID="test-wezterm-backend-001"
+# --bare preflight requires an auth path (never reads OAuth/keychain)
+export ANTHROPIC_API_KEY="test-key-bare"
+unset CEKERNEL_CLAUDE_SETTINGS
 source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
 rm -rf "$CEKERNEL_IPC_DIR"
 mkdir -p "$CEKERNEL_IPC_DIR"
@@ -338,7 +341,7 @@ assert_match "command field references runner script" "run-${ISSUE}.sh" "$COMMAN
 
 # Runner script should use exec claude directly (no script command)
 RUNNER_CONTENT=$(cat "${CEKERNEL_IPC_DIR}/run-${ISSUE}.sh")
-assert_match "runner script uses exec claude" "exec claude -p --agent" "$RUNNER_CONTENT"
+assert_match "runner script uses exec claude" "exec claude -p --bare" "$RUNNER_CONTENT"
 assert_match "runner script contains unset CLAUDECODE" "unset CLAUDECODE" "$RUNNER_CONTENT"
 if echo "$RUNNER_CONTENT" | grep -q "exec script "; then
   echo "  FAIL: runner script should not use script command"

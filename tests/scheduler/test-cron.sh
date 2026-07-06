@@ -13,6 +13,9 @@ echo "test: scheduler/cron.sh"
 # ── Setup: isolated environment ──
 setup() {
   export CEKERNEL_VAR_DIR="$(mktemp -d)"
+  # --bare preflight requires an auth path (never reads OAuth/keychain)
+  export ANTHROPIC_API_KEY="test-key-bare"
+  unset CEKERNEL_CLAUDE_SETTINGS
   mkdir -p "${CEKERNEL_VAR_DIR}/runners" "${CEKERNEL_VAR_DIR}/logs"
   echo '[]' > "${CEKERNEL_VAR_DIR}/schedules.json"
 
