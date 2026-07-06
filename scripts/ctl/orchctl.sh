@@ -177,16 +177,7 @@ compute_elapsed() {
   spawned_at=$(cat "${ipc_dir}/${process_type}-${issue}.spawned" 2>/dev/null || true)
   spawned_at="${spawned_at:-$(date +%s)}"
 
-  local now elapsed
-  now=$(date +%s)
-  elapsed=$((now - spawned_at))
-  if [[ $elapsed -ge 3600 ]]; then
-    echo "$((elapsed / 3600))h$((elapsed % 3600 / 60))m"
-  elif [[ $elapsed -ge 60 ]]; then
-    echo "$((elapsed / 60))m"
-  else
-    echo "${elapsed}s"
-  fi
+  format_elapsed "$(($(date +%s) - spawned_at))"
 }
 
 # ── Helper: detect backend from metadata file (with heuristic fallback) ──
