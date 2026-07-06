@@ -839,34 +839,43 @@ cmd_gc() {
     done
   }
 
-  # ── 3. Clean stale orchestrator metadata ──
-  # When the orchestrator process is dead, remove orchestrator.pid,
-  # orchestrator.spawned, and repo files from the session directory.
+  # ── 3. Clean stale orchestrator sessions (ADR-0016 Phase 2) ──
+  # Liveness is session-ID based: a session whose captured token is not
+  # busy/blocked in `claude agents --json` is dead. Dead sessions are
+  # reaped via `claude stop` (done sessions linger until explicitly
+  # stopped — ADR-0016) and their metadata files removed. Legacy
+  # orchestrator.pid files (pre-v2) are swept unconditionally.
   if [[ -d "$IPC_BASE" ]]; then
     for session_dir in "$IPC_BASE"/*/; do
       [[ -d "$session_dir" ]] || continue
-      local orch_pid_file="${session_dir}orchestrator.pid"
-      [[ -f "$orch_pid_file" ]] || continue
+      local orch_sid_file="${session_dir}orchestrator.claude-session-id"
+      local orch_legacy_pid_file="${session_dir}orchestrator.pid"
+      [[ -f "$orch_sid_file" || -f "$orch_legacy_pid_file" ]] || continue
 
-      local orch_pid
-      orch_pid=$(tr -d '[:space:]' < "$orch_pid_file")
-      [[ -n "$orch_pid" ]] || continue
+      local orch_token=""
+      if [[ -f "$orch_sid_file" ]]; then
+        orch_token=$(tr -d '[:space:]' < "$orch_sid_file")
+      fi
 
-      # Skip if orchestrator is still alive
-      if kill -0 "$orch_pid" 2>/dev/null; then
+      # Skip if the orchestrator session is still alive (busy/blocked).
+      # A legacy pid file without a token is always stale under v2.
+      if [[ -n "$orch_token" ]] && claude_bg_token_alive "$orch_token" 2>/dev/null; then
         continue
       fi
 
-      # Orchestrator is dead — clean up metadata files
+      # Orchestrator session is dead — reap it and clean up metadata
       if [[ "$dry_run" -eq 1 ]]; then
-        echo "[dry-run] would remove stale orchestrator.pid: $orch_pid_file" >&2
+        if [[ -n "$orch_token" ]]; then
+          echo "[dry-run] would stop dead orchestrator session: $orch_token" >&2
+        fi
       else
-        rm -f "$orch_pid_file"
+        if [[ -n "$orch_token" ]]; then
+          claude stop "$orch_token" >/dev/null 2>&1 || true
+        fi
       fi
-      cleaned=$((cleaned + 1))
 
-      # Also remove orchestrator.spawned and repo if present
-      for meta_file in "${session_dir}orchestrator.spawned" "${session_dir}repo"; do
+      for meta_file in "$orch_sid_file" "$orch_legacy_pid_file" \
+        "${session_dir}orchestrator.spawned" "${session_dir}repo"; do
         if [[ -f "$meta_file" ]]; then
           if [[ "$dry_run" -eq 1 ]]; then
             echo "[dry-run] would remove stale metadata: $meta_file" >&2
