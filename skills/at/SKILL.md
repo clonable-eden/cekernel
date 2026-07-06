@@ -37,8 +37,8 @@ If the user provides all required options (`--schedule` and one of `--label`/`--
 If any required option is missing, **interactively ask the user** for the missing values before executing:
 
 1. **`--label` or `--prompt`** (one required): Ask whether to use a dispatch label or a custom prompt.
-   - `--label <label>` — Shorthand: generates `claude -p "/dispatch --env headless --label <label>"`
-   - `--prompt <prompt>` — Arbitrary prompt string passed directly to `claude -p`
+   - `--label <label>` — Shorthand: generates prompt `"/dispatch --env headless --label <label>"` for the `claude --bg` session
+   - `--prompt <prompt>` — Arbitrary prompt string passed directly to the `claude --bg` session
    - If both given, `--prompt` takes precedence.
 2. **`--schedule`** (required): Ask for an ISO 8601 datetime. Show format examples:
    - `2026-03-15T09:00` — March 15, 2026 at 9:00 AM
