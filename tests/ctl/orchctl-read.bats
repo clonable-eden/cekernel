@@ -9,8 +9,10 @@
 #
 # ps/count are session-ID based (ADR-0016 Phase 2, #547): orchestrator
 # liveness maps to `claude agents --json` state via the token captured in
-# orchestrator.claude-session-id — orchestrator.pid is gone. #549 (Phase 4:
-# agents --json view layer) further evolves the ps contract when it lands.
+# orchestrator.claude-session-id — orchestrator.pid is gone. #549 (Phase 4)
+# makes ps/count a single-fetch view over `claude agents --json`, joining
+# managed Worker/Reviewer rows (handle-{issue}.{type} tokens) with
+# cekernel-specific columns (issue, phase, priority) per ADR-0015.
 #
 # Mutating subcommands (term/suspend/resume/kill/nice/recover/gc) are
 # covered in orchctl-mutating.bats.
@@ -21,6 +23,8 @@ load '../helpers/mock-claude'
 
 ORCH_TOKEN_A="aaaa1111-2222-4333-8444-555566667777"
 ORCH_TOKEN_B="bbbb2222-3333-4444-8555-666677778888"
+WORKER_TOKEN="dddd4444-5555-4666-8777-888899990000"
+REVIEWER_TOKEN="eeee5555-6666-4777-8888-99990000aaaa"
 
 setup() {
   CEKERNEL_DIR="$(cd "${BATS_TEST_DIRNAME}/../.." && pwd)"
@@ -60,6 +64,14 @@ make_orchestrator() {
   mkdir -p "$ipc_dir"
   echo "$token" > "${ipc_dir}/orchestrator.claude-session-id"
   date +%s > "${ipc_dir}/orchestrator.spawned"
+}
+
+# Register a managed session handle (ADR-0016 Phase 4: opaque session
+# token in handle-{issue}.{type}).
+make_handle() {
+  local ipc_dir="$1" issue="$2" type="$3" token="$4"
+  mkdir -p "$ipc_dir"
+  echo "$token" > "${ipc_dir}/handle-${issue}.${type}"
 }
 
 # ── ls ──
@@ -336,6 +348,109 @@ make_orchestrator() {
   assert_eq "legacy pid file alone shows nothing" "no orchestrators." "$output"
 }
 
+# ── ps managed rows (agents --json view layer, ADR-0016 Phase 4 / #549) ──
+
+@test "ps joins worker row: issue, phase, priority from cekernel files" {
+  make_orchestrator "$IPC_A" "$ORCH_TOKEN_A"
+  make_worker "$IPC_A" 10
+  make_handle "$IPC_A" 10 worker "$WORKER_TOKEN"
+  mock_claude_enqueue_agents "[
+    $(mock_claude_agent_record "$ORCH_TOKEN_A" background /repo 1700000000000 busy),
+    $(mock_claude_agent_record "$WORKER_TOKEN" background /repo 1700000001000 busy)
+  ]"
+  run bash "$ORCHCTL" ps
+  local worker_line
+  worker_line=$(echo "$output" | grep "#10")
+  assert_match "row shows type worker" "worker" "$worker_line"
+  assert_match "row shows claude token" "claude=${WORKER_TOKEN}" "$worker_line"
+  assert_match "row joins phase from state file" "phase=phase1:implement" "$worker_line"
+  assert_match "row joins priority from priority file" "priority=10" "$worker_line"
+  assert_match "row shows busy state" "busy" "$worker_line"
+}
+
+@test "ps surfaces a blocked worker session distinctly (ADR-0016 MUST)" {
+  make_orchestrator "$IPC_A" "$ORCH_TOKEN_A"
+  make_worker "$IPC_A" 10
+  make_handle "$IPC_A" 10 worker "$WORKER_TOKEN"
+  mock_claude_enqueue_agents "[
+    $(mock_claude_agent_record "$ORCH_TOKEN_A" background /repo 1700000000000 busy),
+    $(mock_claude_agent_record "$WORKER_TOKEN" background /repo 1700000001000 blocked)
+  ]"
+  run bash "$ORCHCTL" ps
+  assert_match "worker row shows blocked" "blocked" "$(echo "$output" | grep "#10")"
+}
+
+@test "ps shows missing for a worker token not listed in agents --json" {
+  make_orchestrator "$IPC_A" "$ORCH_TOKEN_A"
+  make_worker "$IPC_A" 10
+  make_handle "$IPC_A" 10 worker "$WORKER_TOKEN"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$ORCH_TOKEN_A" background /repo 1700000000000 busy)]"
+  run bash "$ORCHCTL" ps
+  assert_match "worker row shows missing" "missing" "$(echo "$output" | grep "#10")"
+}
+
+@test "ps shows worker rows in a session without an orchestrator token" {
+  # Interactive orchestrators have no orchestrator.claude-session-id,
+  # but their spawned workers must still be visible.
+  make_worker "$IPC_A" 10
+  make_handle "$IPC_A" 10 worker "$WORKER_TOKEN"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$WORKER_TOKEN" background /repo 1700000001000 busy)]"
+  run bash "$ORCHCTL" ps
+  assert_match "worker row shown" "#10" "$output"
+  assert_match "worker row shows busy" "busy" "$(echo "$output" | grep "#10")"
+  if [[ "$output" == *"no orchestrators."* ]]; then
+    echo "FAIL: worker rows found — must not print 'no orchestrators.'" >&2
+    return 1
+  fi
+}
+
+@test "ps shows reviewer type from handle-{issue}.reviewer" {
+  make_worker "$IPC_A" 11 "RUNNING:2026-02-28T10:00:00Z:reviewing"
+  make_handle "$IPC_A" 11 reviewer "$REVIEWER_TOKEN"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$REVIEWER_TOKEN" background /repo 1700000001000 busy)]"
+  run bash "$ORCHCTL" ps
+  assert_match "row shows type reviewer" "reviewer" "$(echo "$output" | grep "#11")"
+}
+
+@test "ps --session filter applies to worker rows" {
+  make_worker "$IPC_A" 10
+  make_handle "$IPC_A" 10 worker "$WORKER_TOKEN"
+  make_worker "$IPC_B" 20
+  make_handle "$IPC_B" 20 worker "$REVIEWER_TOKEN"
+  mock_claude_enqueue_agents "[
+    $(mock_claude_agent_record "$WORKER_TOKEN" background /repo 1700000001000 busy),
+    $(mock_claude_agent_record "$REVIEWER_TOKEN" background /repo 1700000002000 busy)
+  ]"
+  run bash "$ORCHCTL" ps --session "$SESSION_A"
+  assert_match "filtered session worker shown" "#10" "$output"
+  if [[ "$output" == *"#20"* ]]; then
+    echo "FAIL: ps --session should not show other sessions' workers" >&2
+    return 1
+  fi
+}
+
+@test "ps fetches agents --json exactly once per invocation (single-fetch view)" {
+  make_orchestrator "$IPC_A" "$ORCH_TOKEN_A"
+  make_worker "$IPC_A" 10
+  make_handle "$IPC_A" 10 worker "$WORKER_TOKEN"
+  make_orchestrator "$IPC_B" "$ORCH_TOKEN_B"
+  make_worker "$IPC_B" 20
+  make_handle "$IPC_B" 20 worker "$REVIEWER_TOKEN"
+  mock_claude_enqueue_agents "[
+    $(mock_claude_agent_record "$ORCH_TOKEN_A" background /repo 1700000000000 busy),
+    $(mock_claude_agent_record "$WORKER_TOKEN" background /repo 1700000001000 busy),
+    $(mock_claude_agent_record "$ORCH_TOKEN_B" background /repo 1700000002000 busy),
+    $(mock_claude_agent_record "$REVIEWER_TOKEN" background /repo 1700000003000 busy)
+  ]"
+  run bash "$ORCHCTL" ps
+  assert_eq "exit 0" "0" "$status"
+  assert_eq "agents --json called once" "1" \
+    "$(cat "${MOCK_CLAUDE_STATE_DIR}/agents-calls")"
+}
+
 # ── count (session-ID based, ADR-0016 Phase 2 / ADR-0014) ──
 
 @test "count with no sessions is 0" {
@@ -379,6 +494,19 @@ make_orchestrator() {
   run bash "$ORCHCTL" count
   assert_eq "busy + blocked counted, stopped ignored" "2" "$output"
   assert_match "output is a plain integer" '^[0-9]+$' "$output"
+}
+
+@test "count fetches agents --json exactly once per invocation (single-fetch view)" {
+  make_orchestrator "$IPC_A" "$ORCH_TOKEN_A"
+  make_orchestrator "$IPC_B" "$ORCH_TOKEN_B"
+  mock_claude_enqueue_agents "[
+    $(mock_claude_agent_record "$ORCH_TOKEN_A" background /repo 1700000000000 busy),
+    $(mock_claude_agent_record "$ORCH_TOKEN_B" background /repo 1700000001000 busy)
+  ]"
+  run bash "$ORCHCTL" count
+  assert_eq "count busy sessions" "2" "$output"
+  assert_eq "agents --json called once" "1" \
+    "$(cat "${MOCK_CLAUDE_STATE_DIR}/agents-calls")"
 }
 
 # ── usage ──

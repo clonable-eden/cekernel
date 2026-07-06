@@ -84,6 +84,51 @@ setup() {
   assert_eq "legacy busy is alive" "0" "$status"
 }
 
+# ── claude_bg_token_alive_from_json ──
+
+@test "token_alive_from_json: busy and blocked are alive; done and missing are not" {
+  # Pre-fetched body — no CLI call. Single-fetch views (orchctl ps/count)
+  # resolve every token against one response (ADR-0016 Phase 4); the
+  # busy/blocked liveness vocabulary lives HERE, not in the view layers.
+  local json
+  json="[
+    $(mock_claude_agent_record "$FULL_UUID" background /tmp/x 1700000000000 busy),
+    $(mock_claude_agent_record "bbbb0000-1111-4222-8333-444455556666" background /tmp/x 1700000001000 blocked),
+    $(mock_claude_agent_record "cccc0000-1111-4222-8333-444455556666" background /tmp/x 1700000002000 done)
+  ]"
+
+  run claude_bg_token_alive_from_json "$json" "$FULL_UUID"
+  assert_eq "busy is alive" "0" "$status"
+
+  run claude_bg_token_alive_from_json "$json" "bbbb0000"
+  assert_eq "blocked is alive" "0" "$status"
+
+  run claude_bg_token_alive_from_json "$json" "cccc0000"
+  assert_eq "done is dead" "1" "$status"
+
+  run claude_bg_token_alive_from_json "$json" "ffff0000"
+  assert_eq "missing is dead" "1" "$status"
+}
+
+@test "token_alive_from_json: real live shape (status:busy + state:working) is alive" {
+  # Real CLI live records carry the normative state in `status` while
+  # `state` reads "working" (#581). The raw literal pins the shape
+  # independently of the mock helper.
+  local json
+  json="[{\"sessionId\":\"$FULL_UUID\",\"kind\":\"background\",\"cwd\":\"/tmp/x\",\"startedAt\":1700000000000,\"status\":\"busy\",\"state\":\"working\"}]"
+  run claude_bg_token_alive_from_json "$json" "$FULL_UUID"
+  assert_eq "status busy + state working is alive" "0" "$status"
+}
+
+@test "token_alive_from_json: does not call the claude CLI" {
+  local json
+  json="[$(mock_claude_agent_record "$FULL_UUID" background /tmp/x 1700000000000 busy)]"
+  run claude_bg_token_alive_from_json "$json" "$FULL_UUID"
+  assert_eq "exit status" "0" "$status"
+  assert_not_exists "no agents --json call recorded" \
+    "${MOCK_CLAUDE_STATE_DIR}/agents-calls"
+}
+
 # ── claude_bg_capture_session_id ──
 
 @test "capture: short ID prefix-matches to the full UUID (primary path)" {
