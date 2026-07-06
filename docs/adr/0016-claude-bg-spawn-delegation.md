@@ -134,7 +134,32 @@ Verification failures block the release, not soften it into dual-mode.
 - **#531**: Reviewer moves to a subagent path (separate ADR); Worker stays on
   the `--bg` path because it must survive the parent session.
 
-## Consequences
+## Amendment 1: Conditional `--bare` (2026-07-07)
+
+Phase 0/1 shipped `--bare` unconditionally on every spawn path. In practice
+this **locks out subscription (OAuth) operators**: `--bare` never reads
+OAuth/keychain, so spawns hard-require `ANTHROPIC_API_KEY` or an
+`apiKeyHelper` settings file — turning every Worker into pay-as-you-go API
+usage for operators who authenticate via a Claude subscription (the
+primary cekernel audience). This was an over-alignment with the upstream
+"`--bare` will become the default for `-p`" signal: v2's execution path is
+`--bg`, not `-p`, and OAuth works fine there.
+
+**Decision** (user-approved 2026-07-07): `--bare` becomes **conditional on
+auth availability**:
+
+- A bare-compatible auth path exists (`ANTHROPIC_API_KEY` or
+  `CEKERNEL_CLAUDE_SETTINGS` with `apiKeyHelper`) → spawn with
+  `--bare` + explicit context injection (current behavior).
+- Otherwise → spawn WITHOUT `--bare` (normal `--bg`, OAuth/keychain auth),
+  emitting a one-line notice that bare mode is disabled for this spawn.
+- Scheduled paths (cron/at via `wrapper.sh`) keep the **hard preflight
+  failure**: they run unattended, where silent OAuth expiry is worse than
+  a noisy refusal, and their setup docs already require
+  `CEKERNEL_CLAUDE_SETTINGS`.
+
+This is auth-environment adaptation, not a legacy/delegated runtime mode —
+the spawn mechanism (`--bg`) is identical on both branches.
 
 ### Positive
 
