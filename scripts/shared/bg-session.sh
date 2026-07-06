@@ -71,7 +71,10 @@ bg_session_spawn() {
   # Launch the session. `claude --bg` returns immediately after printing
   # `backgrounded · <short-id>`; the on-demand daemon supervises it.
   # Source .cekernel-env so the daemon (when auto-started here) inherits
-  # PATH and cekernel env vars; Workers also source it per Bash call.
+  # PATH and cekernel env vars. Sessions inherit the DAEMON's env, not
+  # this subshell's (verified 2026-07-07, v2.1.202) — a pre-existing
+  # daemon serves its own (possibly stale) env (#589); Workers fall back
+  # to sourcing .cekernel-env per Bash call when commands are missing.
   # Unset Claude Code session markers to avoid nested-session detection.
   # `--bg --bare` with a prompt composes without warnings (verified
   # v2.1.201, 2026-07-07 — unlike the hidden --exec path).

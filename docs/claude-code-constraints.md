@@ -68,9 +68,17 @@ the spawned process's environment keeps Bash calls truly in the foreground.
   is **unverified**. Without re-invocation, an auto-detached wait becomes
   a silent stall instead of a crash (Rule of Repair: prefer the known
   failure mode). Re-evaluate once re-invoke behavior is verified.
-- Under `--bg`, env vars set at spawn are best-effort: they reach the
-  session only when that spawn auto-starts the daemon; a pre-existing
-  daemon keeps its own environment. Treat
+- Under `--bg`, sessions inherit the **daemon's** environment, not the
+  spawning caller's (verified 2026-07-07, v2.1.202: a Worker session's
+  process env — including PATH — was byte-identical to the daemon's;
+  the `.cekernel-env` values exported in the caller subshell did not
+  reach the session directly). Caller env reaches sessions only when
+  that spawn auto-starts the daemon. In practice a cekernel run's first
+  spawn (`spawn-orchestrator.sh`) auto-starts the daemon with the run's
+  values, so `CEKERNEL_*` and PATH are present in all of the run's
+  sessions — but a daemon left over from a previous run serves **stale**
+  env (#589). The prompt remains the authoritative channel: agent
+  definitions instruct a startup check against prompt values. Treat
   `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` as defense-in-depth, not a
   guarantee — the agent-level "foreground watch" instructions in
   orchestrator.md remain the reliable baseline

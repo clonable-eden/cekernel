@@ -55,10 +55,11 @@ CEKERNEL_SHARED_SCRIPTS="$(cd "${SCRIPT_DIR}/../shared" && pwd)"
 # `claude --bg` returns immediately after printing `backgrounded ·
 # <short-id>`; the on-demand daemon supervises the session.
 # Unset Claude Code session markers to avoid nested-session detection.
-# The env exports are best-effort under --bg: they reach the session only
-# when this call auto-starts the daemon (a pre-existing daemon keeps its
-# own environment) — the reliable channel for CEKERNEL_* values is the
-# prompt, which the orchestrate/dispatch skills populate.
+# Sessions inherit the DAEMON's env: these exports reach the session only
+# when this call auto-starts the daemon; a pre-existing daemon keeps its
+# own environment (verified 2026-07-07, v2.1.202 — #589). The reliable
+# channel for CEKERNEL_* values is the prompt, which the orchestrate/
+# dispatch skills populate; the Orchestrator verifies env at startup.
 # CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 stays for now: under --bg an
 # auto-detached Bash call no longer kills the process (#558), but whether
 # a background-task completion re-invokes a `done` session is unverified —
