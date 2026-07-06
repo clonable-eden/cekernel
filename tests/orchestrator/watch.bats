@@ -1,0 +1,116 @@
+#!/usr/bin/env bats
+# watch.bats — v2 contract tests for scripts/orchestrator/watch.sh
+#
+# Under --bg delegation (ADR-0016 Phase 1) watch.sh supervises headless
+# Workers via the backend status (`claude agents --json` state):
+#   - session gone / terminal state without TERMINATED → crashed
+#   - blocked (permission-dialog stall) → surfaced as a distinct result
+#   - busy → keep waiting (no false crash)
+# Replaces the PID-liveness tests test-watch-crash-detection.sh and
+# test-watch-env-backend.sh (deleted with the -p spawn path, ADR-0017 §3).
+
+load '../helpers/assertions'
+load '../helpers/session'
+load '../helpers/mock-bin'
+load '../helpers/mock-claude'
+
+TOKEN="aaaa1111-2222-4333-8444-555566667777"
+
+setup() {
+  CEKERNEL_DIR="$(cd "${BATS_TEST_DIRNAME}/../.." && pwd)"
+  WATCH_SCRIPT="${CEKERNEL_DIR}/scripts/orchestrator/watch.sh"
+
+  set_test_session_id
+  source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
+  source "${CEKERNEL_DIR}/scripts/shared/worker-state.sh"
+  rm -rf "$CEKERNEL_IPC_DIR"
+  mkdir -p "${CEKERNEL_IPC_DIR}/logs"
+
+  mock_claude
+  export CEKERNEL_BACKEND=headless
+  export CEKERNEL_POLL_INTERVAL=1
+  export CEKERNEL_WORKER_TIMEOUT=10
+}
+
+teardown() {
+  rm -rf "$CEKERNEL_IPC_DIR"
+}
+
+@test "watch reports crashed when the session is no longer listed" {
+  worker_state_write 40 RUNNING "phase1:implement"
+  echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-40.worker"
+  # empty agents queue → [] → session missing
+
+  run bash "$WATCH_SCRIPT" 40
+  assert_eq "watch exits non-zero" "1" "$status"
+  assert_match "result is crashed" '"result":"crashed"' "$output"
+  assert_match "WORKER_CRASH logged" "WORKER_CRASH" \
+    "$(cat "${CEKERNEL_IPC_DIR}/logs/worker-40.log")"
+}
+
+@test "watch reports crashed when the session is done without TERMINATED state" {
+  worker_state_write 41 RUNNING "phase1:implement"
+  echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-41.worker"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$TOKEN" background /tmp/wt 1700000000000 done)]"
+
+  run bash "$WATCH_SCRIPT" 41
+  assert_eq "watch exits non-zero" "1" "$status"
+  assert_match "result is crashed" '"result":"crashed"' "$output"
+}
+
+@test "watch surfaces a blocked session as a distinct result" {
+  worker_state_write 42 RUNNING "phase1:implement"
+  echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-42.worker"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$TOKEN" background /tmp/wt 1700000000000 blocked)]"
+
+  run bash "$WATCH_SCRIPT" 42
+  assert_eq "watch exits non-zero" "1" "$status"
+  assert_match "result is blocked" '"result":"blocked"' "$output"
+  assert_match "WORKER_BLOCKED logged" "WORKER_BLOCKED" \
+    "$(cat "${CEKERNEL_IPC_DIR}/logs/worker-42.log")"
+}
+
+@test "watch does not false-crash a busy session (state fallback completes)" {
+  worker_state_write 182 RUNNING "phase1:implement"
+  echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-182.worker"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$TOKEN" background /tmp/wt 1700000000000 busy)]"
+
+  local out="${BATS_TEST_TMPDIR}/watch-out.json"
+  bash "$WATCH_SCRIPT" 182 > "$out" 2>/dev/null &
+  local watch_pid=$!
+  sleep 2
+  worker_state_write 182 TERMINATED "merged:#999"
+  wait "$watch_pid"
+
+  assert_match "completion detected via state fallback" \
+    "detected-via-state-fallback" "$(cat "$out")"
+  assert_match "result carries the state detail" "merged:#999" "$(cat "$out")"
+}
+
+@test "watch resolves the headless backend from the env profile (#182 regression)" {
+  worker_state_write 183 RUNNING "phase1:implement"
+  echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-183.worker"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$TOKEN" background /tmp/wt 1700000000000 busy)]"
+
+  # Backend comes from the env profile, NOT from CEKERNEL_BACKEND
+  local env_dir="${BATS_TEST_TMPDIR}/envs"
+  mkdir -p "$env_dir"
+  echo "CEKERNEL_BACKEND=headless" > "${env_dir}/test-headless.env"
+  export CEKERNEL_ENV=test-headless
+  export _CEKERNEL_PLUGIN_ENVS_DIR="$env_dir"
+  unset CEKERNEL_BACKEND
+
+  local out="${BATS_TEST_TMPDIR}/watch-out.json"
+  bash "$WATCH_SCRIPT" 183 > "$out" 2>/dev/null &
+  local watch_pid=$!
+  sleep 2
+  worker_state_write 183 TERMINATED "merged:#999"
+  wait "$watch_pid"
+
+  assert_match "no false crash — state fallback wins" \
+    "detected-via-state-fallback" "$(cat "$out")"
+}

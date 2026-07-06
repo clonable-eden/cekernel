@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted — Amends the interface defined in ADR-0001
+Accepted — Amends the interface defined in ADR-0001.
+Amended by [Amendment 1](#amendment-1-2026-07-07-opaque-session-token-handles-under-adr-0016-delegation) (opaque session-token handles, ADR-0016 Phase 1).
 
 ## Context
 
@@ -202,3 +203,57 @@ Rejected: Violates Rule of Simplicity. Callers would need conditional logic. The
 **Scope vs. minimal change**: The rename + interface reduction is a larger changeset than just adding `backends/headless.sh`. However, doing the rename without the reduction would leave no-op functions that violate Modularity. The marginal cost of the reduction is small (callers already need updating for the rename), and it produces a cleaner long-term interface.
 
 **`kill_pane` precision lost**: The current `kill_pane` (single pane) vs `kill_window` (all panes) distinction is meaningful for terminal backends during rollback. With `backend_kill_worker`, the rollback path kills the entire window rather than just the main pane. This is acceptable — partial window cleanup after a failed spawn has no useful purpose.
+
+## Amendment 1 (2026-07-07): Opaque session-token handles under ADR-0016 delegation
+
+ADR-0016 (Phase 1, #546) delegates headless spawn and supervision to
+`claude --bg` background agent sessions. There is no local child process
+anymore — the daemon owns it — so the numeric-PID handle model above no
+longer applies to the headless backend. This amendment retypes the
+interface accordingly. cekernel 2.0.0 is a breaking release: the previous
+`claude -p` + `setsid`/process-group mechanism is removed, not switched.
+
+### Interface changes
+
+| Function | Before | After |
+|----------|--------|-------|
+| `backend_get_pid` | Numeric PID | **Renamed `backend_get_handle`** — returns an opaque worker token: numeric PID for wezterm/tmux (unchanged implementation, `kill -0` checkable), session token for headless |
+| `backend_worker_alive` | `kill -0 $PID` (headless) | `claude agents --json` state: `busy`/`blocked` = alive; `done`/`stopped`/not listed = dead |
+| `backend_kill_worker` | `kill -- -$PID` process group (headless) | `claude stop <token>` — also reaps lingering `done` sessions (they persist until explicitly stopped) |
+| *(new, optional)* `backend_worker_status` | — | Echoes the session state (`busy`\|`blocked`\|`done`\|…), `missing` + exit 1 when undeterminable. Provided by headless; terminal backends gain it in ADR-0016 Phase 5. Callers feature-detect with `declare -F` |
+
+### Handle semantics (headless)
+
+- The handle file (`handle-{issue}.{type}`) contains the **full session
+  UUID** captured at spawn (ADR-0016 normative order: short-ID prefix
+  match against `agents --json`, then `kind`+`cwd`+`startedAt` fallback),
+  or the **short ID** (8 hex chars) as a degraded fallback when the full
+  UUID does not resolve. All lookups prefix-match `sessionId`, so both
+  forms work for liveness and `claude stop`.
+- The token is also persisted to `{type}-{issue}.claude-session-id` in the
+  IPC directory. Like `.spawned` files it survives cleanup, giving
+  `transcript-locator.sh` a deterministic UUID-direct lookup (#528).
+
+### Ripple: issue-lock holder verification
+
+`spawn.sh` records the worker token in the issue lock. Since headless
+tokens are not PIDs, `issue-lock.sh` dispatches on holder shape: numeric →
+`kill -0` (unchanged); non-numeric → `claude agents --json` state
+(`busy`/`blocked` = alive, terminal/missing = stale, query failure =
+conservatively alive — a lock held until explicit release beats duplicate
+Workers).
+
+### Supervision: blocked state
+
+`blocked` (session waiting on a permission dialog) is a silent-stall
+failure mode unique to delegated sessions. `watch.sh` surfaces it as a
+distinct terminal `blocked` result (nobody approves dialogs in a headless
+session) and `health-check.sh` reports status `blocked` (exit 1).
+
+### Process-group notes superseded
+
+The `setsid` + `kill -- -$PID` design in the original Decision applied to
+locally-forked workers. Under delegation, child-process containment is the
+daemon's responsibility; `claude stop` terminates the session and its
+processes. ADR-0003's KILL semantics for headless become "stop the
+session".

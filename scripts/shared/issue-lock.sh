@@ -34,6 +34,31 @@ issue_lock_repo_hash() {
   fi
 }
 
+# _issue_lock_holder_alive <holder>
+# exit 0 when the lock holder is alive, exit 1 when it is verifiably dead.
+# Numeric holders are PIDs (kill -0). Non-numeric holders are opaque
+# session tokens (ADR-0005 Amendment 1): alive iff a session whose
+# sessionId starts with the token is busy or blocked in
+# `claude agents --json`. When the query fails, assume alive —
+# never steal a lock on doubt (duplicate Workers are worse than a
+# lock held until explicit release).
+_issue_lock_holder_alive() {
+  local holder="$1"
+
+  if [[ "$holder" =~ ^[0-9]+$ ]]; then
+    kill -0 "$holder" 2>/dev/null
+    return $?
+  fi
+
+  local json state
+  if ! json=$(claude agents --json 2>/dev/null); then
+    return 0
+  fi
+  state=$(echo "$json" | jq -r --arg p "$holder" \
+    '[.[] | select(.sessionId | startswith($p))][0].state // empty' 2>/dev/null) || return 0
+  [[ "$state" == "busy" || "$state" == "blocked" ]]
+}
+
 issue_lock_acquire() {
   local repo_path="${1:?Usage: issue_lock_acquire <repo-path> <issue-number>}"
   local issue_number="${2:?Usage: issue_lock_acquire <repo-path> <issue-number>}"
@@ -54,7 +79,7 @@ issue_lock_acquire() {
   if [[ -f "$pid_file" ]]; then
     local holder_pid
     holder_pid=$(cat "$pid_file")
-    if ! kill -0 "$holder_pid" 2>/dev/null; then
+    if ! _issue_lock_holder_alive "$holder_pid"; then
       # Holder is dead — remove stale lock and retry
       rm -f "$pid_file"
       rmdir "$lock_dir" 2>/dev/null || true
@@ -112,7 +137,7 @@ issue_lock_check() {
     if [[ -f "$pid_file" ]]; then
       local holder_pid
       holder_pid=$(cat "$pid_file")
-      if kill -0 "$holder_pid" 2>/dev/null; then
+      if _issue_lock_holder_alive "$holder_pid"; then
         return 0  # locked
       fi
       # Holder is dead — stale lock

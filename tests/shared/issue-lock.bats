@@ -5,8 +5,16 @@
 #   - test-issue-lock.sh                   (lock lifecycle behavior)
 #   - test-issue-lock-load-env-fallback.sh (CEKERNEL_SCRIPTS path fallback)
 # zsh-compat coverage lives in tests/shared/zsh-compat.bats.
+#
+# Also covers session-token lock holders (ADR-0005 Amendment 1, ADR-0016
+# Phase 1, #546): under --bg delegation the lock holder is an opaque
+# session token, not a PID. Staleness maps to `claude agents --json`
+# state: busy|blocked = alive (locked), done|stopped|missing = stale,
+# query failure = conservatively alive (never steal a lock on doubt).
 
 load '../helpers/assertions'
+load '../helpers/mock-bin'
+load '../helpers/mock-claude'
 
 setup() {
   CEKERNEL_DIR="$(cd "${BATS_TEST_DIRNAME}/../.." && pwd)"
@@ -165,4 +173,86 @@ lock_dir_for() {
     issue_lock_check '/tmp/test-fallback-repo' 999 && \
     issue_lock_release '/tmp/test-fallback-repo' 999"
   assert_eq "Lock functions work via CEKERNEL_SCRIPTS fallback" "0" "$status"
+}
+
+# ── Session-token lock holders (ADR-0005 Amendment 1, #546) ──
+
+TOKEN="aaaa1111-2222-4333-8444-555566667777"
+
+# Create a lock held by an opaque session token
+lock_with_token() {
+  local token="${1:-$TOKEN}"
+  local lock_dir
+  lock_dir=$(lock_dir_for "$REPO_A" "$ISSUE")
+  mkdir -p "$lock_dir"
+  echo "$token" > "${lock_dir}/pid"
+}
+
+@test "acquire fails while the token holder session is busy" {
+  mock_claude
+  lock_with_token
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$TOKEN" background /tmp/wt 1700000000000 busy)]"
+  run issue_lock_acquire "$REPO_A" "$ISSUE"
+  assert_eq "acquire fails (locked)" "1" "$status"
+}
+
+@test "acquire fails while the token holder session is blocked" {
+  mock_claude
+  lock_with_token
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$TOKEN" background /tmp/wt 1700000000000 blocked)]"
+  run issue_lock_acquire "$REPO_A" "$ISSUE"
+  assert_eq "acquire fails (locked)" "1" "$status"
+}
+
+@test "acquire steals the lock when the token holder session is done" {
+  mock_claude
+  lock_with_token
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$TOKEN" background /tmp/wt 1700000000000 done)]"
+  run issue_lock_acquire "$REPO_A" "$ISSUE"
+  assert_eq "acquire succeeds (stale)" "0" "$status"
+}
+
+@test "acquire steals the lock when the token holder session is not listed" {
+  mock_claude
+  lock_with_token
+  # empty agents queue → []
+  run issue_lock_acquire "$REPO_A" "$ISSUE"
+  assert_eq "acquire succeeds (stale)" "0" "$status"
+}
+
+@test "acquire fails when the agents query errors (conservative)" {
+  lock_with_token
+  mock_bin claude 'exit 1'
+  run issue_lock_acquire "$REPO_A" "$ISSUE"
+  assert_eq "acquire fails (cannot verify → assume alive)" "1" "$status"
+}
+
+@test "check reports locked while the token holder session is busy" {
+  mock_claude
+  lock_with_token
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$TOKEN" background /tmp/wt 1700000000000 busy)]"
+  run issue_lock_check "$REPO_A" "$ISSUE"
+  assert_eq "check reports locked" "0" "$status"
+}
+
+@test "check reports stale when the token holder session is stopped" {
+  mock_claude
+  lock_with_token
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$TOKEN" background /tmp/wt 1700000000000 stopped)]"
+  run issue_lock_check "$REPO_A" "$ISSUE"
+  assert_eq "check reports unlocked (stale)" "1" "$status"
+}
+
+@test "prefix-matches a short-ID token holder (degraded capture)" {
+  mock_claude
+  lock_with_token "aaaa1111"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$TOKEN" background /tmp/wt 1700000000000 busy)]"
+  run issue_lock_acquire "$REPO_A" "$ISSUE"
+  assert_eq "acquire fails (short-ID holder alive)" "1" "$status"
 }

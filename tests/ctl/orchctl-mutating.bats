@@ -7,8 +7,16 @@
 #   tests/ctl/test-orchctl-gc.sh — gc command
 #
 # Read subcommands (ls/inspect/ps/count/usage) are covered in orchctl-read.bats.
+#
+# Headless handles are opaque session tokens under --bg delegation
+# (ADR-0005 Amendment 1, #546): recover verifies liveness via a mocked
+# `claude agents --json`, and kill delegates to `claude stop`.
 
 load '../helpers/assertions'
+load '../helpers/mock-bin'
+load '../helpers/mock-claude'
+
+SESSION_TOKEN="aaaa1111-2222-4333-8444-555566667777"
 
 setup() {
   CEKERNEL_DIR="$(cd "${BATS_TEST_DIRNAME}/../.." && pwd)"
@@ -139,12 +147,26 @@ worker_state() {
   assert_match "detail says killed" ":killed$" "$(worker_state 10)"
 }
 
+@test "kill stops a headless session via claude stop (v2 contract)" {
+  mock_claude
+  make_worker 10
+  echo "headless" > "${IPC}/worker-10.backend"
+  echo "$SESSION_TOKEN" > "${IPC}/handle-10.worker"
+  run bash "$ORCHCTL" kill 10 --session "$SESSION"
+  assert_eq "kill exits 0" "0" "$status"
+  assert_file_exists "claude stop recorded" "${MOCK_CLAUDE_STATE_DIR}/stop.log"
+  assert_eq "stop called with the session token" "$SESSION_TOKEN" \
+    "$(cat "${MOCK_CLAUDE_STATE_DIR}/stop.log")"
+}
+
 # ── recover ──
 
 @test "recover dead RUNNING worker marks TERMINATED/crashed" {
+  mock_claude
   make_worker 10
   echo "headless" > "${IPC}/worker-10.backend"
-  echo "99999" > "${IPC}/handle-10.worker"  # virtually guaranteed dead PID
+  echo "$SESSION_TOKEN" > "${IPC}/handle-10.worker"
+  # empty agents queue → [] → session not listed → dead
   run bash "$ORCHCTL" recover 10 --session "$SESSION"
   assert_eq "recover dead: exit 0" "0" "$status"
   assert_match "state is TERMINATED" "^TERMINATED:" "$(worker_state 10)"
@@ -152,12 +174,12 @@ worker_state() {
 }
 
 @test "recover alive worker errors and leaves state unchanged" {
+  mock_claude
   make_worker 10
   echo "headless" > "${IPC}/worker-10.backend"
-  sleep 60 </dev/null >/dev/null 2>&1 3>&- &
-  local alive_pid=$!
-  BGPIDS="$BGPIDS$alive_pid "
-  echo "$alive_pid" > "${IPC}/handle-10.worker"
+  echo "$SESSION_TOKEN" > "${IPC}/handle-10.worker"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$SESSION_TOKEN" background /tmp/wt 1700000000000 busy)]"
 
   run bash "$ORCHCTL" recover 10 --session "$SESSION"
   assert_eq "recover alive: exit 1" "1" "$status"

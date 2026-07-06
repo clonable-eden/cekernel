@@ -720,7 +720,10 @@ cmd_kill() {
         tmux kill-window -t "$window_target" 2>/dev/null || true
         ;;
       headless)
-        kill -- -"$handle_content" 2>/dev/null || kill "$handle_content" 2>/dev/null || true
+        # v2: handle is an opaque session token — the daemon owns the
+        # process, so termination delegates to claude stop
+        # (ADR-0005 Amendment 1, ADR-0016 Phase 1)
+        claude stop "$handle_content" >/dev/null 2>&1 || true
         ;;
       *)
         # wezterm or unknown — try wezterm pane kill
@@ -818,10 +821,11 @@ cmd_gc() {
       has_any_handle=1
       local handle_content
       handle_content=$(tr -d '[:space:]' < "$hf")
-      # For headless backend, handle is a PID
+      # For headless (v2), handle is an opaque session token (UUID/short ID)
       # For tmux, handle is session:window.pane — check if tmux session exists
-      # For wezterm, handle is a pane ID
-      # Simple heuristic: if handle is numeric, check kill -0; otherwise assume stale
+      # For wezterm, handle is a numeric pane ID; pre-v2 headless was a PID
+      # Simple heuristic: numeric → kill -0; tmux target → has-session;
+      # anything else (session tokens included) → assume alive to be safe
       if [[ "$handle_content" =~ ^[0-9]+$ ]]; then
         if kill -0 "$handle_content" 2>/dev/null; then
           has_live_handle=1

@@ -65,10 +65,11 @@ backend_spawn_worker() {
   echo "$pane_id" > "${CEKERNEL_IPC_DIR}/handle-${issue}.${type}"
 }
 
-# backend_get_pid <issue> [type]
-# Returns the PID of the foreground process in the WezTerm pane.
+# backend_get_handle <issue> [type]
+# Returns the worker token (ADR-0005 Amendment 1). For WezTerm this is the
+# PID of the foreground process in the pane — numeric, kill -0 checkable.
 # WezTerm's .pid field may return null, so falls back to tty_name-based lookup.
-backend_get_pid() {
+backend_get_handle() {
   local issue="$1"
   local type="${2:-}"
 

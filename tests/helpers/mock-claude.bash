@@ -3,7 +3,10 @@
 #
 # Contract source: docs/claude-code-constraints.md
 #   § Background Agent Sessions (`--bg` / on-demand daemon)
-# Observed claude version: v2.1.201 (2026-07-06).
+# Observed claude version: v2.1.201 (2026-07-06; re-verified 2026-07-07,
+# #546 probe: `--bg --bare` + prompt composes; real `agents --json`
+# records carry extra fields — pid, id, name, status — and a numeric
+# epoch-millis startedAt, with a realpath'd cwd).
 #
 # STALENESS COUPLING (ADR-0017 follow-up): any PR that updates the
 # "Background Agent Sessions" section of docs/claude-code-constraints.md
@@ -44,6 +47,10 @@
 #     paths testable — short-ID prefix match against sessionId, and the
 #     kind+cwd+startedAt fallback including the interactive-session
 #     mis-match regression at repo root.
+#     Real records carry ADDITIONAL fields (pid, id, name, status) and a
+#     numeric epoch-millis startedAt with a realpath'd cwd (verified
+#     2026-07-07) — consumers MUST NOT assume an exclusive field set.
+#     Pass numeric startedAt values in tests to mirror the real shape.
 #
 # Recorded state (files under MOCK_CLAUDE_STATE_DIR):
 #   bg-argv.log   one line per `--bg` call: the full argv, space-joined
