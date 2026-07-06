@@ -143,6 +143,15 @@ stop_input() {
     "$(printf '%s' "$output" | jq -r '.hookSpecificOutput.additionalContext')"
 }
 
+@test "emits additionalContext with UNKNOWN state when the state file is empty" {
+  make_worker_worktree 42
+  : > "${IPC_DIR}/worker-42.state"
+  run_guard "$(stop_input)"
+  assert_eq "exit code" "0" "$status"
+  assert_match "context reports UNKNOWN state" "UNKNOWN" \
+    "$(printf '%s' "$output" | jq -r '.hookSpecificOutput.additionalContext')"
+}
+
 @test "hookEventName echoes SubagentStop when the input event is SubagentStop" {
   make_worker_worktree 42
   write_state 42 RUNNING "phase1:implement"
