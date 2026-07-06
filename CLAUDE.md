@@ -28,14 +28,17 @@ cekernel's design is rooted in UNIX philosophy and TDD.
 These documents are symlinked in `.claude/rules/` for automatic loading by Claude Code.
 This ensures Worker agents read the content without requiring explicit `Read` calls.
 
-> **Note**: `.claude/rules/` symlinks do not work in git worktrees. Reviewers operating
-> in worktrees should refer to the [Review](#review) section below, which extracts the
+> **Note**: `.claude/rules/` relative symlinks resolve correctly inside full worktree
+> checkouts (verified 2026-07-06, claude v2.1.201), but automatic loading of the rules
+> is only guaranteed for the session's project directory. Reviewers operating in
+> worktrees should refer to the [Review](#review) section below, which extracts the
 > essential review criteria from these documents.
 
 ## Review
 
-Review criteria for Reviewer agents. This section exists in CLAUDE.md because
-Reviewers operate in git worktrees where `.claude/rules/` symlinks are unavailable.
+Review criteria for Reviewer agents. This section exists in CLAUDE.md so that
+Reviewers get the essential criteria directly, without depending on `.claude/rules/`
+auto-loading inside their worktree.
 The criteria below are extracted from `unix-philosophy.md`, `tdd.md`, and
 `claude-code-constraints.md`.
 
@@ -67,7 +70,7 @@ Assess whether changes follow these UNIX philosophy principles:
 - **zsh compatibility**: Scripts `source`d in Claude Code must use `${BASH_SOURCE[0]:-${(%):-%x}}` fallback.
 - **bash 3.2 compatibility**: No `declare -A` (associative arrays). Use temp files with `grep -qxF` instead.
 - **Arithmetic safety**: Use `var=$((var + 1))` instead of `((var++))` (fails under `set -e` when var=0).
-- **Subagent nesting**: Nesting depth ≥ 2 is unreliable. Prefer independent processes with FIFO IPC.
+- **Subagent nesting**: Officially supported since Claude Code v2.1.172 (fixed depth limit: 5). Subagents fit short-lived, session-bound work (e.g., Reviewer); use independent processes with FIFO IPC where cross-session persistence is required (e.g., Workers).
 - **Context window**: Workers must externalize state to files/git — do not rely on conversation history.
 
 ## Scripts

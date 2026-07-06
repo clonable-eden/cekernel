@@ -91,21 +91,44 @@ Known characteristics:
 - Task-based delegation is fire-and-forget from the parent's perspective
 - Status updates from subagents require external side-channels (files, issues)
 
-### Subagent Nesting Limitation
+### Subagent Nesting
 
-**Confidence: Stable**
+**Confidence: Evolving** (officially supported since v2.1.172)
 
-Claude Code does not support deeply nested subagent hierarchies reliably.
-When a skill spawns an agent (level 1), and that agent spawns a further
-subagent (level 2), reliability degrades. Context exhaustion, communication
-failures, and unexpected behavior become common at nesting depth ≥ 2.
+Nested subagents are officially supported: a subagent can spawn its own
+subagents, with a **fixed depth limit of 5**. The historical constraint
+("nesting depth ≥ 2 is unreliable" — context exhaustion, communication
+failures) applied to versions before v2.1.172 and is obsolete.
+
+Additionally, since the Orchestrator became an independent process
+(`claude -p` / `--bg`, ADR-0016), it is a session **main thread** — a
+subagent it spawns via the Agent tool is only depth 1.
+
+Related observations (claude v2.1.201, 2026-07-06):
+- Agent frontmatter supports `isolation: worktree`: the subagent receives a
+  git worktree under `.claude/worktrees/agent-<id>`, branched from the
+  **default branch** by default (`worktree.baseRef: head` selects the
+  parent's `HEAD` instead)
+- On agent-worktree creation, Claude Code appends `**/.claude/worktrees/`
+  (and other runtime paths) to the repository's `.git/info/exclude` under a
+  `# claude-code-runtime` marker — the main tree's `git status` stays clean
+  without any project `.gitignore` entry
+- Worktree auto-removal aborts only when `git status --porcelain` reports a
+  **dirty working tree**. Fetching and moving HEAD (e.g., a detached PR
+  checkout) does not count as a change, so a read-only subagent's worktree
+  is removed automatically
+- Relative symlinks (e.g., `.claude/rules/*.md` → `../../docs/*.md`) resolve
+  correctly inside a full worktree checkout
+- A main-thread agent can restrict spawnable subagent types with the
+  `Agent(agent_type)` allowlist syntax in its `tools` frontmatter
 
 **Implications for cekernel**:
-- The `/orchestrate` skill already uses the Orchestrator as a subagent (level 1).
-  Spawning the Reviewer as a further nested subagent (level 2) is unreliable
-- The spawn + FIFO pattern avoids nesting entirely: the Reviewer runs as an
-  independent process, communicating via FIFO instead of subagent return values
-- Design preference: independent processes with FIFO IPC over nested subagents
+- The Reviewer runs as an Orchestrator subagent with `isolation: worktree`
+  and a structured return contract (ADR-0012 Amendment 2), replacing the
+  spawn + FIFO pattern
+- Independent processes with FIFO IPC remain the right tool where
+  **cross-session persistence** is required (Workers) — subagents live and
+  die with their parent session
 
 ### Dynamic Workflows (`/workflows`)
 

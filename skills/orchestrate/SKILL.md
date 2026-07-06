@@ -139,7 +139,7 @@ Environment values to propagate in ALL script invocations:
 
 **IMPORTANT**: `CEKERNEL_SESSION_ID` must be `{repo}-{hex8}` format from the Bash output above, **not** the Claude Code session UUID.
 
-**MUST NOT**: Do not include Agent tool language (`subagent_type`, `Agent(worker)`, `Agent(reviewer)`, etc.) in the prompt. Workers and Reviewers are spawned by the Orchestrator via `spawn-worker.sh` / `spawn-reviewer.sh` (Bash), following its own agent definition.
+**MUST NOT**: Do not include Worker spawn instructions using Agent tool language (`subagent_type`, `Agent(worker)`, etc.) in the prompt. Workers are spawned by the Orchestrator via `spawn-worker.sh` (Bash); the Reviewer is invoked by the Orchestrator itself as a subagent (`Agent(reviewer)` with `isolation: worktree`), following its own agent definition.
 
 **Launch the Orchestrator as an independent OS process** via `spawn-orchestrator.sh`:
 
@@ -159,6 +159,6 @@ The Orchestrator autonomously executes:
 1. Issue verification and triage (FAIL for ambiguous issues)
 2. Worker spawning (with `CEKERNEL_ENV` propagated)
 3. Completion monitoring
-4. Review coordination (spawn Reviewer + FIFO on ci-passed)
+4. Review coordination (foreground Reviewer subagent on ci-passed)
 5. Merge decision and cleanup
 
