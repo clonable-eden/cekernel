@@ -8,7 +8,12 @@
 # Usage: source task-file.sh
 #
 # Functions:
-#   create_task_file <worktree> <issue-number>  — Fetch issue and write .cekernel-task.md
+#   create_task_file <worktree> <issue-number> [repo]
+#     — Fetch issue and write .cekernel-task.md. When [repo] (owner/repo)
+#       is given, the issue is fetched from that repository via
+#       `gh issue view --repo` and a `repo:` frontmatter field is written
+#       so Workers can detect cross-repo issues (#440). When omitted,
+#       the current repository is used (unchanged behavior).
 #   task_file_path <worktree>                   — Return the task file path
 #   task_file_exists <worktree>                 — Check if the task file exists (exit 0/1)
 #   task_file_clear_resume_marker <worktree>    — Remove "## Resume Reason:" section
@@ -57,17 +62,24 @@ task_file_clear_resume_marker() {
   fi
 }
 
-# create_task_file <worktree> <issue-number>
-# Fetches issue data via gh and writes .cekernel-task.md in the worktree
+# create_task_file <worktree> <issue-number> [repo]
+# Fetches issue data via gh and writes .cekernel-task.md in the worktree.
+# When [repo] (owner/repo) is given, fetches from that repository and
+# records it as a `repo:` frontmatter field (cross-repo issue, #440).
 create_task_file() {
-  local worktree="${1:?Usage: create_task_file <worktree> <issue-number>}"
-  local issue_number="${2:?Usage: create_task_file <worktree> <issue-number>}"
+  local worktree="${1:?Usage: create_task_file <worktree> <issue-number> [repo]}"
+  local issue_number="${2:?Usage: create_task_file <worktree> <issue-number> [repo]}"
+  local repo="${3:-}"
   local task_file
   task_file="$(task_file_path "$worktree")"
 
   # Fetch issue data as JSON (including comments for full context)
   local issue_json
-  issue_json=$(gh issue view "$issue_number" --json title,body,labels,comments)
+  if [[ -n "$repo" ]]; then
+    issue_json=$(gh issue view "$issue_number" --repo "$repo" --json title,body,labels,comments)
+  else
+    issue_json=$(gh issue view "$issue_number" --json title,body,labels,comments)
+  fi
 
   # Extract fields
   local title body labels comments_count
@@ -80,6 +92,9 @@ create_task_file() {
   {
     echo "---"
     echo "issue: ${issue_number}"
+    if [[ -n "$repo" ]]; then
+      echo "repo: ${repo}"
+    fi
     echo "title: \"${title}\""
     if [[ -n "$labels" ]]; then
       echo "labels: [${labels}]"

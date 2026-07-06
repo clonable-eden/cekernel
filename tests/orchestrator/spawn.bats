@@ -5,7 +5,8 @@
 # (headless backend) and asserts the recorded claude argv (ADR-0017) —
 # never the text of generated scripts.
 #
-# Covers --fallback-model / CEKERNEL_FALLBACK_MODEL passthrough (#529).
+# Covers --fallback-model / CEKERNEL_FALLBACK_MODEL passthrough (#529)
+# and --repo cross-repo issue support (#440).
 
 load '../helpers/assertions'
 
@@ -20,12 +21,15 @@ setup() {
     commit -q --allow-empty -m "init"
   git clone -q "${TMP}/upstream" "${TMP}/repo"
 
-  # Mock gh: spawn.sh reads the title, task-file.sh reads full JSON
+  # Mock gh: spawn.sh reads the title, task-file.sh reads full JSON.
+  # Records argv so tests can assert executed effects (ADR-0017).
   MOCK_BIN="${TMP}/bin"
   mkdir -p "$MOCK_BIN"
-  cat > "${MOCK_BIN}/gh" <<'GH'
+  GH_ARGS_FILE="${TMP}/gh-args.txt"
+  cat > "${MOCK_BIN}/gh" <<GH
 #!/usr/bin/env bash
-if [[ "$*" == *"-q"* ]]; then
+echo "\$*" >> '${GH_ARGS_FILE}'
+if [[ "\$*" == *"-q"* ]]; then
   echo "Test issue"
 else
   echo '{"title":"Test issue","body":"test body","labels":[],"comments":[]}'
@@ -107,6 +111,53 @@ run_spawn() {
   argv="$(cat "$ARGS_FILE")"
   if [[ "$argv" == *"--fallback-model"* ]]; then
     echo "FAIL: --fallback-model must not appear by default: ${argv}" >&2
+    return 1
+  fi
+}
+
+# ── Cross-repo issue support (#440) ──
+
+@test "spawn.sh --repo passes --repo to gh issue view" {
+  run_spawn --repo acme/planning
+  assert_eq "spawn exits 0" "0" "$status"
+  local gh_argv
+  gh_argv="$(tr '\n' ' ' < "$GH_ARGS_FILE")"
+  assert_match "gh argv contains --repo owner/repo" \
+    "--repo acme/planning" "$gh_argv"
+}
+
+@test "spawn.sh --repo writes repo: field into the task file" {
+  run_spawn --repo acme/planning
+  assert_eq "spawn exits 0" "0" "$status"
+  local task_file="${TMP}/repo/.worktrees/issue/42-test-issue/.cekernel-task.md"
+  assert_file_exists "task file created in worktree" "$task_file"
+  assert_match "task file has repo field" \
+    "repo: acme/planning" "$(cat "$task_file")"
+}
+
+@test "spawn.sh --repo references owner/repo#N in the worker prompt" {
+  run_spawn --repo acme/planning
+  assert_eq "spawn exits 0" "0" "$status"
+  wait_for_file "$ARGS_FILE"
+  local argv
+  argv="$(tr '\n' ' ' < "$ARGS_FILE")"
+  assert_match "claude argv references cross-repo issue" \
+    "acme/planning#42" "$argv"
+}
+
+@test "spawn.sh without --repo keeps current-repo behavior" {
+  run_spawn
+  assert_eq "spawn exits 0" "0" "$status"
+  local gh_argv
+  gh_argv="$(tr '\n' ' ' < "$GH_ARGS_FILE")"
+  if [[ "$gh_argv" == *"--repo"* ]]; then
+    echo "FAIL: --repo must not appear in gh argv by default: ${gh_argv}" >&2
+    return 1
+  fi
+  local task_file="${TMP}/repo/.worktrees/issue/42-test-issue/.cekernel-task.md"
+  assert_file_exists "task file created in worktree" "$task_file"
+  if grep -q '^repo:' "$task_file"; then
+    echo "FAIL: repo: field must not appear in task file by default" >&2
     return 1
   fi
 }

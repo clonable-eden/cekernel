@@ -42,6 +42,26 @@ For each issue, check its content with `gh issue view` and verify:
 
 If requirements are ambiguous or insufficient, FAIL immediately and return the reason. The user is expected to fix the issue and re-run.
 
+### Cross-repo Issues
+
+When the dispatch prompt references an issue in a different repository
+(`Issue repo: owner/repo`, an issue URL, or `owner/repo#N` notation), the issue
+lives outside the working repository (#440):
+
+- Pass `--repo <owner/repo>` to all issue-related `gh` commands during triage
+  (`gh issue view <N> --repo <owner/repo>`)
+- Pass `--repo <owner/repo>` to `spawn-worker.sh` so the Worker receives the
+  correct issue content and a `repo:` field in its task file:
+
+```bash
+export CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID} && ${CEKERNEL_SCRIPTS}/orchestrator/spawn-worker.sh --repo <owner/repo> <issue-number>
+```
+
+Worktrees, branches, and PRs stay in the working repository — `--repo` only
+changes where the issue is read from and commented on. Without `--repo`,
+`gh` would silently resolve the issue number against the working repository
+and fetch an unrelated same-numbered issue.
+
 ## Workflow
 
 ### Claude Code Session ID Persistence

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # spawn.sh — Create worktree + launch process via backend (common spawning logic)
 #
-# Usage: spawn.sh --agent <type> [--resume] [--priority <priority>] [--fallback-model <model>] <issue-number> [base-branch]
+# Usage: spawn.sh --agent <type> [--resume] [--priority <priority>] [--repo <owner/repo>] [--fallback-model <model>] <issue-number> [base-branch]
 #   type:     Process type (e.g., worker)
 #   priority: critical|high|normal|low or numeric 0-19 (default: normal)
 # Output: FIFO path (stdout last line)
@@ -9,6 +9,10 @@
 #   --agent           Process type to spawn (required)
 #   --resume          Resume a suspended process (reuse existing worktree)
 #   --priority        Set process priority (nice value)
+#   --repo            Issue repository (owner/repo) for cross-repo issues (#440).
+#                     The issue is fetched from this repository, while the
+#                     worktree/branch/PR stay in the current repository.
+#                     Defaults to the current repository when omitted
 #   --fallback-model  Forward --fallback-model <model> to claude (#529).
 #                     Overrides CEKERNEL_FALLBACK_MODEL (env/profile default)
 # Exit codes:
@@ -34,12 +38,14 @@ AGENT_TYPE=""
 RESUME=0
 PRIORITY="normal"
 CUSTOM_PROMPT=""
+ISSUE_REPO=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --agent) AGENT_TYPE="${2:?--agent requires a value}"; shift 2 ;;
     --resume) RESUME=1; shift ;;
     --priority) PRIORITY="${2:?--priority requires a value}"; shift 2 ;;
     --prompt) CUSTOM_PROMPT="${2:?--prompt requires a value}"; shift 2 ;;
+    --repo) ISSUE_REPO="${2:?--repo requires a value}"; shift 2 ;;
     --fallback-model) export CEKERNEL_FALLBACK_MODEL="${2:?--fallback-model requires a value}"; shift 2 ;;
     *) break ;;
   esac
@@ -48,11 +54,11 @@ done
 # Validate --agent is provided
 if [[ -z "$AGENT_TYPE" ]]; then
   echo "Error: --agent <type> is required" >&2
-  echo "Usage: spawn.sh --agent <type> [--resume] [--priority <priority>] [--fallback-model <model>] <issue-number> [base-branch]" >&2
+  echo "Usage: spawn.sh --agent <type> [--resume] [--priority <priority>] [--repo <owner/repo>] [--fallback-model <model>] <issue-number> [base-branch]" >&2
   exit 1
 fi
 
-ISSUE_NUMBER="${1:?Usage: spawn.sh --agent <type> [--resume] [--priority <priority>] [--fallback-model <model>] <issue-number> [base-branch]}"
+ISSUE_NUMBER="${1:?Usage: spawn.sh --agent <type> [--resume] [--priority <priority>] [--repo <owner/repo>] [--fallback-model <model>] <issue-number> [base-branch]}"
 BASE_BRANCH="${2:-main}"
 REPO_ROOT="$(resolve_repo_root)"
 
@@ -88,8 +94,16 @@ if [[ "$RESUME" -eq 0 ]]; then
 fi
 
 # ── Fetch issue info ──
-ISSUE_TITLE=$(gh issue view "$ISSUE_NUMBER" --json title -q '.title')
-[[ -n "$ISSUE_TITLE" ]] || { echo "Error: issue #${ISSUE_NUMBER} not found" >&2; exit 1; }
+# --repo targets a cross-repo issue (#440); default is the current repository.
+# ISSUE_REF is the human-readable issue reference used in prompts/errors.
+if [[ -n "$ISSUE_REPO" ]]; then
+  ISSUE_REF="${ISSUE_REPO}#${ISSUE_NUMBER}"
+  ISSUE_TITLE=$(gh issue view "$ISSUE_NUMBER" --repo "$ISSUE_REPO" --json title -q '.title')
+else
+  ISSUE_REF="#${ISSUE_NUMBER}"
+  ISSUE_TITLE=$(gh issue view "$ISSUE_NUMBER" --json title -q '.title')
+fi
+[[ -n "$ISSUE_TITLE" ]] || { echo "Error: issue ${ISSUE_REF} not found" >&2; exit 1; }
 
 # ── Branch name / path generation ──
 # Default naming convention. If the target repository has its own convention,
@@ -234,7 +248,7 @@ else
   # Extract issue data into worktree (session memory: page cache)
   # Processes read .cekernel-task.md locally instead of calling gh issue view,
   # reducing GitHub API calls and context window consumption.
-  create_task_file "$WORKTREE" "$ISSUE_NUMBER"
+  create_task_file "$WORKTREE" "$ISSUE_NUMBER" "$ISSUE_REPO"
   echo "task file: $(task_file_path "$WORKTREE")" >&2
 fi
 
@@ -259,12 +273,19 @@ EOF
 # ── Launch process via backend ──
 # If --prompt was provided, use it. Otherwise, use the default Worker prompt.
 # PATH and env vars are propagated via .cekernel-env sourced by the runner script.
+# Cross-repo issues (#440): the prompt references the issue as owner/repo#N
+# and tells the process to target issue-related gh commands at that repo.
+CROSS_REPO_NOTE=""
+if [[ -n "$ISSUE_REPO" ]]; then
+  CROSS_REPO_NOTE=" The issue lives in ${ISSUE_REPO} (see the repo: field in .cekernel-task.md); pass --repo ${ISSUE_REPO} to issue-related gh commands."
+fi
+
 if [[ -n "$CUSTOM_PROMPT" ]]; then
   PROMPT="${CUSTOM_PROMPT}"
 elif [[ "$RESUME" -eq 1 ]]; then
-  PROMPT="Resume issue #${ISSUE_NUMBER}. Read .cekernel-checkpoint.md to understand previous progress, then continue from where the previous Worker left off. First read the target repository's CLAUDE.md and fully follow its conventions. Follow only the kernel Worker Protocol for lifecycle: implement → create PR → verify CI. When done, run notify-complete.sh ${ISSUE_NUMBER} ci-passed <pr-number>."
+  PROMPT="Resume issue ${ISSUE_REF}. Read .cekernel-checkpoint.md to understand previous progress, then continue from where the previous Worker left off.${CROSS_REPO_NOTE} First read the target repository's CLAUDE.md and fully follow its conventions. Follow only the kernel Worker Protocol for lifecycle: implement → create PR → verify CI. When done, run notify-complete.sh ${ISSUE_NUMBER} ci-passed <pr-number>."
 else
-  PROMPT="Resolve issue #${ISSUE_NUMBER}. First read the target repository's CLAUDE.md and fully follow its conventions. Follow only the kernel Worker Protocol for lifecycle: implement → create PR → verify CI. When done, run notify-complete.sh ${ISSUE_NUMBER} ci-passed <pr-number>."
+  PROMPT="Resolve issue ${ISSUE_REF}.${CROSS_REPO_NOTE} First read the target repository's CLAUDE.md and fully follow its conventions. Follow only the kernel Worker Protocol for lifecycle: implement → create PR → verify CI. When done, run notify-complete.sh ${ISSUE_NUMBER} ci-passed <pr-number>."
 fi
 
 # Backend handles workspace resolution, window spawning, and handle file management internally.
