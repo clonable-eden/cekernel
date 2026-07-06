@@ -187,3 +187,23 @@ TOCTOU race in orchestrator counting: The check-then-spawn sequence has a
 time-of-check to time-of-use window — another orchestrator could start between
 `orchctl count` and the actual spawn. This is acceptable at the human-timescale
 operations typical of Claude Code (seconds to minutes between invocations).
+
+## Amendment 1: Session-ID based counting (2026-07-07, ADR-0016 Phase 2)
+
+`spawn-orchestrator.sh` no longer forks a `claude -p` child; it delegates to
+`claude --bg`, so there is no PID for cekernel to track and
+`orchestrator.pid` is gone (#547). The counting mechanism migrates
+accordingly:
+
+- `orchctl.sh count` scans `$IPC_BASE/*/orchestrator.claude-session-id`
+  (the token captured at spawn time) and counts sessions whose
+  `claude agents --json` state is `busy` or `blocked`.
+- Everything else in this ADR is unchanged: the two-tier model, the env
+  vars, the enforcement behavior per caller, and the cross-session
+  filesystem coordination point (`$IPC_BASE` scan) all still hold. The
+  daemon's `agents --json` view is global per user, which composes with
+  the shared-`$IPC_BASE` assumption rather than replacing it — the IPC
+  scan still scopes counting to cekernel-spawned orchestrators only.
+- A side effect improves accuracy: a finished (`done`) Orchestrator stops
+  counting against the limit immediately, whereas a lingering PID file
+  previously required `orchctl gc` or process death detection.

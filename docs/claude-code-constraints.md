@@ -61,10 +61,19 @@ the spawned process's environment keeps Bash calls truly in the foreground.
 - Background watchers can improve signal detection latency (seconds vs minutes)
   but must not replace phase-boundary checks as the reliable baseline
 - Design with the assumption that background notifications may be delayed or missed
-- Headless (`-p`) orchestrators MUST run with
-  `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` (spawn-orchestrator.sh sets it)
-  so that "wait in foreground" cannot be silently converted into a fatal
-  background detach
+- Orchestrators keep `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` under
+  `--bg` (ADR-0016 Phase 2; spawn-orchestrator.sh sets it): turn end no
+  longer kills the process — the session lingers in `done` — but whether
+  a background-task completion notification re-invokes a `done` session
+  is **unverified**. Without re-invocation, an auto-detached wait becomes
+  a silent stall instead of a crash (Rule of Repair: prefer the known
+  failure mode). Re-evaluate once re-invoke behavior is verified.
+- Under `--bg`, env vars set at spawn are best-effort: they reach the
+  session only when that spawn auto-starts the daemon; a pre-existing
+  daemon keeps its own environment. Treat
+  `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` as defense-in-depth, not a
+  guarantee — the agent-level "foreground watch" instructions in
+  orchestrator.md remain the reliable baseline
 
 **References**:
 [anthropics/claude-code#21048](https://github.com/anthropics/claude-code/issues/21048),
