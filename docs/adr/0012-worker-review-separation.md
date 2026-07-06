@@ -289,6 +289,91 @@ The Reviewer's core responsibilities (read diff, evaluate, submit review) remain
 - `skills/orchestrate/SKILL.md`, `skills/dispatch/SKILL.md`: Reviewer launch instructions updated to spawn-based
 - `docs/claude-code-constraints.md`: Subagent nesting limitation documented
 
+### Amendment 2: Reviewer as an Orchestrator Subagent with `isolation: worktree` (2026-07)
+
+The 2026-03 amendment adopted the spawn + FIFO pattern because subagent
+nesting was unreliable. Two changes have invalidated that premise (#531):
+
+1. **The Orchestrator is no longer a nested subagent.** Since orchestrators
+   became independent processes (`spawn-orchestrator.sh` runs
+   `claude -p --agent orchestrator`; ADR-0016 moves this to `claude --bg`),
+   the Orchestrator is a session **main thread**. A Reviewer spawned via the
+   `Agent` tool is depth 1 — the depth-3 chain
+   (`skill → Task(orchestrator) → Agent(reviewer)`) no longer exists.
+2. **Nested subagents are now officially supported.** As of Claude Code
+   v2.1.172, a subagent can spawn its own subagents (fixed depth limit: 5).
+   The "nesting depth ≥ 2 is unreliable" constraint is obsolete.
+
+Additionally, subagent frontmatter now supports `isolation: worktree`
+(worktree branched from the default branch by default; `worktree.baseRef`
+setting can select the parent `HEAD`; auto-removed when the subagent makes
+no changes).
+
+**Empirical verification (claude v2.1.201, 2026-07-06):**
+
+- A subagent spawned with `isolation: worktree` from a parent session on
+  `2.0-dev` received a worktree at `.claude/worktrees/agent-<id>` branched
+  from the **default branch** (`main`), confirming the documented default.
+- The worktree contains a full repo copy including `CLAUDE.md`; relative
+  symlinks under `.claude/rules/` are copied as-is.
+- A main-thread agent (`claude --agent`) can restrict spawnable subagent
+  types with `Agent(agent_type)` allowlist syntax in `tools`.
+
+**Resolution**: The Reviewer becomes an Orchestrator **subagent** with
+`isolation: worktree`. The Worker remains an independent process (`--bg`
+per ADR-0016) because it needs cross-session persistence, which subagents
+cannot provide.
+
+```
+Orchestrator (main thread, --bg) → Agent(reviewer, isolation: worktree)
+                                      ↓ gh pr checkout <N> in its worktree
+                                   [review → gh pr review] → return value
+```
+
+**Changes from Amendment 1 (spawn + FIFO)**:
+
+| Aspect | Amendment 1 (spawn + FIFO) | Amendment 2 (subagent) |
+|--------|----------------------------|------------------------|
+| Execution model | Independent process via `spawn-reviewer.sh` | `Agent(reviewer)` subagent of the Orchestrator |
+| Address space | Reuses Worker's worktree | Own temporary worktree (`isolation: worktree`), `gh pr checkout <N>` inside it |
+| Communication | FIFO via `notify-complete.sh` | Subagent return value (`approved` / `changes-requested` / `failed`) |
+| Orchestrator tools | Bash only | Bash + `Agent(reviewer)` |
+| Diff access | `gh pr diff` (truncation issues, see #521) | Full local checkout — reads files directly |
+| Monitoring | `watch.sh` FIFO loop | Foreground/background Agent call result |
+| Cleanup | `cleanup-worktree.sh` consideration | Automatic (worktree removed when unchanged; Reviewer never edits) |
+
+**Benefits**:
+
+- `spawn-reviewer.sh`, Reviewer FIFO handling, and Reviewer transcript
+  tracking are retired — less mechanism (Rule of Parsimony).
+- The Reviewer reads the PR branch from a full local checkout, eliminating
+  the `gh pr diff` truncation → redundant-read loop (#521).
+- Reviewer result delivery becomes synchronous and typed instead of a
+  parsed FIFO line (Rule of Repair: failures surface as Agent tool errors).
+
+**Trade-offs**:
+
+- The Reviewer's lifetime is bound to the Orchestrator session. Reviews are
+  short (minutes), and the Orchestrator already outlives the review window
+  in the monitoring loop, so this is acceptable.
+- Requires Claude Code ≥ v2.1.172 (nested subagents) — effectively pinned
+  higher by ADR-0016's `--bg` requirements. Legacy spawn mode
+  (`CEKERNEL_SPAWN_MODE=legacy`) keeps `spawn-reviewer.sh` available during
+  migration.
+
+**Impacted components** (implementation issues to follow):
+
+- `agents/orchestrator.md`: add `Agent(reviewer)` to `tools`; Reviewer phase
+  uses the Agent tool instead of `spawn-reviewer.sh` + `watch.sh`
+- `agents/reviewer.md`: frontmatter gains `isolation: worktree`; FIFO
+  notification instructions replaced by return-value contract; diff reading
+  switches to `gh pr checkout` + local file reads
+- `scripts/orchestrator/spawn-reviewer.sh`: retained for legacy mode, removed
+  after migration
+- `docs/claude-code-constraints.md` and `CLAUDE.md`: the subagent-nesting
+  constraint must be rewritten (obsolete as of v2.1.172)
+- Tests: reviewer spawn tests re-target the new orchestration contract
+
 ## Alternatives Considered
 
 ### Alternative: Human-Only Review
