@@ -18,10 +18,13 @@
 #       errors (Rule of Repair: callers decide how to surface it).
 #
 #   claude_bg_state_for_token <token>
-#     — Echo the state (busy|blocked|done|stopped|...) of the session whose
-#       sessionId starts with <token>. Tokens are opaque: the full UUID when
-#       capture succeeded, or the short ID (first 8 hex chars) as a degraded
-#       fallback — prefix matching serves both.
+#     — Echo the logical state (busy|blocked|done|stopped|...) of the session
+#       whose sessionId starts with <token>. Live sessions report it in
+#       `status` (with `state: "working"` or no state); terminal sessions in
+#       `state` — the query reads `(.status // .state)` to serve both, plus
+#       the legacy pre-split shape (#581). Tokens are opaque: the full UUID
+#       when capture succeeded, or the short ID (first 8 hex chars) as a
+#       degraded fallback — prefix matching serves both.
 #     — Returns 1 (echoing nothing) when no session matches or the query fails.
 #
 #   claude_bg_token_alive <token>
@@ -50,7 +53,7 @@ claude_bg_state_for_token() {
   local json state
   json=$(claude_bg_agents_json) || return 1
   state=$(echo "$json" | jq -r --arg p "$token" \
-    '[.[] | select(.sessionId | startswith($p))][0].state // empty')
+    '[.[] | select(.sessionId | startswith($p))][0] | (.status // .state) // empty')
   [[ -n "$state" ]] || return 1
   echo "$state"
 }

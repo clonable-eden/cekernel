@@ -70,7 +70,26 @@ setup() {
   assert_match "kind" '"kind":"background"' "$output"
   assert_match "cwd" '"cwd":"/tmp/repo/.worktrees/issue/42-x"' "$output"
   assert_match "startedAt" '"startedAt":"2026-07-07T00:00:00Z"' "$output"
-  assert_match "state" '"state":"busy"' "$output"
+  # Live sessions carry the status/state field split (#581)
+  assert_match "status" '"status":"busy"' "$output"
+  assert_match "state" '"state":"working"' "$output"
+}
+
+@test "agent records split live status/state; terminal records carry state only" {
+  # Observed shape (verified 2026-07-07, #581): live → status:busy|blocked
+  # + state:"working"; terminal → state:done|stopped, no status field.
+  run mock_claude_agent_record \
+    "cafe0001-0000-4000-8000-000000000001" background /tmp/wt 1700000000000 blocked
+  assert_match "live status" '"status":"blocked"' "$output"
+  assert_match "live state is working" '"state":"working"' "$output"
+
+  run mock_claude_agent_record \
+    "cafe0001-0000-4000-8000-000000000001" background /tmp/wt 1700000000000 stopped
+  assert_match "terminal state" '"state":"stopped"' "$output"
+  if [[ "$output" == *'"status"'* ]]; then
+    echo "terminal record must not carry a status field: $output" >&2
+    return 1
+  fi
 }
 
 @test "agents --json emits [] when nothing is enqueued" {
@@ -124,7 +143,7 @@ setup() {
   mock_claude_enqueue_agents "[${rec_busy}]"
   mock_claude_enqueue_agents "[${rec_done}]"
   run claude agents --json
-  assert_match "first call is busy" '"state":"busy"' "$output"
+  assert_match "first call is busy" '"status":"busy"' "$output"
   run claude agents --json
   assert_match "second call is done" '"state":"done"' "$output"
 }
@@ -140,7 +159,7 @@ setup() {
   local i
   for i in 1 2 3; do
     run claude agents --json
-    assert_match "call ${i} stays busy" '"state":"busy"' "$output"
+    assert_match "call ${i} stays busy" '"status":"busy"' "$output"
   done
 }
 

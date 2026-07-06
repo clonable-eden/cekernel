@@ -241,10 +241,29 @@ Verified 2026-07-07 (Phase 1 probe, #546, session `971e554a`):
   — cwd-based matching must normalize with `pwd -P` first.
 - `claude stop <short-id>` accepts the short ID as the stop token.
 
+Verified 2026-07-07 (#581, live-session field split; claude v2.1.x):
+- **Live and terminal sessions report their state in different fields.**
+  Live sessions carry `status: "busy"` plus `state: "working"` — or no
+  `state` field at all; terminal sessions carry `state: done|stopped`
+  and no `status`. Earlier builds reported live states directly in
+  `state` (`state: busy`). Observed distribution on a real roster:
+  `busy/working`, `busy/(absent)`, `(absent)/done`, `(absent)/stopped`.
+  `blocked` is expected to appear in `status` like `busy` (not yet
+  re-observed in the split shape).
+- Liveness consumers must read `(.status // .state)` — status preferred,
+  state fallback. The fallback keeps the pre-split shape resolving
+  unchanged. Reading `.state` alone evaluates every live session as
+  `working` and mis-reports it dead (#581: watch.sh crash-flagged all
+  spawned Workers and deleted their FIFOs).
+
 **Implications for cekernel**:
 - ADR-0016 delegates spawn/supervision to `--bg`; session IDs are captured
   (never injected); `blocked` must be surfaced by supervision; cleanup
   must `claude stop` lingering `done` sessions
+- All `agents --json` liveness reads go through `(.status // .state)`
+  (`shared/claude-bg.sh`, `shared/issue-lock.sh`);
+  `tests/helpers/mock-claude.bash` emits the split shape (STALENESS
+  COUPLING: update the mock in the same PR as this section)
 
 ### Subagent Information Propagation
 

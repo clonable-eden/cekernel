@@ -66,6 +66,24 @@ setup() {
   assert_eq "missing is dead" "1" "$status"
 }
 
+@test "token_alive: live record with status but no state field is alive" {
+  # Observed live shape variant (#581): status:"busy" with NO state field.
+  mock_claude_enqueue_agents \
+    "[{\"sessionId\":\"$FULL_UUID\",\"kind\":\"background\",\"cwd\":\"/tmp/x\",\"startedAt\":1700000000000,\"status\":\"busy\"}]"
+  run claude_bg_token_alive "$FULL_UUID"
+  assert_eq "status-only busy is alive" "0" "$status"
+}
+
+@test "token_alive: legacy record shape (state:busy, no status) stays alive" {
+  # Backward compat (#581): the pre-split shape put the live state in
+  # `state` with no `status` field. The status-preferring query must
+  # still fall back to `state`.
+  mock_claude_enqueue_agents \
+    "[{\"sessionId\":\"$FULL_UUID\",\"kind\":\"background\",\"cwd\":\"/tmp/x\",\"startedAt\":1700000000000,\"state\":\"busy\"}]"
+  run claude_bg_token_alive "$FULL_UUID"
+  assert_eq "legacy busy is alive" "0" "$status"
+}
+
 # ── claude_bg_capture_session_id ──
 
 @test "capture: short ID prefix-matches to the full UUID (primary path)" {
