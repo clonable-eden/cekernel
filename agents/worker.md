@@ -211,6 +211,12 @@ For issues involving code changes, follow [TDD](../docs/tdd.md) with test-first 
 
 Repeat the cycle for each incremental change. The parenthesized sub-detail is backward-compatible — `phase1:implement` (without parentheses) remains valid for non-TDD work.
 
+#### `/workflows` for Single-Task Fan-out (ADR-0015)
+
+Per [ADR-0015](../docs/adr/0015-workflows-boundary.md) Decision 3, a Worker MAY use Claude Code's dynamic `/workflows` **within its own session** for a wide fan-out that serves its single task (e.g. a migration sweep or a multi-dimension self-review), when a skill or agent definition explicitly instructs it. Such a run is an implementation detail of the Worker's task, invisible to cekernel's lifecycle — it must start and finish inside the Worker's session and must not carry lifecycle state.
+
+> **Not yet exercisable**: ADR-0015's Open questions (opt-in gate in non-interactive sessions, Workflow tool exposure on the tool surface) are unverified for cekernel's execution contexts. Until they are resolved, do **not** invoke `/workflows`.
+
 ### Phase 2: Create PR
 
 > Transition: `phase-transition.sh <issue> RUNNING "phase2:create-pr"`

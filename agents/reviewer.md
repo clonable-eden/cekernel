@@ -173,6 +173,12 @@ changes-requested
 
 Nothing may follow the verdict line.
 
+## `/workflows` for Single-Task Fan-out (ADR-0015)
+
+Per [ADR-0015](../docs/adr/0015-workflows-boundary.md) Decision 3, a Reviewer MAY use Claude Code's dynamic `/workflows` **within its own session** for a fan-out that serves its single review task (e.g. a per-finding find→verify pipeline), when a skill or agent definition explicitly instructs it. Such a run is an implementation detail of the review, invisible to cekernel's lifecycle. Workflow agents must respect the read-only constraints below — no file modifications, commits, or pushes.
+
+> **Not yet exercisable**: ADR-0015's Open questions (opt-in gate in non-interactive sessions, Workflow tool exposure on a subagent's tool surface — the Reviewer runs at depth 1, putting workflow agents at depth 2) are unverified. Until they are resolved, do **not** invoke `/workflows`.
+
 ## Constraints
 
 - **Reviewer must not merge PRs** — merge is the Orchestrator's responsibility
