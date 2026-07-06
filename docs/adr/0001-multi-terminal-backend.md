@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted — Interface amended by ADR-0005 (8 functions → 4 external API, `terminal_*` → `backend_*`)
+Accepted — Interface amended by ADR-0005 (8 functions → 4 external API, `terminal_*` → `backend_*`); execution model amended by Amendment 1 below (ADR-0016 Phase 5: attach-based visualization)
 
 ## Context
 
@@ -110,3 +110,51 @@ This is the simplest option and respects the Rule of Simplicity. However, it blo
 **Simplicity vs. Diversity**: Adding backends increases code surface. However, the increase is bounded (each backend is ~50-80 lines implementing a fixed interface) and the existing separation in `terminal-adapter.sh` means no complexity leaks into callers. The trade-off is acceptable because the alternative — WezTerm lock-in — blocks meaningful future capabilities.
 
 **Visibility vs. Portability** (headless mode specifically): The terminal pane layout (Claude Code + git log + terminal) provides valuable real-time visibility into Worker activity. Headless mode sacrifices this. The mitigation is file-based logging (`${CEKERNEL_IPC_DIR}/logs/worker-*.log`), which already exists. The Rule of Transparency is partially preserved through logs, though the experience is degraded compared to live panes.
+
+## Amendment 1: Attach-based visualization (ADR-0016 Phase 5, 2026-07-07)
+
+The original design ran the Worker **inside** the terminal pane: the pane
+executed `claude -p` via a generated runner script, so the pane owned the
+Worker process. ADR-0016 delegates spawn and supervision to `claude --bg`
+background agent sessions on **all** backends; the terminal backends
+(wezterm/tmux) become a pure **visualization layer**:
+
+- **Spawn** goes through the shared session core
+  (`scripts/shared/bg-session.sh`), identical to the headless backend.
+  The pane runs `claude attach <session-id>` — an attach-only viewer.
+  `runner.sh` (the `claude -p` runner generator) is removed.
+- **Handles are unified**: `handle-{issue}.{type}` contains the opaque
+  session token on every backend (ADR-0005 Amendment 1). The pane
+  ID/target is a visualization detail recorded separately in
+  `pane-{issue}.{type}`.
+
+### Cleanup semantics change
+
+Under the original design, pane death implied Worker death: liveness was
+pane existence, and killing the window killed the Worker. Under
+delegation this inverts:
+
+| Event | Old semantics | New semantics |
+|-------|---------------|---------------|
+| Pane/window closed by user | Worker terminated | **Detach only** — the session keeps running under the daemon |
+| Liveness check | pane exists? | `claude agents --json` state (`busy`/`blocked` = alive) |
+| `backend_kill_worker` / `orchctl kill` | kill panes | `claude stop <token>` **and** close the window |
+| Worktree cleanup | remove handle files | also `claude stop` (lingering `done` sessions leak otherwise) and remove `pane-*` files |
+
+Consequences:
+
+- Closing a pane is now a safe, non-destructive operation (Rule of Least
+  Surprise for the `claude agents` generation: attach/detach is the
+  standard UX). Re-attaching later via `claude attach <token>` works as
+  long as the session lives.
+- Supervision (`health-check.sh`, `watch.sh`, `orchctl`) must never infer
+  Worker death from pane death. All liveness flows through the session
+  state; `backend_worker_status` is part of the standard backend API.
+- Terminating a Worker always requires `claude stop` — killing the
+  window alone leaves the session running (and `done` sessions linger
+  until stopped).
+
+The **Visibility vs. Portability** trade-off above collapses: headless
+and terminal backends now share one execution path, differing only in
+whether an attach pane is opened. The visibility gap between them is
+reduced to the viewer, not the lifecycle.
