@@ -20,6 +20,7 @@ These can be set via env profiles or explicit `export`.
 | `CEKERNEL_REVIEW_MAX_RETRIES` | `2` | Positive integer | Orchestrator | Max cycles of Reviewer reject → Worker re-implement. Escalates to human when exceeded |
 | `CEKERNEL_NOTIFY_MACOS_ACTION` | `none` | `none`, `open`, `pbcopy` | `desktop-notify-backend/macos.sh` | macOS notification URL action: `none` = notify only, `open` = open URL in browser, `pbcopy` = copy URL to clipboard |
 | `CEKERNEL_VAR_DIR` | `~/.local/var/cekernel` | Directory path | `registry.sh`, `wrapper.sh` | Runtime state directory (locks, logs, runners, registry) |
+| `CEKERNEL_FALLBACK_MODEL` | (unset) | Claude model name (e.g. `claude-haiku-4-5-20251001`) | `bare-mode.sh` (all spawn paths), `spawn.sh` (`--fallback-model` flag) | Forwarded to `claude` as `--fallback-model <model>`: automatic fallback to a smaller model when the primary model is unavailable (e.g. quota exhaustion). Safety valve for unattended runs — `headless.env` sets a default; interactive profiles leave it unset (opt-in). Unset: no flag is added (existing behavior). `spawn.sh --fallback-model` overrides the env/profile value |
 | `CEKERNEL_CLAUDE_SETTINGS` | (unset) | Path to a Claude settings JSON | `bare-mode.sh` (all spawn paths) | Passed to `claude` via `--settings`. All spawns run in `--bare` mode (ADR-0016 Phase 0), which never reads OAuth/keychain — auth is strictly `ANTHROPIC_API_KEY` or `apiKeyHelper` via this settings file. **Required for cron/at scheduled jobs**, where exported env vars do not reach the generated runner (the path is captured at schedule time). Spawn fails fast when neither auth source is available |
 
 ## Internal Variables
@@ -62,7 +63,7 @@ Profiles only fill unset variables. Explicit `export` always wins.
 | `default.env` | Symlink to `headless.env` (loaded when `CEKERNEL_ENV` is unset or `default`) |
 | `wezterm.env` | WezTerm backend with standard concurrency |
 | `tmux.env` | tmux backend with standard concurrency |
-| `headless.env` | Terminal-free execution (headless backend, 5 children, 3600s timeout) |
+| `headless.env` | Terminal-free execution (headless backend, 5 children, 3600s timeout, fallback model enabled for unattended runs) |
 
 ### User Profile
 

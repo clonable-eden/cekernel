@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 # spawn.sh — Create worktree + launch process via backend (common spawning logic)
 #
-# Usage: spawn.sh --agent <type> [--resume] [--priority <priority>] <issue-number> [base-branch]
+# Usage: spawn.sh --agent <type> [--resume] [--priority <priority>] [--fallback-model <model>] <issue-number> [base-branch]
 #   type:     Process type (e.g., worker)
 #   priority: critical|high|normal|low or numeric 0-19 (default: normal)
 # Output: FIFO path (stdout last line)
 # Options:
-#   --agent     Process type to spawn (required)
-#   --resume    Resume a suspended process (reuse existing worktree)
-#   --priority  Set process priority (nice value)
+#   --agent           Process type to spawn (required)
+#   --resume          Resume a suspended process (reuse existing worktree)
+#   --priority        Set process priority (nice value)
+#   --fallback-model  Forward --fallback-model <model> to claude (#529).
+#                     Overrides CEKERNEL_FALLBACK_MODEL (env/profile default)
 # Exit codes:
 #   0 — Process spawned successfully
 #   1 — General error
@@ -38,6 +40,7 @@ while [[ $# -gt 0 ]]; do
     --resume) RESUME=1; shift ;;
     --priority) PRIORITY="${2:?--priority requires a value}"; shift 2 ;;
     --prompt) CUSTOM_PROMPT="${2:?--prompt requires a value}"; shift 2 ;;
+    --fallback-model) export CEKERNEL_FALLBACK_MODEL="${2:?--fallback-model requires a value}"; shift 2 ;;
     *) break ;;
   esac
 done
@@ -45,11 +48,11 @@ done
 # Validate --agent is provided
 if [[ -z "$AGENT_TYPE" ]]; then
   echo "Error: --agent <type> is required" >&2
-  echo "Usage: spawn.sh --agent <type> [--resume] [--priority <priority>] <issue-number> [base-branch]" >&2
+  echo "Usage: spawn.sh --agent <type> [--resume] [--priority <priority>] [--fallback-model <model>] <issue-number> [base-branch]" >&2
   exit 1
 fi
 
-ISSUE_NUMBER="${1:?Usage: spawn.sh --agent <type> [--resume] [--priority <priority>] <issue-number> [base-branch]}"
+ISSUE_NUMBER="${1:?Usage: spawn.sh --agent <type> [--resume] [--priority <priority>] [--fallback-model <model>] <issue-number> [base-branch]}"
 BASE_BRANCH="${2:-main}"
 REPO_ROOT="$(resolve_repo_root)"
 

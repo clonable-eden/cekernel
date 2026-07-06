@@ -11,6 +11,9 @@
 #   --add-dir <context-dir>      CLAUDE.md discovery for worktree/repo root
 #   --settings <path>            only when CEKERNEL_CLAUDE_SETTINGS is set
 #                                (auth via apiKeyHelper, extra settings)
+#   --fallback-model <model>     only when CEKERNEL_FALLBACK_MODEL is set
+#                                (auto-fallback when the primary model is
+#                                unavailable, e.g. quota exhaustion — #529)
 #
 # Usage:
 #   source bare-mode.sh
@@ -36,6 +39,10 @@
 #                              environments without ANTHROPIC_API_KEY
 #                              (e.g. cron/at, where exported vars don't reach
 #                              the generated runner).
+#   CEKERNEL_FALLBACK_MODEL  — optional model name passed via
+#                              --fallback-model. Safety valve so Workers keep
+#                              running on a smaller model when the primary
+#                              model is unavailable. Unset: no flag is added.
 
 # Resolve plugin root at source time (zsh fallback: sourced by backends).
 _BARE_MODE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
@@ -54,6 +61,10 @@ bare_mode_prepare() {
 
   if [[ -n "${CEKERNEL_CLAUDE_SETTINGS:-}" ]]; then
     CEKERNEL_BARE_FLAGS+=(--settings "$CEKERNEL_CLAUDE_SETTINGS")
+  fi
+
+  if [[ -n "${CEKERNEL_FALLBACK_MODEL:-}" ]]; then
+    CEKERNEL_BARE_FLAGS+=(--fallback-model "$CEKERNEL_FALLBACK_MODEL")
   fi
 }
 
