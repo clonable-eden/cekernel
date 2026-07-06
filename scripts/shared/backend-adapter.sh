@@ -15,10 +15,12 @@
 #   backend_spawn_worker    — Start a Worker process (issue, type, worktree, prompt, agent-name)
 #   backend_get_handle      — Get the opaque worker token (issue): the
 #                             `claude --bg` session token on all backends
-#   backend_worker_alive    — Check if Worker is alive (issue): maps to
-#                             `claude agents --json` state (busy|blocked)
-#   backend_worker_status   — Echo the session state (busy|blocked|done|...)
-#   backend_kill_worker     — Terminate a Worker (issue): claude stop +
+#   backend_worker_alive    — Check if Worker is alive (issue): exit 0 on
+#                             an alive/blocked verdict (ADR-0018)
+#   backend_worker_status   — Echo the ADR-0018 verdict vocabulary
+#                             (alive|blocked|done|stopped|not-listed|
+#                             query-failed|unknown-value|missing)
+#   backend_kill_worker     — Terminate a Worker (issue): session stop +
 #                             visualization cleanup on terminal backends
 #
 # All backends spawn through the shared --bg session core (bg-session.sh).

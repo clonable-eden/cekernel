@@ -12,6 +12,7 @@ These can be set via env profiles or explicit `export`.
 | `CEKERNEL_MAX_ORCHESTRATORS` | `3` | Positive integer | `dispatch`, `orchestrate` | Maximum number of concurrently running orchestrators |
 | `CEKERNEL_MAX_ORCH_CHILDREN` | `5` | Positive integer | `spawn.sh` | Maximum concurrent children (workers + reviewers) per orchestrator |
 | `CEKERNEL_WORKER_TIMEOUT` | `3600` | Positive integer (seconds) | `watch.sh` | Worker timeout before auto-termination |
+| `CEKERNEL_WATCH_QUERY_RETRY_MAX` | `3` | Positive integer | `watch.sh` | Consecutive unverifiable liveness polls (`query-failed` / `unknown-value` verdicts, ADR-0018) tolerated before watch escalates an `error` result. The escalation detail warns the Worker may still be running — do not clean up on this result alone |
 | `CEKERNEL_CHECKPOINT_FILENAME` | `.cekernel-checkpoint.md` | Any filename | `checkpoint-file.sh` | Checkpoint file name in worktree |
 | `CEKERNEL_TASK_FILENAME` | `.cekernel-task.md` | Any filename | `task-file.sh` | Task file name in worktree |
 | `CEKERNEL_CI_MAX_RETRIES` | `3` | Positive integer | `worker.md` (Phase 3) | Maximum CI retry attempts before Worker reports failure |

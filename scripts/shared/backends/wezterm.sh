@@ -6,9 +6,10 @@
 # visualization layer: a 3-pane window whose main pane runs
 # `claude attach <session-id>` (ADR-0001 Amendment 1).
 #
-# Pane close = detach, NOT session termination: liveness maps to
-# `claude agents --json` state, never pane existence. Killing the worker
-# stops the session (claude stop) and closes the window.
+# Pane close = detach, NOT session termination: liveness maps to the
+# ADR-0018 session verdict, never pane existence. Killing the worker
+# stops the session (via the claude-bg stop primitive) and closes the
+# window.
 #
 # Handle file: ${CEKERNEL_IPC_DIR}/handle-{issue}.{type} contains the
 # opaque session token (see bg-session.sh).
@@ -101,7 +102,7 @@ backend_worker_alive() {
 }
 
 # backend_kill_worker <issue> [type]
-# Stops the session(s) via `claude stop`, closes the visualization
+# Stops the session(s) via the claude-bg stop primitive, closes the visualization
 # window(s), and cleans up pane/payload files. No error if handle missing.
 backend_kill_worker() {
   local issue="$1"

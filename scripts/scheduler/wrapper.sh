@@ -8,7 +8,8 @@
 #
 # ADR-0016 Phase 3: the generated runner spawns `claude --bg` (prompt path —
 # the hidden/unstable `--exec` flag is NOT used) and supervises the run by
-# polling `agents --json` to a terminal state. `--bg` returns immediately,
+# polling the session verdict (claude-bg.sh, ADR-0018) to a terminal
+# state. `--bg` returns immediately,
 # so exit-code-based success/error recording is impossible; instead:
 #
 #   done                         → registry status "success"
