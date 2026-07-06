@@ -250,7 +250,7 @@ Developers expect code review before merge. The current auto-merge-without-revie
 
 ### Platform Constraints
 
-**Subagent nesting limitation** (Confidence: Stable): Claude Code does not support deeply nested subagent hierarchies reliably. When the `/orchestrate` skill launches the Orchestrator as a subagent, and the Orchestrator then attempts to launch the Reviewer as a further nested subagent, the nesting depth can cause reliability issues. This constraint led to the adoption of the spawn + FIFO pattern for the Reviewer (see Amendment below).
+**Subagent nesting limitation** (obsolete as of Claude Code v2.1.172; see Amendment 2): At the time of this decision, Claude Code did not support deeply nested subagent hierarchies reliably. When the `/orchestrate` skill launched the Orchestrator as a subagent, and the Orchestrator then attempted to launch the Reviewer as a further nested subagent, the nesting depth could cause reliability issues. This constraint led to the adoption of the spawn + FIFO pattern for the Reviewer (Amendment 1 below). Nested subagents have since become officially supported (fixed depth limit: 5), which is one of the two premises behind Amendment 2.
 
 ### Amendment: Spawn + FIFO Pattern for Reviewer (2026-03)
 
@@ -396,8 +396,14 @@ becomes a measured bottleneck.
 - `agents/reviewer.md`: frontmatter gains `isolation: worktree` **and
   `Read` in `tools`** (local file reads replace `gh pr diff`); FIFO
   notification instructions replaced by the return contract (final output
-  line is exactly one of `approved` / `changes-requested` / `failed`);
-  diff reading switches to detached PR checkout + local file reads
+  line is exactly one of `approved` / `changes-requested` / `failed` —
+  and nothing after it); diff reading switches to detached PR checkout +
+  local file reads. The diff procedure must fetch the PR's **base ref**
+  explicitly and compare against the merge-base — `git fetch origin
+  <base>` then `git diff origin/<base>...HEAD` — because the worktree is
+  created from the default branch while the PR base may be a non-default
+  branch (e.g. `2.0-dev`), and the worktree's `origin/<base>` is only as
+  fresh as the last fetch
 - Permissions: the Reviewer inherits the parent's tool permissions.
   `gh pr review` (and the checkout commands) must be pre-authorized in the
   Orchestrator's context, or the review stalls exactly like ADR-0016's
