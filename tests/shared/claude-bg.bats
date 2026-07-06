@@ -157,3 +157,61 @@ setup() {
   run claude_bg_capture_session_id "" /tmp/x
   assert_eq "exit status" "1" "$status"
 }
+
+# ── claude_bg_wait_terminal (ADR-0016 Phase 3) ──
+# Polls to a terminal-for-unattended-supervision state. blocked is terminal
+# here: an unattended (cron/at) session waiting on a permission dialog will
+# never be approved, so waiting longer cannot help.
+
+@test "wait_terminal: echoes done when the session completes" {
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$FULL_UUID" background /tmp/x 1700000000000 busy)]"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$FULL_UUID" background /tmp/x 1700000000000 done)]"
+  run claude_bg_wait_terminal "$FULL_UUID" 0 5
+  assert_eq "exit status" "0" "$status"
+  assert_eq "final state" "done" "$output"
+}
+
+@test "wait_terminal: blocked is terminal (unattended permission stall)" {
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$FULL_UUID" background /tmp/x 1700000000000 blocked)]"
+  run claude_bg_wait_terminal "$FULL_UUID" 0 5
+  assert_eq "exit status" "0" "$status"
+  assert_eq "final state" "blocked" "$output"
+}
+
+@test "wait_terminal: stopped is terminal" {
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$FULL_UUID" background /tmp/x 1700000000000 stopped)]"
+  run claude_bg_wait_terminal "$FULL_UUID" 0 5
+  assert_eq "exit status" "0" "$status"
+  assert_eq "final state" "stopped" "$output"
+}
+
+@test "wait_terminal: echoes timeout when the session never leaves busy" {
+  # Non-terminating sequence: the last enqueued response repeats forever
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$FULL_UUID" background /tmp/x 1700000000000 busy)]"
+  run claude_bg_wait_terminal "$FULL_UUID" 1 1
+  assert_eq "exit status" "0" "$status"
+  assert_eq "final state" "timeout" "$output"
+}
+
+@test "wait_terminal: transient missing session keeps polling to terminal" {
+  # Daemon restart window: session temporarily absent, then reported done
+  mock_claude_enqueue_agents "[]"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$FULL_UUID" background /tmp/x 1700000000000 done)]"
+  run claude_bg_wait_terminal "$FULL_UUID" 0 5
+  assert_eq "exit status" "0" "$status"
+  assert_eq "final state" "done" "$output"
+}
+
+@test "wait_terminal: prefix-matches a short-ID token" {
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$FULL_UUID" background /tmp/x 1700000000000 done)]"
+  run claude_bg_wait_terminal "aaaa1111" 0 5
+  assert_eq "exit status" "0" "$status"
+  assert_eq "final state" "done" "$output"
+}

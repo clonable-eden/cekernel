@@ -9,10 +9,15 @@
 # Consolidates legacy tests/scheduler/test-wrapper.sh, test-preflight.sh,
 # and test-registry.sh.
 #
-# Note: wrapper tests cover the current (pre-#548) runner contract as-is;
-# they are rewritten together with wrapper.sh in the ADR-0016 Phase 3 PR.
+# Wrapper tests cover the ADR-0016 Phase 3 runner contract: the generated
+# runner spawns `claude --bg` and polls agents --json to a terminal state.
+# They EXECUTE the generated runner against the canonical mock-claude shim
+# and assert executed effects and recorded argv — never generated script
+# text (ADR-0017).
 
 load '../helpers/assertions'
+load '../helpers/mock-bin'
+load '../helpers/mock-claude'
 
 setup() {
   CEKERNEL_DIR="$(cd "${BATS_TEST_DIRNAME}/../.." && pwd)"
@@ -31,10 +36,13 @@ setup() {
 
   # ── wrapper fixtures ──
   W_ID="cekernel-cron-test01"
-  W_REPO="/tmp/test-repo"
+  W_REPO="${BATS_TEST_TMPDIR}/test-repo"
   W_PATH="/opt/homebrew/bin:/usr/bin:/bin"
   W_PROMPT="/dispatch --env headless --label ready"
   W_RUNNER="${CEKERNEL_VAR_DIR}/runners/${W_ID}.sh"
+  W_SYSLOG="${CEKERNEL_VAR_DIR}/logs/schedule.log"
+  W_RUN_LOG="${CEKERNEL_VAR_DIR}/logs/${W_ID}.run.log"
+  W_UUID="aaaa1111-2222-4333-8444-555566667777"
 
   # ── preflight fixtures: fake repo + PATH-shim bin dir ──
   # TEST_BIN is used both prepended (all commands found) and as a full PATH
@@ -71,6 +79,40 @@ preflight_with_path() {
 # wrapper.sh — schedule_generate_wrapper
 # ═══════════════════════════════════════
 
+# generate_exec_runner [poll-interval] [poll-timeout]
+# Prepares an executable runner: installs the claude shim + notification
+# no-ops (desktop_notify is best-effort but must not fire real OS
+# notifications from tests), registers a registry entry for W_ID, and
+# generates the runner with the shim dir on its embedded PATH (cron
+# runners only see the PATH captured at schedule time).
+generate_exec_runner() {
+  local interval="${1:-0}" timeout="${2:-5}"
+  mock_claude
+  mock_bin alerter ':'
+  mock_bin osascript ':'
+  mock_bin notify-send ':'
+  mkdir -p "$W_REPO"
+  schedule_registry_add "{\"id\":\"${W_ID}\",\"type\":\"cron\",\"schedule\":\"0 9 * * *\",\"label\":\"ready\",\"repo\":\"${W_REPO}\",\"path\":\"${PATH}\",\"os_backend\":\"launchd\",\"os_ref\":\"${W_ID}\",\"created_at\":\"2026-03-01T10:00:00Z\",\"last_run_at\":null,\"last_run_status\":null}"
+  CEKERNEL_SCHEDULE_POLL_INTERVAL="$interval" \
+    CEKERNEL_SCHEDULE_POLL_TIMEOUT="$timeout" \
+    schedule_generate_wrapper "$W_ID" "$W_REPO" "$PATH" "$W_PROMPT"
+}
+
+# enqueue_session <state...>
+# Queues the short ID plus one agents --json response per given state,
+# all for W_UUID at the runner repo cwd (realpath'd, as the real CLI
+# reports). The last response repeats forever (mock-claude contract),
+# so ending with a non-terminal state scripts the timeout branch.
+enqueue_session() {
+  local repo_real state
+  repo_real="$(cd "$W_REPO" && pwd -P)"
+  mock_claude_enqueue_short_id "aaaa1111"
+  for state in "$@"; do
+    mock_claude_enqueue_agents \
+      "[$(mock_claude_agent_record "$W_UUID" background "$repo_real" 1700000000000 "$state")]"
+  done
+}
+
 @test "wrapper: generated runner exists with 700 permissions" {
   schedule_generate_wrapper "$W_ID" "$W_REPO" "$W_PATH" "$W_PROMPT"
   assert_file_exists "wrapper file exists" "$W_RUNNER"
@@ -84,84 +126,151 @@ preflight_with_path() {
   assert_eq "wrapper has 700 permissions" "700" "$perms"
 }
 
-@test "wrapper: runner has set -euo pipefail and embedded PATH/CEKERNEL_DIR" {
-  schedule_generate_wrapper "$W_ID" "$W_REPO" "$W_PATH" "$W_PROMPT"
-  local content
-  content=$(cat "$W_RUNNER")
-  assert_match "contains set -euo pipefail" "set -euo pipefail" "$content"
-  assert_match "PATH is embedded" "/opt/homebrew/bin:/usr/bin:/bin" "$content"
-  assert_match "CEKERNEL_DIR is embedded" "CEKERNEL_DIR=" "$content"
+@test "wrapper: generation fails fast without --bare-compatible auth" {
+  unset ANTHROPIC_API_KEY CEKERNEL_CLAUDE_SETTINGS
+  run schedule_generate_wrapper "$W_ID" "$W_REPO" "$W_PATH" "$W_PROMPT"
+  assert_eq "generation fails without bare auth" "1" "$status"
 }
 
-@test "wrapper: registry.sh source path in runner exists" {
-  schedule_generate_wrapper "$W_ID" "$W_REPO" "$W_PATH" "$W_PROMPT"
-  local source_path
-  source_path=$(grep 'source.*registry.sh' "$W_RUNNER" | sed 's/.*source "\(.*\)"/\1/' | sed "s|\${CEKERNEL_DIR}|${CEKERNEL_DIR}|")
-  assert_file_exists "registry.sh source path exists" "$source_path"
+@test "wrapper: runner spawns claude --bg with bare context and prompt (argv contract)" {
+  generate_exec_runner
+  enqueue_session busy done
+
+  run "$W_RUNNER"
+  assert_eq "runner exits 0 when the session reaches done" "0" "$status"
+
+  assert_file_exists "bg argv recorded" "${MOCK_CLAUDE_STATE_DIR}/bg-argv.log"
+  local argv
+  argv=$(cat "${MOCK_CLAUDE_STATE_DIR}/bg-argv.log")
+  assert_match "argv has --bg" "--bg" "$argv"
+  assert_match "argv has --bare" "--bare" "$argv"
+  assert_match "argv has --plugin-dir" "--plugin-dir ${CEKERNEL_DIR}" "$argv"
+  assert_match "argv has --add-dir repo" "--add-dir ${W_REPO}" "$argv"
+  assert_match "argv has the prompt" "$W_PROMPT" "$argv"
 }
 
-@test "wrapper: runner uses set -e safe if/else pattern for claude -p" {
-  schedule_generate_wrapper "$W_ID" "$W_REPO" "$W_PATH" "$W_PROMPT"
-  local content
-  content=$(cat "$W_RUNNER")
-  assert_match "uses if/else pattern" "if cd .* && claude -p" "$content"
-  assert_match "has else clause" "else" "$content"
+@test "wrapper: runner does NOT use the removed -p print mode" {
+  generate_exec_runner
+  enqueue_session done
+
+  run "$W_RUNNER"
+
+  local argv
+  argv=$(cat "${MOCK_CLAUDE_STATE_DIR}/bg-argv.log")
+  if [[ "$argv" =~ (^|[[:space:]])-p([[:space:]]|$) ]]; then
+    echo "FAIL: -p must not appear in claude argv: ${argv}" >&2
+    return 1
+  fi
 }
 
-@test "wrapper: runner sources desktop-notify.sh and uses desktop_notify" {
-  schedule_generate_wrapper "$W_ID" "$W_REPO" "$W_PATH" "$W_PROMPT"
-  local content
-  content=$(cat "$W_RUNNER")
-  assert_match "sources desktop-notify.sh" "desktop-notify.sh" "$content"
-  assert_match "uses desktop_notify function" "desktop_notify" "$content"
+@test "wrapper: done session → registry success, syslog START/END, spawn line in run.log" {
+  generate_exec_runner
+  enqueue_session busy done
+
+  run "$W_RUNNER"
+  assert_eq "runner exits 0" "0" "$status"
+
+  assert_eq "registry records success" "success" \
+    "$(schedule_registry_get "$W_ID" | jq -r '.last_run_status')"
+  assert_match "last_run_at is an ISO timestamp" "^[0-9]{4}-[0-9]{2}-[0-9]{2}T" \
+    "$(schedule_registry_get "$W_ID" | jq -r '.last_run_at')"
+
+  local syslog
+  syslog=$(cat "$W_SYSLOG")
+  assert_match "START line written" "cekernel\[${W_ID}\]: START" "$syslog"
+  assert_match "END line records success + final state" \
+    "END status=success state=done" "$syslog"
+  assert_match "END line records the poll-window duration" "duration=" "$syslog"
+
+  assert_match "spawn line captured in run.log" "backgrounded" "$(cat "$W_RUN_LOG")"
 }
 
-@test "wrapper: claude output goes to <id>.run.log, syslog to schedule.log" {
-  schedule_generate_wrapper "$W_ID" "$W_REPO" "$W_PATH" "$W_PROMPT"
-  local content
-  content=$(cat "$W_RUNNER")
-  assert_match "claude output goes to run.log" "${W_ID}.run.log" "$content"
-  assert_match "syslog goes to schedule.log" "schedule.log" "$content"
-  assert_match "START line format" "START" "$content"
-  assert_match "END line format" "END" "$content"
-  assert_match "uses SECONDS for duration" "SECONDS" "$content"
+@test "wrapper: runner reaps the done session via claude stop" {
+  generate_exec_runner
+  enqueue_session busy done
+
+  run "$W_RUNNER"
+
+  assert_file_exists "stop recorded" "${MOCK_CLAUDE_STATE_DIR}/stop.log"
+  assert_eq "stop called with the captured token" "$W_UUID" \
+    "$(cat "${MOCK_CLAUDE_STATE_DIR}/stop.log")"
 }
 
-@test "wrapper: runner has no --max-budget-usd and no --no-session-persistence" {
-  schedule_generate_wrapper "$W_ID" "$W_REPO" "$W_PATH" "$W_PROMPT"
-  run grep -E "max-budget-usd|no-session-persistence" "$W_RUNNER"
-  [[ "$status" -ne 0 ]]
+@test "wrapper: blocked session → registry error, exit 1, session stopped" {
+  generate_exec_runner
+  enqueue_session blocked
+
+  run "$W_RUNNER"
+  assert_eq "runner exits 1 on blocked" "1" "$status"
+
+  assert_eq "registry records error" "error" \
+    "$(schedule_registry_get "$W_ID" | jq -r '.last_run_status')"
+  assert_match "END line records the blocked state" \
+    "END status=error state=blocked" "$(cat "$W_SYSLOG")"
+  # blocked never unblocks unattended — the session must be reaped
+  assert_eq "blocked session stopped" "$W_UUID" \
+    "$(cat "${MOCK_CLAUDE_STATE_DIR}/stop.log")"
 }
 
-@test "wrapper: runner updates registry run status" {
-  schedule_generate_wrapper "$W_ID" "$W_REPO" "$W_PATH" "$W_PROMPT"
-  assert_match "calls schedule_registry_update_status" "schedule_registry_update_status" "$(cat "$W_RUNNER")"
+@test "wrapper: poll timeout → registry error, session left running (no stop)" {
+  generate_exec_runner 1 1
+  # Non-terminating sequence: the session never leaves busy (ADR-0017)
+  enqueue_session busy
+
+  run "$W_RUNNER"
+  assert_eq "runner exits 1 on timeout" "1" "$status"
+
+  assert_eq "registry records error" "error" \
+    "$(schedule_registry_get "$W_ID" | jq -r '.last_run_status')"
+  assert_match "END line records the timeout" \
+    "END status=error state=timeout" "$(cat "$W_SYSLOG")"
+  # On timeout the session may still be doing real work — never kill it
+  assert_not_exists "no stop call on timeout" "${MOCK_CLAUDE_STATE_DIR}/stop.log"
 }
 
-@test "wrapper: claude is invoked with explicit --bare context (ADR-0016 Phase 0)" {
-  schedule_generate_wrapper "$W_ID" "$W_REPO" "$W_PATH" "$W_PROMPT"
-  local content
-  content=$(cat "$W_RUNNER")
-  assert_match "claude invoked with --bare" "claude -p --bare" "$content"
-  assert_match "plugin dir embedded" "--plugin-dir ${CEKERNEL_DIR}" "$content"
-  assert_match "repo embedded as --add-dir" "--add-dir ${W_REPO}" "$content"
+@test "wrapper: spawn failure → registry error, exit 1" {
+  generate_exec_runner
+  # Replace the claude shim with a failing one AFTER generation
+  mock_bin claude 'exit 1'
+
+  run "$W_RUNNER"
+  assert_eq "runner exits 1 on spawn failure" "1" "$status"
+
+  assert_eq "registry records error" "error" \
+    "$(schedule_registry_get "$W_ID" | jq -r '.last_run_status')"
+  assert_match "END line records the spawn failure" \
+    "END status=error state=spawn-failed" "$(cat "$W_SYSLOG")"
 }
 
-@test "wrapper: CEKERNEL_CLAUDE_SETTINGS at generation time embeds --settings" {
+@test "wrapper: session-ID capture failure → registry error, exit 1" {
+  generate_exec_runner
+  # Non-hex short ID rejects the stdout parse; agents --json stays [] —
+  # neither capture path resolves
+  mock_claude_enqueue_short_id "zzzzzzzz"
+
+  run "$W_RUNNER"
+  assert_eq "runner exits 1 on capture failure" "1" "$status"
+
+  assert_eq "registry records error" "error" \
+    "$(schedule_registry_get "$W_ID" | jq -r '.last_run_status')"
+  assert_match "END line records the capture failure" \
+    "END status=error state=capture-failed" "$(cat "$W_SYSLOG")"
+}
+
+@test "wrapper: CEKERNEL_CLAUDE_SETTINGS at generation time reaches claude argv" {
   # Required for cron/at: exported env vars don't reach the generated runner,
   # so auth must travel as a captured --settings path (apiKeyHelper).
   local settings_file="${CEKERNEL_VAR_DIR}/claude-settings.json"
   echo '{}' > "$settings_file"
   export CEKERNEL_CLAUDE_SETTINGS="$settings_file"
 
-  schedule_generate_wrapper "$W_ID" "$W_REPO" "$W_PATH" "$W_PROMPT"
-  assert_match "--settings embedded in runner" "--settings ${settings_file}" "$(cat "$W_RUNNER")"
-}
+  generate_exec_runner
+  enqueue_session done
 
-@test "wrapper: generation fails fast without --bare-compatible auth" {
-  unset ANTHROPIC_API_KEY CEKERNEL_CLAUDE_SETTINGS
-  run schedule_generate_wrapper "$W_ID" "$W_REPO" "$W_PATH" "$W_PROMPT"
-  assert_eq "generation fails without bare auth" "1" "$status"
+  run "$W_RUNNER"
+
+  assert_match "--settings passed to claude" "--settings ${settings_file}" \
+    "$(cat "${MOCK_CLAUDE_STATE_DIR}/bg-argv.log")"
 }
 
 # ═══════════════════════════════════════
