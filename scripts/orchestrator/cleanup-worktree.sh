@@ -5,7 +5,11 @@
 #
 # Kills the Worker via backend (kills all panes in window for terminal backends,
 # or kills process group for headless backend).
-# --force is kept for backward compatibility but behaves the same as normal mode.
+#
+# CEKERNEL_KEEP_WORKTREE=true preserves the worktree and local branch while
+# still killing the Worker and cleaning IPC resources (FIFOs are removed so
+# concurrency slots do not leak). --force always removes the worktree,
+# ignoring CEKERNEL_KEEP_WORKTREE (zombie recovery must free the worktree).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -15,13 +19,18 @@ source "${SCRIPT_DIR}/../shared/claude-json-helper.sh"
 source "${SCRIPT_DIR}/../shared/backend-adapter.sh"
 source "${SCRIPT_DIR}/../shared/resolve-repo-root.sh"
 
-# ── Option parse (backward compat: accept --force but behavior is identical) ──
+# ── Option parse ──
+FORCE=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --force) shift ;;
+    --force) FORCE=1; shift ;;
     *) break ;;
   esac
 done
+
+# --force always removes the worktree regardless of CEKERNEL_KEEP_WORKTREE
+KEEP_WORKTREE="${CEKERNEL_KEEP_WORKTREE:-false}"
+[[ "$FORCE" == "1" ]] && KEEP_WORKTREE=false
 
 ISSUE_NUMBER="${1:?Usage: cleanup-worktree.sh [--force] <issue-number>}"
 REPO_ROOT="$(resolve_repo_root)"
@@ -50,15 +59,19 @@ fi
 # Get branch name
 BRANCH=$(git -C "$WORKTREE" rev-parse --abbrev-ref HEAD 2>/dev/null || true)
 
-# ── Unregister trust (before worktree removal, since path is needed) ──
-unregister_trust "$WORKTREE"
+if [[ "$KEEP_WORKTREE" == "true" ]]; then
+  echo "Keeping worktree (CEKERNEL_KEEP_WORKTREE=true): $WORKTREE" >&2
+else
+  # ── Unregister trust (before worktree removal, since path is needed) ──
+  unregister_trust "$WORKTREE"
 
-echo "Removing worktree: $WORKTREE" >&2
-git worktree remove --force "$WORKTREE"
+  echo "Removing worktree: $WORKTREE" >&2
+  git worktree remove --force "$WORKTREE"
 
-# Delete local branch (remote already deleted by gh pr merge --delete-branch)
-if [[ -n "$BRANCH" && "$BRANCH" != "main" ]]; then
-  git branch -D "$BRANCH" 2>/dev/null && echo "Deleted branch: $BRANCH" >&2 || true
+  # Delete local branch (remote already deleted by gh pr merge --delete-branch)
+  if [[ -n "$BRANCH" && "$BRANCH" != "main" ]]; then
+    git branch -D "$BRANCH" >/dev/null 2>&1 && echo "Deleted branch: $BRANCH" >&2 || true
+  fi
 fi
 
 # FIFO cleanup (session-scoped)
