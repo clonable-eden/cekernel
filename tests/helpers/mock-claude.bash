@@ -53,9 +53,10 @@
 #     `"status":"<state>","state":"working"`; terminal states are
 #     emitted as `"state":"<state>"` with NO status field.
 #     Real records carry ADDITIONAL fields (pid, id, name) and a
-#     numeric epoch-millis startedAt with a realpath'd cwd (verified
-#     2026-07-07) — consumers MUST NOT assume an exclusive field set.
-#     Pass numeric startedAt values in tests to mirror the real shape.
+#     realpath'd cwd (verified 2026-07-07) — consumers MUST NOT assume
+#     an exclusive field set.
+#     <startedAt> is emitted UNQUOTED to match the real numeric
+#     epoch-millis shape — pass numeric values (e.g. 1700000000000).
 #
 # Recorded state (files under MOCK_CLAUDE_STATE_DIR):
 #   bg-argv.log   one line per `--bg` call: the full argv, space-joined
@@ -145,10 +146,10 @@ mock_claude_agent_record() {
   # Observed field split (#581): live sessions carry status (busy|blocked)
   # plus state:"working"; terminal sessions carry state only, no status.
   if [[ "$state" == "busy" || "$state" == "blocked" ]]; then
-    printf '{"sessionId":"%s","kind":"%s","cwd":"%s","startedAt":"%s","status":"%s","state":"working"}' \
+    printf '{"sessionId":"%s","kind":"%s","cwd":"%s","startedAt":%s,"status":"%s","state":"working"}' \
       "$session_id" "$kind" "$cwd" "$started_at" "$state"
   else
-    printf '{"sessionId":"%s","kind":"%s","cwd":"%s","startedAt":"%s","state":"%s"}' \
+    printf '{"sessionId":"%s","kind":"%s","cwd":"%s","startedAt":%s,"state":"%s"}' \
       "$session_id" "$kind" "$cwd" "$started_at" "$state"
   fi
 }
