@@ -368,6 +368,75 @@ there is no plugin mechanism to install rules into the target project.
 - cekernel cannot automatically install rules into target repositories via the
   plugin system — rules must be manually set up per project
 
+## Hooks
+
+### Stop / SubagentStop Decision Control
+
+**Confidence: Evolving** (additionalContext released in v2.1.166, 2026-06-06;
+verified against the official hooks documentation 2026-07-07)
+
+`Stop` and `SubagentStop` hooks can keep the conversation going in two ways:
+
+- `decision: "block"` + `reason` — rendered as a **hook error**; `reason`
+  becomes the next instruction
+- `hookSpecificOutput.additionalContext` — **non-error feedback**; the
+  transcript labels it hook feedback and no error notification is shown
+
+Both paths share the same loop protections: the hook input carries
+`stop_hook_active: true` when the session is already continuing due to a stop
+hook, and Claude Code force-ends the turn after **8 consecutive
+continuations**.
+
+Additional verified facts:
+
+- Hook output strings (`additionalContext`, `systemMessage`, plain stdout)
+  are capped at **10,000 characters**; overflow is written to a file and
+  replaced with a preview plus the file path
+- When several hooks return `additionalContext` for the same event, **all**
+  values are delivered
+- `Stop`/`SubagentStop` input includes `last_assistant_message` (no transcript
+  parsing needed) and, since v2.1.145, `background_tasks` / `session_crons`
+  arrays that distinguish "done" from "paused awaiting background work"
+- `SubagentStop` matches on agent type; plugin-shipped agents use the
+  plugin-scoped identifier (matcher `^cekernel:reviewer$`, anchored because
+  the colon triggers regex matching)
+- `SubagentStart` can inject `additionalContext` into a subagent **at start**
+  (no blocking or decision control)
+- Stop hooks do not fire on user interrupts; API-error turn ends fire
+  `StopFailure` instead (logging only, no decision control)
+
+**Implications for cekernel**:
+- `scripts/hooks/worker-stop-guard.sh` (ADR-0018) returns `additionalContext`
+  to keep a Worker session running until `notify-complete.sh` records
+  TERMINATED — a turn-boundary guard against Workers dying before their
+  completion notification (#558 family)
+- `Stop` fires for main-thread sessions (Workers and Orchestrators under
+  `--bg`); `SubagentStop` fires for subagents (Reviewer)
+- The 8-continuation cap means a stop-hook loop is self-limiting: a Worker
+  that cannot complete is eventually released
+
+### Hook Loading Under `--bare`
+
+**Confidence: Evolving**
+
+`--bare` skips auto-discovery of hooks (along with skills, plugins, MCP
+servers, auto memory, and CLAUDE.md): hooks configured in the target
+repository's `.claude/settings.json` or the user's `~/.claude` never run in a
+bare-mode session. Only explicitly passed flags take effect — the documented
+injection paths are `--settings <file>` and `--plugin-dir <path>` (a plugin's
+`hooks/hooks.json` merges when the plugin is enabled).
+
+**Implications for cekernel**:
+- cekernel-origin lifecycle hooks must ship in the plugin's `hooks/hooks.json`
+  — cekernel passes `--plugin-dir <cekernel-root>` on every spawn branch
+  (bare and non-bare, ADR-0016 Amendment 1), so plugin hooks reach Worker
+  sessions either way. Note: plugin-hook loading under `--bare --plugin-dir`
+  is documented but not yet live-verified in a cekernel spawn (ADR-0018
+  Consequences)
+- Target-repo hooks are unavailable in bare-mode Workers by design; anything
+  the Worker lifecycle depends on must not live in target-repo hook
+  configuration
+
 ## Tool Execution
 
 ### File System Access
