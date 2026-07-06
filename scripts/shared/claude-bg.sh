@@ -50,7 +50,7 @@ claude_bg_state_for_token() {
   local json state
   json=$(claude_bg_agents_json) || return 1
   state=$(echo "$json" | jq -r --arg p "$token" \
-    '[.[] | select(.sessionId | startswith($p))][0].state // empty')
+    '[.[] | select(.sessionId | startswith($p))][0] | (.status // .state) // empty')
   [[ -n "$state" ]] || return 1
   echo "$state"
 }

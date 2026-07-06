@@ -55,7 +55,7 @@ _issue_lock_holder_alive() {
     return 0
   fi
   state=$(echo "$json" | jq -r --arg p "$holder" \
-    '[.[] | select(.sessionId | startswith($p))][0].state // empty' 2>/dev/null) || return 0
+    '[.[] | select(.sessionId | startswith($p))][0] | (.status // .state) // empty' 2>/dev/null) || return 0
   [[ "$state" == "busy" || "$state" == "blocked" ]]
 }
 
