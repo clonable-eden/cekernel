@@ -143,6 +143,52 @@ Unverified (check before relying on them):
 - Any cekernel agent intending to use a workflow must resolve the
   unverified items above first (ADR-0015 Open questions)
 
+### Background Agent Sessions (`--bg` / on-demand daemon)
+
+**Confidence: Evolving** (research preview; observed on claude v2.1.201, 2026-07-06)
+
+`claude --bg` starts a session as a background agent and returns
+immediately; sessions are supervised by an on-demand daemon and managed
+via `claude agents` / `attach` / `stop` / `logs`.
+
+Observed characteristics:
+- Daemon auto-starts on demand (`Starting background service…`) and exits
+  when the last client disconnects; no service install required
+- `--bg` prints `backgrounded · <short-id>` to stdout; the short ID is the
+  first 8 hex chars of the session UUID. Full `sessionId`, `cwd`, `kind`
+  (`interactive`/`background`), and `state` come from `claude agents
+  --json` (`--all` includes finished sessions, `--cwd` filters)
+- `--bg` **ignores `--session-id`** (warning: `--bg manages the session
+  id`) — external ID injection is impossible; capture is required
+- Observed states: `busy`, `done`, `stopped`, `blocked`. `blocked` means
+  the session is waiting on a **permission dialog** — a misconfigured
+  permission setup stalls a background session silently
+- A background session persists after its turn completes (`state: done`,
+  still attachable); explicit `claude stop <id>` terminates it
+- `claude logs <id>` is a raw TUI escape-sequence dump — not
+  machine-readable; transcripts under `~/.claude/projects/` (full-UUID
+  filenames, standard cwd mapping) remain the programmatic data source
+- `--bg --agent <plugin:agent>` resolves plugin agents
+- `--bg --exec '<cmd>'` works but is a **hidden flag** (absent from
+  `--help`) — treat as unstable
+- `--allowedTools <tools...>` is variadic and swallows a following
+  positional prompt; the prompt must precede the flag
+
+Unverified (check before relying on them):
+- Whether a running background session counts as a daemon "client" — i.e.
+  whether a long-running Worker can be orphaned or killed by daemon exit
+  (`claude daemon stop --keep-workers` implies detached sessions can
+  survive, but the default lifecycle interaction is unconfirmed)
+- launchd/crontab reachability of the on-demand daemon (socket under
+  `/tmp/cc-daemon-<uid>/...`)
+- Retention window of finished sessions in `agents --json --all`
+- `--bg --bare` combination behavior
+
+**Implications for cekernel**:
+- ADR-0016 delegates spawn/supervision to `--bg`; session IDs are captured
+  (never injected); `blocked` must be surfaced by supervision; cleanup
+  must `claude stop` lingering `done` sessions
+
 ### Subagent Information Propagation
 
 **Confidence: Stable**

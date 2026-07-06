@@ -26,6 +26,11 @@ the standard session primitive is the strongest available hedge.
 
 ### Empirical findings (claude v2.1.201, verified 2026-07-06)
 
+> The living, staleness-managed copy of these observations is
+> [`docs/claude-code-constraints.md`](../claude-code-constraints.md#background-agent-sessions---bg--on-demand-daemon)
+> (**Confidence: Evolving**). The table below is preserved as the decision
+> record — what was true when this ADR was written.
+
 | Item | Finding |
 |------|---------|
 | `--bg` | Exists. Returns immediately, prints `backgrounded · <short-id>` to stdout. |
@@ -60,16 +65,34 @@ the daemon. cekernel keeps only what the standard primitive does not provide:
 ### Design inversions forced by findings
 
 - **Session ID: inject → capture.** `--bg` ignores `--session-id`, so spawn
-  scripts capture the daemon-assigned UUID from `claude agents --json`
-  (matching on `cwd` + most recent `startedAt`, or the short ID printed at
-  spawn) and record it where `*.claude-session-id` files live today.
+  scripts capture the daemon-assigned UUID and record it where
+  `*.claude-session-id` files live today. Capture order is normative:
+  1. **Primary**: extract the short ID from the spawn stdout line
+     (`backgrounded · <short-id>`), then prefix-match it against
+     `sessionId` in `claude agents --json`. Deterministic even with
+     concurrent spawns.
+  2. **Fallback** (stdout parse fails): match on `kind == "background"` +
+     `cwd` + most recent `startedAt`. The `kind` filter is mandatory —
+     the Orchestrator shares the repo-root cwd with interactive sessions.
+
   #528 (`--session-id` passthrough) is re-scoped accordingly.
-- **Completion detection gains a second source.** FIFO IPC remains the
-  primary push channel; `claude agents --json` `state` (`done`/`blocked`)
-  becomes the poll/health channel, replacing PID-liveness heuristics.
-  `blocked` MUST be surfaced by `watch.sh`/`orchctl ps` as a distinct state.
+- **Completion-detection hierarchy (ADR-0007 relation).** The ADR-0007
+  dual path is unchanged: FIFO stays the primary push channel and the
+  Worker-authored state file stays the detail/fallback source. What
+  `agents --json` replaces is exactly one thing — **PID-liveness
+  heuristics** (`kill -0`, PID files) as the supervisor's health check —
+  and it adds the `blocked` signal, which no existing source can see.
+  `blocked` MUST be surfaced by `watch.sh`/`orchctl ps` as a distinct
+  state. No fourth source may be added without amending this ADR.
 - **Lifecycle ownership.** Since `done` sessions linger, cleanup paths must
   call `claude stop <id>` in addition to existing worktree/IPC cleanup.
+- **Backend contract (ADR-0005) changes shape.** The backend API's handle
+  is currently a numeric PID, with `backend_get_pid`, `kill -0` liveness,
+  and `kill -- -PID` termination built on it. Under delegation the handle
+  becomes an **opaque token** (session ID); liveness maps to `agents
+  --json` state and termination to `claude stop`. Renaming/retyping the
+  ADR-0005 interface is an explicit Phase 1 deliverable, not an incidental
+  edit.
 
 ### Phased migration
 
@@ -78,12 +101,25 @@ the daemon. cekernel keeps only what the standard primitive does not provide:
 | 0 | `--bare` explicit spawn context (#532) | #532 |
 | 1 | `headless.sh`: `claude -p` → `claude --bg --agent <worker>` + session-ID capture | #528 (re-scoped) |
 | 2 | `spawn-orchestrator.sh` → `--bg` | |
-| 3 | `wrapper.sh` (cron/at) → `--bg` with prompt (NOT `--exec`: hidden/unstable). Verify launchd/crontab can reach the on-demand daemon. | #526 |
+| 3 | `wrapper.sh` (cron/at) → `--bg` with prompt (NOT `--exec`: hidden/unstable). Verify launchd/crontab can reach the on-demand daemon. **Registry semantics change**: `--bg` returns immediately, so the exit-code-based success/error/duration recording is impossible. `wrapper.sh` polls `agents --json` to a terminal state (`done` → `success`; `blocked`/timeout → `error`; duration = poll window). Note the fidelity loss: `done` means the session finished, not that the job inside it succeeded — job-level outcomes stay in transcripts and notifications. | #526 |
 | 4 | `orchctl ps` view layer → thin wrapper over `claude agents --json` | #527 / ADR-0015 |
 | 5 | wezterm/tmux backends → spawn `--bg` then `claude attach <id>` in the pane | ADR-0001 amendment |
 
 During migration, `CEKERNEL_SPAWN_MODE=legacy|delegated` (default `legacy`
 until Phase 1–2 are validated, then `delegated`) switches the spawn path.
+
+**Legacy-mode retirement criteria** (all must hold; tracked by a dedicated
+removal issue):
+
+1. Phases 1–4 have shipped with `delegated` as the default.
+2. cekernel's own issues have been processed end-to-end in `delegated`
+   mode (self-hosting) for at least one full release cycle with no
+   delegation-attributable failures.
+3. The next minor release after (1) and (2) removes `legacy`, the `-p`
+   spawn paths, and their tests (ADR-0017 §3).
+
+A compatibility mode without a death date becomes permanent; this one has
+both a date shape and an owner.
 
 ### Impact on open issues
 
@@ -112,8 +148,12 @@ until Phase 1–2 are validated, then `delegated`) switches the spawn path.
 ### Negative / risks
 
 - `--bg` surface is research-preview grade: `--exec` is hidden, flags and
-  output format (`backgrounded · <id>`) may change. Mitigation: parse via
-  `agents --json` only, pin minimum claude version, keep `legacy` mode.
+  output format (`backgrounded · <id>`) may change. Mitigation: all
+  **structured** data is read from `agents --json` only; the human-oriented
+  spawn line is parsed solely to extract the short-ID token, and the
+  `kind`+`cwd`+`startedAt` fallback covers a format change there. Pin the
+  minimum claude version; keep `legacy` mode until the retirement criteria
+  are met.
 - `blocked` (permission-wait) is a new silent-stall failure mode; requires
   explicit monitoring and correct `--allowedTools`/`--permission-mode`
   configuration per agent.
@@ -124,6 +164,13 @@ until Phase 1–2 are validated, then `delegated`) switches the spawn path.
 
 ### Open questions (Phase 0/1 verification)
 
+- **Daemon lifetime vs. Worker survival**: the daemon "exits when the last
+  client disconnects" — does a running background session count as a
+  client, and can a long-running Worker be orphaned or killed by daemon
+  exit? (`claude daemon stop --keep-workers` implies detached sessions can
+  survive a stop, but the default interaction is unverified.) This is
+  load-bearing for the Worker-stays-independent decision (#531) and MUST
+  be verified in Phase 1 before `delegated` becomes the default.
 - `--bg --bare` combination behavior.
 - launchd/crontab → on-demand daemon reachability (`/tmp/cc-daemon-501/...`
   socket path assumptions under cron environments).
