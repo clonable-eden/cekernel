@@ -83,8 +83,8 @@ assert_not_exists "keep=true: state file removed" "${CEKERNEL_IPC_DIR}/worker-${
 
 # ── Test 2: default (unset) → worktree and branch removed (regression) ──
 rm -rf "$CEKERNEL_IPC_DIR"
-git -C "$FAKE_REPO" worktree remove --force "$WORKTREE" 2>/dev/null || true
-git -C "$FAKE_REPO" branch -D "issue/${ISSUE}-keep-test" 2>/dev/null || true
+git -C "$FAKE_REPO" worktree remove --force "$WORKTREE" >/dev/null 2>&1 || true
+git -C "$FAKE_REPO" branch -D "issue/${ISSUE}-keep-test" >/dev/null 2>&1 || true
 
 ISSUE="301"
 WORKTREE=$(setup_worktree "$ISSUE" "$FAKE_REPO")
