@@ -12,7 +12,7 @@ moment to fix structural debt rather than patch around it.
 
 ### Current state (inventoried 2026-07-06)
 
-- **76 test files, 9,781 LOC** against **47 scripts, 5,650 LOC** (1.73:1).
+- **76 test files, 9,781 LOC** against **48 scripts, 5,650 LOC** (1.73:1).
 - Custom harness: `run-tests.sh` (sequential, file-granular pass/fail) +
   `helpers.sh` (7 assert functions, 94 LOC). No per-test isolation, no
   filtering, no setup/teardown contract, no TAP output.
@@ -52,8 +52,10 @@ formats.
 - CI pins the bats-core version; local dev documents `brew install
   bats-core`.
 - The custom `run-tests.sh` remains during migration and runs both suites
-  (legacy `test-*.sh` + new `*.bats`); it is deleted when the last legacy
-  file is gone.
+  (legacy-harness `test-*.sh` + new `*.bats`); it is deleted when the last
+  legacy-harness file is gone. ("Legacy-harness" refers to files on the
+  old custom harness — distinct from the 1.x release line, which ADR-0016
+  calls the legacy mode.)
 
 **Why not keep the custom harness** (95 LOC, zero deps): it optimizes the
 wrong constant. The cost of the suite is its 9,781 LOC of duplicated setup
@@ -71,8 +73,14 @@ worse bats (Rule of Least Surprise: contributors already know bats).
   emulates the delegated-spawn contract observed on v2.1.201 (ADR-0016):
   `--bg` prints `backgrounded · <short-id>` and records argv; `agents
   --json` replays a scriptable state sequence (`busy` → `done` /
-  `blocked`); `stop <id>` records the call. Tests assert on recorded argv
-  and state-machine effects, never on generated script text.
+  `blocked`); `stop <id>` records the call. `agents --json` MUST emit
+  **full records** (`sessionId`, `kind`, `cwd`, `startedAt`, `state`) so
+  that both normative capture paths (short-ID prefix match; the
+  `kind`+`cwd`+`startedAt` fallback, including the interactive-session
+  mis-match regression at repo root) are testable, and sequences MUST be
+  scriptable as **non-terminating** (never reaching a terminal state) so
+  the `wrapper.sh` poll-timeout branch is testable. Tests assert on
+  recorded argv and state-machine effects, never on generated script text.
 - `git` and `git worktree` stay **real** against temp repos: they are fast,
   hermetic, and mocking them would fake the exact behavior worktree tests
   exist to verify. This is now policy, not accident.
@@ -177,3 +185,15 @@ Target shape: **one `.bats` file per script under test**, variants become
   ADR-0016 phase.
 - CLAUDE.md: add "assert behavior, never emitted script text" to the
   Testing section; update test-file naming for `.bats`.
+- Implementation requirements for the mock helpers (review 2026-07-06):
+  - **mock-claude staleness coupling**: the shim's header links to
+    `docs/claude-code-constraints.md` § Background Agent Sessions and
+    records the observed claude version (v2.1.201); any PR updating that
+    constraints section MUST update the mock in the same PR.
+  - **Per-test unique `CEKERNEL_SESSION_ID`**: helpers derive a unique ID
+    (e.g. from `BATS_TEST_NAME`) so parallel bats runs cannot collide on
+    IPC directories; the fixed-ID example in CLAUDE.md's Testing section
+    is updated to match.
+  - **`mock-bin` precondition**: PATH shims only intercept commands
+    invoked **by name**; scripts calling absolute paths bypass them —
+    documented in `mock-bin.bash` as a stated precondition.
