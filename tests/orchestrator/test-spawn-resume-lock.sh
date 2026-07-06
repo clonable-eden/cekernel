@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # test-spawn-resume-lock.sh — Tests that spawn.sh skips issue_lock_acquire on --resume
 #
-# When spawn-reviewer.sh (or any --resume spawn) is called, the issue lock
-# is already held by the previous process (Worker). Re-acquiring the lock
-# would fail with exit 2. spawn.sh must skip issue_lock_acquire when RESUME=1,
-# relying on issue_lock_update_pid to transfer ownership.
+# When a --resume spawn is called (e.g., Worker re-spawn after
+# changes-requested or SUSPEND), the issue lock is already held by the
+# previous process (Worker). Re-acquiring the lock would fail with exit 2.
+# spawn.sh must skip issue_lock_acquire when RESUME=1, relying on
+# issue_lock_update_pid to transfer ownership.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
