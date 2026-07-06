@@ -35,8 +35,9 @@
 #   bg_session_get_handle <issue> [type]
 #     Echoes the opaque session token from the handle file.
 #   bg_session_status <issue> [type]
-#     Echoes the agents --json state (busy|blocked|done|...), or
-#     "missing" with exit 1 when unresolvable.
+#     Echoes the agents --json state (busy|blocked|done|...); "missing"
+#     with exit 1 when the handle or session is verifiably absent;
+#     "unknown" with exit 1 when the agents query fails (transient).
 #   bg_session_alive <issue> [type]
 #     exit 0 iff a session for the issue is busy or blocked.
 #   bg_session_stop <issue> [type]
@@ -146,8 +147,10 @@ bg_session_get_handle() {
 # Echoes the session state from `claude agents --json` (busy|blocked|done|
 # stopped|...). blocked means the session is waiting on a permission dialog
 # — supervision MUST surface it distinctly (ADR-0016).
-# Echoes "missing" and returns 1 when no handle exists, the session is not
-# listed, or the query fails.
+# Echoes "missing" and returns 1 when no handle exists or the session is
+# verifiably not listed. Echoes "unknown" and returns 1 when the agents
+# query itself fails (daemon restarting) — a transient condition callers
+# must NOT treat as a crash (#573).
 bg_session_status() {
   local issue="$1"
   local type="${2:-}"
@@ -158,8 +161,13 @@ bg_session_status() {
     return 1
   fi
 
+  local json
+  if ! json=$(claude_bg_agents_json); then
+    echo "unknown"
+    return 1
+  fi
   local state
-  if ! state=$(claude_bg_state_for_token "$token"); then
+  if ! state=$(claude_bg_state_from_json "$json" "$token"); then
     echo "missing"
     return 1
   fi
