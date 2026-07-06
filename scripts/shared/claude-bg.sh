@@ -17,6 +17,13 @@
 #     — List sessions as JSON. Fails when the claude CLI is unavailable or
 #       errors (Rule of Repair: callers decide how to surface it).
 #
+#   claude_bg_state_from_json <json> <token>
+#     — Echo the state of the session whose sessionId starts with <token>,
+#       resolved against a pre-fetched `agents --json` body. Lets view
+#       layers (orchctl ps/count) fetch once and join many tokens
+#       (ADR-0016 Phase 4).
+#     — Returns 1 (echoing nothing) when no session matches.
+#
 #   claude_bg_state_for_token <token>
 #     — Echo the logical state (busy|blocked|done|stopped|...) of the session
 #       whose sessionId starts with <token>. Live sessions report it in
@@ -47,15 +54,23 @@ claude_bg_agents_json() {
   claude agents --json 2>/dev/null
 }
 
-# claude_bg_state_for_token <token>
-claude_bg_state_for_token() {
-  local token="$1"
-  local json state
-  json=$(claude_bg_agents_json) || return 1
+# claude_bg_state_from_json <json> <token>
+claude_bg_state_from_json() {
+  local json="$1"
+  local token="$2"
+  local state
   state=$(echo "$json" | jq -r --arg p "$token" \
     '[.[] | select(.sessionId | startswith($p))][0] | (.status // .state) // empty')
   [[ -n "$state" ]] || return 1
   echo "$state"
+}
+
+# claude_bg_state_for_token <token>
+claude_bg_state_for_token() {
+  local token="$1"
+  local json
+  json=$(claude_bg_agents_json) || return 1
+  claude_bg_state_from_json "$json" "$token"
 }
 
 # claude_bg_token_alive <token>

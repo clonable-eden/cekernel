@@ -145,6 +145,18 @@ set_ipc_context() {
   export CEKERNEL_IPC_DIR="${IPC_BASE}/${RESOLVED_SESSION}"
 }
 
+# ── Helper: format elapsed seconds as h/m/s ──
+format_elapsed() {
+  local elapsed="$1"
+  if [[ $elapsed -ge 3600 ]]; then
+    echo "$((elapsed / 3600))h$((elapsed % 3600 / 60))m"
+  elif [[ $elapsed -ge 60 ]]; then
+    echo "$((elapsed / 60))m"
+  else
+    echo "${elapsed}s"
+  fi
+}
+
 # ── Helper: compute elapsed time from .spawned file ──
 compute_elapsed() {
   local fifo="$1"
@@ -291,12 +303,15 @@ cmd_ls() {
   fi
 }
 
-# ── ps: Show orchestrator sessions (session-ID based, ADR-0016 Phase 2) ──
-# Liveness comes from `claude agents --json` state via the token captured
-# in orchestrator.claude-session-id. States are shown as-is so `blocked`
+# ── ps: agents --json view layer (ADR-0016 Phase 4) ──
+# `claude agents --json` is fetched ONCE per invocation; every registered
+# token (orchestrator.claude-session-id, handle-{issue}.{type}) is
+# prefix-matched against that single body. States print as-is so `blocked`
 # (permission-dialog stall) is surfaced distinctly; an unlisted token shows
-# as `missing`. The former PID process tree / managed-process display was
-# PID-based and is gone — #549 (Phase 4) rebuilds the view on agents --json.
+# as `missing`. Worker/Reviewer rows join the cekernel-specific columns —
+# issue, phase (state-file detail), priority — per the ADR-0015 boundary:
+# the view adds only what `claude agents` cannot know. Sessions without an
+# orchestrator token (interactive orchestrators) still list their workers.
 cmd_ps() {
   local session_filter=""
 
@@ -315,6 +330,10 @@ cmd_ps() {
     return 0
   fi
 
+  # Single fetch — the whole command is a view over this one response
+  local agents_json
+  agents_json=$(claude_bg_agents_json) || agents_json="[]"
+
   for session_dir in "$IPC_BASE"/*/; do
     [[ -d "$session_dir" ]] || continue
     local sid
@@ -325,37 +344,56 @@ cmd_ps() {
       continue
     fi
 
+    # ── Orchestrator row ──
     local sid_file="${session_dir}orchestrator.claude-session-id"
-    [[ -f "$sid_file" ]] || continue
+    if [[ -f "$sid_file" ]]; then
+      local token
+      token=$(tr -d '[:space:]' < "$sid_file")
+      if [[ -n "$token" ]]; then
+        # Compute elapsed from orchestrator.spawned
+        local elapsed=""
+        local spawned_file="${session_dir}orchestrator.spawned"
+        if [[ -f "$spawned_file" ]]; then
+          local spawned_at
+          spawned_at=$(tr -d '[:space:]' < "$spawned_file")
+          spawned_at="${spawned_at:-$(date +%s)}"
+          elapsed=$(format_elapsed "$(($(date +%s) - spawned_at))")
+        fi
 
-    local token
-    token=$(tr -d '[:space:]' < "$sid_file")
-    [[ -n "$token" ]] || continue
+        local state
+        state=$(claude_bg_state_from_json "$agents_json" "$token") || state="missing"
 
-    # Compute elapsed from orchestrator.spawned
-    local elapsed=""
-    local spawned_file="${session_dir}orchestrator.spawned"
-    if [[ -f "$spawned_file" ]]; then
-      local spawned_at now elapsed_sec
-      spawned_at=$(tr -d '[:space:]' < "$spawned_file")
-      spawned_at="${spawned_at:-$(date +%s)}"
-      now=$(date +%s)
-      elapsed_sec=$((now - spawned_at))
-      if [[ $elapsed_sec -ge 3600 ]]; then
-        elapsed="$((elapsed_sec / 3600))h$((elapsed_sec % 3600 / 60))m"
-      elif [[ $elapsed_sec -ge 60 ]]; then
-        elapsed="$((elapsed_sec / 60))m"
-      else
-        elapsed="${elapsed_sec}s"
+        found=$((found + 1))
+        echo "orchestrator  claude=${token}  session=${sid}  elapsed=${elapsed}  ${state}"
       fi
     fi
 
-    local state
-    state=$(claude_bg_state_for_token "$token" 2>/dev/null) || state="missing"
+    # ── Managed rows (Worker/Reviewer sessions) ──
+    for handle_file in "${session_dir}"handle-*.*; do
+      [[ -f "$handle_file" ]] || continue
+      local fname issue_type issue mtype
+      fname=$(basename "$handle_file")
+      issue_type="${fname#handle-}"
+      issue="${issue_type%%.*}"
+      mtype="${issue_type#*.}"
+      [[ "$issue" =~ ^[0-9]+$ ]] || continue
 
-    found=$((found + 1))
+      local mtoken
+      mtoken=$(tr -d '[:space:]' < "$handle_file")
+      [[ -n "$mtoken" ]] || continue
 
-    echo "orchestrator  claude=${token}  session=${sid}  elapsed=${elapsed}  ${state}"
+      local mstate
+      mstate=$(claude_bg_state_from_json "$agents_json" "$mtoken") || mstate="missing"
+
+      # Join cekernel-specific columns from state/priority files
+      export CEKERNEL_IPC_DIR="$session_dir"
+      local phase priority
+      phase=$(worker_state_read "$issue" | jq -r '.detail')
+      priority=$(worker_priority_read "$issue" | jq -r '.priority')
+
+      found=$((found + 1))
+      echo "  ${mtype}  #${issue}  claude=${mtoken}  phase=${phase}  priority=${priority}  ${mstate}"
+    done
   done
 
   if [[ "$found" -eq 0 ]]; then
@@ -943,10 +981,15 @@ cmd_gc() {
 # ── count: Count running orchestrators (internal, ADR-0014) ──
 # Session-ID based (ADR-0016 Phase 2): a session counts when its captured
 # token maps to a busy or blocked session in `claude agents --json`.
+# Single fetch per invocation (Phase 4): all tokens resolve against one
+# `agents --json` response.
 cmd_count() {
   local count=0
 
   if [[ -d "$IPC_BASE" ]]; then
+    local agents_json
+    agents_json=$(claude_bg_agents_json) || agents_json="[]"
+
     for session_dir in "$IPC_BASE"/*/; do
       [[ -d "$session_dir" ]] || continue
 
@@ -957,7 +1000,9 @@ cmd_count() {
       token=$(tr -d '[:space:]' < "$sid_file")
       [[ -n "$token" ]] || continue
 
-      if claude_bg_token_alive "$token" 2>/dev/null; then
+      local state
+      state=$(claude_bg_state_from_json "$agents_json" "$token") || continue
+      if [[ "$state" == "busy" || "$state" == "blocked" ]]; then
         count=$((count + 1))
       fi
     done
