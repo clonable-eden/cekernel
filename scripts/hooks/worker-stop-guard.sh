@@ -62,6 +62,7 @@ if [[ -n "$IPC_DIR" && -f "${IPC_DIR}/worker-${ISSUE}.state" ]]; then
   # Format: STATE:TIMESTAMP:detail (see worker-state.sh)
   STATE_LINE=$(head -1 "${IPC_DIR}/worker-${ISSUE}.state")
   STATE="${STATE_LINE%%:*}"
+  [[ -n "$STATE" ]] || STATE="UNKNOWN"
   DETAIL=$(printf '%s' "$STATE_LINE" | cut -d: -f3-)
 fi
 
