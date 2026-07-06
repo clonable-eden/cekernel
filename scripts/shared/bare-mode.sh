@@ -55,6 +55,10 @@ bare_mode_prepare() {
   if [[ -n "${CEKERNEL_CLAUDE_SETTINGS:-}" ]]; then
     CEKERNEL_BARE_FLAGS+=(--settings "$CEKERNEL_CLAUDE_SETTINGS")
   fi
+
+  if [[ -n "${CEKERNEL_FALLBACK_MODEL:-}" ]]; then
+    CEKERNEL_BARE_FLAGS+=(--fallback-model "$CEKERNEL_FALLBACK_MODEL")
+  fi
 }
 
 # bare_mode_flags [context-dir]

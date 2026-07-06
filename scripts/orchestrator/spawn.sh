@@ -38,6 +38,7 @@ while [[ $# -gt 0 ]]; do
     --resume) RESUME=1; shift ;;
     --priority) PRIORITY="${2:?--priority requires a value}"; shift 2 ;;
     --prompt) CUSTOM_PROMPT="${2:?--prompt requires a value}"; shift 2 ;;
+    --fallback-model) export CEKERNEL_FALLBACK_MODEL="${2:?--fallback-model requires a value}"; shift 2 ;;
     *) break ;;
   esac
 done
