@@ -249,7 +249,7 @@ normal behavior testing and is fine.)
 **Assert behavior, never text** (ADR-0017). Tests verify executed effects
 and recorded argv — not the text of generated scripts, and not the source
 text of scripts either. Grep-testing a generated runner for strings like
-`exec claude -p`, or grepping `spawn.sh` source for `resolve_repo_root`,
+`claude --bg`, or grepping `spawn.sh` source for `resolve_repo_root`,
 is the same anti-pattern as `.md`-grep — it breaks on mechanism or wording
 changes even when behavior is preserved.
 
