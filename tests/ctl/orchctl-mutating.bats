@@ -431,6 +431,23 @@ worker_state() {
   assert_file_exists "token handle preserved" "${session_dir}/handle-575.worker"
 }
 
+@test "gc refuses to reap on an unknown (status, state) pair (ADR-0018)" {
+  # Degradation policy: schema drift is not evidence of death — gc must
+  # never reap on doubt.
+  mock_claude
+  local session_dir="${IPC_BASE}/session-gc-token4"
+  mkdir -p "$session_dir"
+  mkfifo "${session_dir}/worker-576"
+  echo "RUNNING:2026-02-28T10:00:00Z:working" > "${session_dir}/worker-576.state"
+  echo "$SESSION_TOKEN" > "${session_dir}/handle-576.worker"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record_pair "$SESSION_TOKEN" background /tmp/wt 1700000000000 idle working)]"
+  run bash "$ORCHCTL" gc
+  assert_fifo_exists "FIFO preserved (unknown-value → assume alive)" \
+    "${session_dir}/worker-576"
+  assert_file_exists "token handle preserved" "${session_dir}/handle-576.worker"
+}
+
 # ── gc: --dry-run ──
 
 @test "gc --dry-run reports stale resources without removing them" {

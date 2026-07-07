@@ -52,40 +52,35 @@ CEKERNEL_PROCESS_SCRIPTS="$(cd "${SCRIPT_DIR}/../process" && pwd)"
 CEKERNEL_SHARED_SCRIPTS="$(cd "${SCRIPT_DIR}/../shared" && pwd)"
 
 # ── Launch Orchestrator as a background agent session ──
-# `claude --bg` returns immediately after printing `backgrounded ·
-# <short-id>`; the on-demand daemon supervises the session.
-# Unset Claude Code session markers to avoid nested-session detection.
-# Sessions inherit the DAEMON's env: these exports reach the session only
-# when this call auto-starts the daemon; a pre-existing daemon keeps its
-# own environment (verified 2026-07-07, v2.1.202 — #589). The reliable
-# channel for CEKERNEL_* values is the prompt, which the orchestrate/
-# dispatch skills populate; the Orchestrator verifies env at startup.
+# The --bg invocation and spawn-line parsing live in claude_bg_spawn
+# (ADR-0018 Decision 1); this spawner injects the session env explicitly
+# (ADR-0018 Decision 3, #589 — the daemon's inherited environment is
+# UNSPECIFIED: these exports reach the session only when this call
+# auto-starts the daemon; a pre-existing daemon keeps its own env. The
+# reliable channel for CEKERNEL_* values is the prompt, which the
+# orchestrate/dispatch skills populate; the Orchestrator verifies env at
+# startup).
 # CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 stays for now: under --bg an
 # auto-detached Bash call no longer kills the process (#558), but whether
 # a background-task completion re-invokes a `done` session is unverified —
 # without re-invocation the Orchestrator would stall silently.
-# stderr discarded — analysis uses transcripts; stdout is parsed for the
-# short-ID token only (structured data comes from `agents --json`).
-SPAWN_OUT=$(
-  cd "$REPO_ROOT" && \
-  unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ACCESS_TOKEN && \
+# stderr discarded — analysis uses transcripts.
+SHORT_ID=$(
   export CEKERNEL_SESSION_ID="${CEKERNEL_SESSION_ID}" && \
   export CEKERNEL_IPC_DIR="${CEKERNEL_IPC_DIR}" && \
   export CEKERNEL_ENV="${CEKERNEL_ENV}" && \
   export CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 && \
   export PATH="${CEKERNEL_ORCHESTRATOR_SCRIPTS}:${CEKERNEL_PROCESS_SCRIPTS}:${CEKERNEL_SHARED_SCRIPTS}:${PATH}" && \
-  claude --bg "${CEKERNEL_BARE_FLAGS[@]}" --agent "$AGENT_NAME" "$PROMPT" 2>/dev/null
+  claude_bg_spawn "$REPO_ROOT" "${CEKERNEL_BARE_FLAGS[@]}" --agent "$AGENT_NAME" "$PROMPT" 2>/dev/null
 ) || {
   echo "Error: claude --bg spawn failed for Orchestrator" >&2
   exit 1
 }
 
 # ── Capture the daemon-assigned session ID (ADR-0016 normative order) ──
-# Primary: short ID from the human-oriented spawn line, prefix-matched
-# against agents --json. Fallback: newest background session at the
-# repo-root cwd (kind filter excludes interactive sessions — #571).
-SHORT_ID=$(printf '%s\n' "$SPAWN_OUT" | awk '/backgrounded/ {print $NF; exit}')
-[[ "$SHORT_ID" =~ ^[0-9a-f]{8}$ ]] || SHORT_ID=""
+# Primary: short ID from the spawn line, prefix-matched against the
+# roster. Fallback: newest background session at the repo-root cwd (kind
+# filter excludes interactive sessions — #571).
 
 # agents --json reports realpath'd cwd (e.g. /tmp → /private/tmp)
 CWD_REAL=$(cd "$REPO_ROOT" && pwd -P)

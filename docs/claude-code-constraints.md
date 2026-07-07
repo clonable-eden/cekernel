@@ -197,7 +197,8 @@ Unverified (check before relying on them):
 
 ### Background Agent Sessions (`--bg` / on-demand daemon)
 
-**Confidence: Evolving** (research preview; observed on claude v2.1.201, 2026-07-06)
+**Confidence: Evolving** (research preview; observed on claude v2.1.201,
+2026-07-06; matrix re-verified on v2.1.202, 2026-07-07)
 
 `claude --bg` starts a session as a background agent and returns
 immediately; sessions are supervised by an on-demand daemon and managed
@@ -249,29 +250,67 @@ Verified 2026-07-07 (Phase 1 probe, #546, session `971e554a`):
   — cwd-based matching must normalize with `pwd -P` first.
 - `claude stop <short-id>` accepts the short ID as the stop token.
 
-Verified 2026-07-07 (#581, live-session field split; claude v2.1.x):
-- **Live and terminal sessions report their state in different fields.**
-  Live sessions carry `status: "busy"` plus `state: "working"` — or no
-  `state` field at all; terminal sessions carry `state: done|stopped`
-  and no `status`. Earlier builds reported live states directly in
-  `state` (`state: busy`). Observed distribution on a real roster:
-  `busy/working`, `busy/(absent)`, `(absent)/done`, `(absent)/stopped`.
-  `blocked` is expected to appear in `status` like `busy` (not yet
-  re-observed in the split shape).
-- Liveness consumers must read `(.status // .state)` — status preferred,
-  state fallback. The fallback keeps the pre-split shape resolving
-  unchanged. Reading `.state` alone evaluates every live session as
-  `working` and mis-reports it dead (#581: watch.sh crash-flagged all
-  spawned Workers and deleted their FIFOs).
+Verified 2026-07-07 (#581 field split, #591 terminal conflation, #593
+roster observation; claude v2.1.202):
+- **Live and terminal sessions report their state in different fields**:
+  liveness lives in `status`, terminality in `state`. Reading `.state`
+  alone evaluates every live session as `working` and mis-reports it
+  dead (#581: watch.sh crash-flagged all spawned Workers). Reading
+  `(.status // .state)` breaks the other direction: `done` sessions
+  carry `status: "idle"`, so the expression returns "idle" and terminal
+  detection never fires (#591).
+- **Observed (status, state) matrix** (ADR-0018 — this table is the
+  contract; it is mirrored in `scripts/shared/claude-bg.sh` and
+  `tests/helpers/mock-claude.bash`):
+
+  | `status` | `state` | Verdict |
+  |----------|---------|---------|
+  | `busy` | `working` | alive |
+  | `busy` | (absent) | alive |
+  | (absent) | `busy` | alive (pre-split legacy shape) |
+  | `blocked` | `working` | blocked (v2.1.201 shape) |
+  | `idle` | `blocked` | blocked (v2.1.202 shape) |
+  | (absent) | `blocked` | blocked (pre-split legacy shape) |
+  | `idle` | `done` | terminal (`done`) |
+  | (absent) | `done` | terminal (`done`; `--all`, daemon-restart rows) |
+  | `idle` | `stopped` | terminal (`stopped`) |
+  | (absent) | `stopped` | terminal (`stopped`; `--all`, daemon-restart rows) |
+  | — session absent — | | not-listed |
+  | any pair not above | | unknown-value |
+
+  Real roster tally (2026-07-07, v2.1.202): `busy/working`,
+  `busy/(absent)` (interactive), `idle/blocked`, `idle/done`,
+  `(absent)/done`, `(absent)/stopped`. Note `blocked` appeared in
+  `state` with `status: "idle"` — NOT in `status` as ADR-0018
+  originally predicted from v2.1.201.
+- **`agents --json` does not resurrect the daemon** (isolated-HOME
+  probe, v2.1.202, #593): with no daemon running, `claude agents
+  --json` (and `--all`) returns `[]` with exit 0, starts no `claude
+  daemon run` process, and writes no daemon.json. Predicates are
+  side-effect-free observers. Implication: a stopped daemon is
+  indistinguishable from an empty roster — it surfaces as `not-listed`,
+  NOT as `query-failed`.
+- **The daemon's inherited environment is unspecified** (#589, ADR-0018
+  Decision 3): the on-demand daemon keeps the env of whichever client
+  auto-started it, and sessions inherit the DAEMON's env, not their
+  spawner's (verified 2026-07-07, v2.1.202). No cekernel code may rely
+  on it. Session env is guaranteed by the spawner: Workers source the
+  worktree's `.cekernel-env` per Bash call (normative), Orchestrators
+  receive explicit exports from `spawn-orchestrator.sh` plus prompt-
+  embedded values.
 
 **Implications for cekernel**:
 - ADR-0016 delegates spawn/supervision to `--bg`; session IDs are captured
   (never injected); `blocked` must be surfaced by supervision; cleanup
   must `claude stop` lingering `done` sessions
-- All `agents --json` liveness reads go through `(.status // .state)`
-  (`shared/claude-bg.sh`, `shared/issue-lock.sh`);
-  `tests/helpers/mock-claude.bash` emits the split shape (STALENESS
-  COUPLING: update the mock in the same PR as this section)
+- `scripts/shared/claude-bg.sh` is the SOLE owner of this surface
+  (ADR-0018): all `--bg` invocation, spawn-line parsing, `agents --json`
+  parsing, and `claude stop` live there; consumers use its verdict
+  predicates and keep their own degradation policies. A direct parse
+  anywhere else is a review-blocking violation (CLAUDE.md § Review)
+- `tests/helpers/mock-claude.bash` emits the matrix shapes (STALENESS
+  COUPLING: update the mock and claude-bg.sh in the same PR as this
+  section)
 
 ### Subagent Information Propagation
 

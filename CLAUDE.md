@@ -67,6 +67,14 @@ Assess whether changes follow these UNIX philosophy principles:
 
 ### Platform Constraints
 
+- **claude CLI ownership (ADR-0018)**: `scripts/shared/claude-bg.sh` is the sole
+  owner of the claude CLI surface (`claude --bg` invocation and spawn-line
+  parsing, `claude agents --json` parsing, `claude stop`). A direct claude CLI
+  parse or invocation outside `claude-bg.sh`, or a new implicit cross-boundary
+  assumption (ADR-0018 boundary ownership table), is grounds for
+  changes-requested. Consumers use the verdict predicates and keep their
+  degradation policy (what to do on `query-failed` / `unknown-value`) explicit
+  at the call site.
 - **zsh compatibility**: Scripts `source`d in Claude Code must use `${BASH_SOURCE[0]:-${(%):-%x}}` fallback.
 - **bash 3.2 compatibility**: No `declare -A` (associative arrays). Use temp files with `grep -qxF` instead.
 - **Arithmetic safety**: Use `var=$((var + 1))` instead of `((var++))` (fails under `set -e` when var=0).

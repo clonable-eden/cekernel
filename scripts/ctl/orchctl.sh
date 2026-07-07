@@ -295,11 +295,14 @@ cmd_ls() {
 }
 
 # ── ps: agents --json view layer (ADR-0016 Phase 4) ──
-# `claude agents --json` is fetched ONCE per invocation; every registered
-# token (orchestrator.claude-session-id, handle-{issue}.{type}) is
-# prefix-matched against that single body. States print as-is so `blocked`
-# (permission-dialog stall) is surfaced distinctly; an unlisted token shows
-# as `missing`. Worker/Reviewer rows join the cekernel-specific columns —
+# `claude agents --json` is fetched ONCE per invocation (the body is an
+# OPAQUE snapshot — only claude-bg.sh predicates parse it, ADR-0018);
+# every registered token (orchestrator.claude-session-id,
+# handle-{issue}.{type}) is resolved against that single snapshot. The
+# ADR-0018 verdict tokens print as-is so `blocked` (permission-dialog
+# stall) is surfaced distinctly; an absent token shows as `not-listed`,
+# schema drift as `unknown-value` — a view reports honestly, it does not
+# interpret. Worker/Reviewer rows join the cekernel-specific columns —
 # issue, phase (state-file detail), priority — per the ADR-0015 boundary:
 # the view adds only what `claude agents` cannot know. Sessions without an
 # orchestrator token (interactive orchestrators) still list their workers.
@@ -352,7 +355,7 @@ cmd_ps() {
         fi
 
         local state
-        state=$(claude_bg_state_from_json "$agents_json" "$token") || state="missing"
+        state=$(claude_bg_token_verdict_from_json "$agents_json" "$token") || true
 
         found=$((found + 1))
         echo "orchestrator  claude=${token}  session=${sid}  elapsed=${elapsed}  ${state}"
@@ -374,7 +377,7 @@ cmd_ps() {
       [[ -n "$mtoken" ]] || continue
 
       local mstate
-      mstate=$(claude_bg_state_from_json "$agents_json" "$mtoken") || mstate="missing"
+      mstate=$(claude_bg_token_verdict_from_json "$agents_json" "$mtoken") || true
 
       # Join cekernel-specific columns from state/priority files.
       # CEKERNEL_IPC_DIR is scoped to each command substitution (subshell)
@@ -502,17 +505,28 @@ cmd_recover() {
       ;;
   esac
 
-  # Check if Worker process is alive
+  # Check if Worker process is alive.
+  # Degradation policy (ADR-0018): recover writes TERMINATED/crashed — a
+  # destructive verdict — so query-failed / unknown-value must ERROR OUT
+  # instead of being coerced to dead (never declare a crash on doubt).
   local backend is_alive=0
   backend=$(detect_backend "$CEKERNEL_IPC_DIR" "$RESOLVED_ISSUE")
 
   if [[ "$backend" != "unknown" ]]; then
-    # Source backend adapter to get backend_worker_alive
+    # Source backend adapter to get backend_worker_status
     export CEKERNEL_BACKEND="$backend"
     source "${SCRIPT_DIR}/../shared/backend-adapter.sh"
-    if backend_worker_alive "$RESOLVED_ISSUE" 2>/dev/null; then
-      is_alive=1
-    fi
+    local wverdict
+    wverdict=$(backend_worker_status "$RESOLVED_ISSUE" 2>/dev/null) || true
+    case "$wverdict" in
+      alive|blocked) is_alive=1 ;;
+      query-failed|unknown-value)
+        echo "Error: cannot verify worker #${RESOLVED_ISSUE} (${wverdict})." \
+          "Refusing to mark it crashed — retry when the agents query recovers." >&2
+        return 1
+        ;;
+      *) ;;  # done | stopped | not-listed | missing — verifiably dead
+    esac
   fi
   # If backend is "unknown" (no handle, no metadata), worker is dead (is_alive stays 0)
 
@@ -582,7 +596,7 @@ cmd_kill() {
     [[ -f "$handle_file" ]] || continue
     local handle_content
     handle_content=$(tr -d '[:space:]' < "$handle_file")
-    claude stop "$handle_content" >/dev/null 2>&1 || true
+    claude_bg_stop "$handle_content"
   done
 
   # Terminal backends: also close the attach-only visualization pane/window
@@ -718,9 +732,11 @@ cmd_gc() {
       # tmux pane target (session:window.pane), a numeric wezterm pane ID,
       # or a headless PID.
       # Heuristic: numeric → kill -0; tmux target → has-session; anything
-      # else is a session token → alive iff busy/blocked in
-      # `claude agents --json` (single lazy fetch per gc run, #573); a
-      # failed query stays conservative (assume alive, never gc on doubt)
+      # else is a session token resolved via the ADR-0018 verdict against
+      # a single lazy `agents --json` fetch per gc run (#573).
+      # Degradation policy (ADR-0018 — gc refuses to reap on doubt):
+      # query-failed and unknown-value both count as ALIVE; only a
+      # verifiable done/stopped/not-listed verdict marks the handle dead.
       if [[ "$handle_content" =~ ^[0-9]+$ ]]; then
         if kill -0 "$handle_content" 2>/dev/null; then
           has_live_handle=1
@@ -739,10 +755,15 @@ cmd_gc() {
           has_live_handle=1
           break
         fi
-        if claude_bg_token_alive_from_json "$gc_agents_json" "$handle_content"; then
-          has_live_handle=1
-          break
-        fi
+        local gc_verdict
+        gc_verdict=$(claude_bg_token_verdict_from_json "$gc_agents_json" "$handle_content") || true
+        case "$gc_verdict" in
+          done|stopped|not-listed) ;;  # verifiably dead
+          *)
+            has_live_handle=1
+            break
+            ;;
+        esac
       fi
     done
 
@@ -905,11 +926,13 @@ cmd_gc() {
   }
 
   # ── 3. Clean stale orchestrator sessions (ADR-0016 Phase 2) ──
-  # Liveness is session-ID based: a session whose captured token is not
-  # busy/blocked in `claude agents --json` is dead. Dead sessions are
-  # reaped via `claude stop` (done sessions linger until explicitly
-  # stopped — ADR-0016) and their metadata files removed. Legacy
-  # orchestrator.pid files (pre-v2) are swept unconditionally.
+  # Liveness is session-ID based via the ADR-0018 verdict: only a
+  # verifiable done/stopped/not-listed verdict is dead — query-failed
+  # and unknown-value stay conservative (gc refuses to reap on doubt).
+  # Dead sessions are reaped via the stop primitive (done sessions
+  # linger until explicitly stopped — ADR-0016) and their metadata files
+  # removed. Legacy orchestrator.pid files (pre-v2) are swept
+  # unconditionally.
   if [[ -d "$IPC_BASE" ]]; then
     for session_dir in "$IPC_BASE"/*/; do
       [[ -d "$session_dir" ]] || continue
@@ -922,10 +945,16 @@ cmd_gc() {
         orch_token=$(tr -d '[:space:]' < "$orch_sid_file")
       fi
 
-      # Skip if the orchestrator session is still alive (busy/blocked).
-      # A legacy pid file without a token is always stale under v2.
-      if [[ -n "$orch_token" ]] && claude_bg_token_alive "$orch_token" 2>/dev/null; then
-        continue
+      # Skip unless the orchestrator session is verifiably dead
+      # (done/stopped/not-listed). A legacy pid file without a token is
+      # always stale under v2.
+      if [[ -n "$orch_token" ]]; then
+        local orch_verdict
+        orch_verdict=$(claude_bg_token_verdict "$orch_token" 2>/dev/null) || true
+        case "$orch_verdict" in
+          done|stopped|not-listed) ;;  # verifiably dead — reap below
+          *) continue ;;               # alive/blocked or cannot verify
+        esac
       fi
 
       # Orchestrator session is dead — reap it and clean up metadata
@@ -934,9 +963,7 @@ cmd_gc() {
           echo "[dry-run] would stop dead orchestrator session: $orch_token" >&2
         fi
       else
-        if [[ -n "$orch_token" ]]; then
-          claude stop "$orch_token" >/dev/null 2>&1 || true
-        fi
+        claude_bg_stop "$orch_token"
       fi
 
       for meta_file in "$orch_sid_file" "$orch_legacy_pid_file" \
@@ -995,11 +1022,13 @@ cmd_gc() {
 }
 
 # ── count: Count running orchestrators (internal, ADR-0014) ──
-# Session-ID based (ADR-0016 Phase 2): a session counts when its captured
-# token is alive (busy/blocked) per claude_bg_token_alive_from_json — the
-# liveness vocabulary lives in claude-bg.sh, not here (Rule of Separation).
-# Single fetch per invocation (Phase 4): all tokens resolve against one
-# `agents --json` response.
+# Session-ID based (ADR-0016 Phase 2): a session counts on an alive or
+# blocked verdict — the vocabulary lives in claude-bg.sh, not here (Rule
+# of Separation). Single fetch per invocation (Phase 4): all tokens
+# resolve against one opaque snapshot.
+# Degradation policy (ADR-0018 — the consumer decides): unknown-value
+# counts as alive. For a concurrency guard, over-counting refuses a spawn
+# (safe); under-counting spawns a duplicate orchestrator (not safe).
 cmd_count() {
   local count=0
 
@@ -1017,9 +1046,11 @@ cmd_count() {
       token=$(tr -d '[:space:]' < "$sid_file")
       [[ -n "$token" ]] || continue
 
-      if claude_bg_token_alive_from_json "$agents_json" "$token"; then
-        count=$((count + 1))
-      fi
+      local verdict
+      verdict=$(claude_bg_token_verdict_from_json "$agents_json" "$token") || true
+      case "$verdict" in
+        alive|blocked|unknown-value) count=$((count + 1)) ;;
+      esac
     done
   fi
 

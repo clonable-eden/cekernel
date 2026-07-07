@@ -75,21 +75,49 @@ setup() {
   assert_match "state" '"state":"working"' "$output"
 }
 
-@test "agent records split live status/state; terminal records carry state only" {
-  # Observed shape (verified 2026-07-07, #581): live → status:busy|blocked
-  # + state:"working"; terminal → state:done|stopped, no status field.
+@test "agent records emit the canonical (status, state) matrix pairs (ADR-0018)" {
+  # Observed shapes (verified 2026-07-07, v2.1.202, #593): blocked →
+  # idle/blocked; terminal → idle/done, idle/stopped; busy → busy/working.
   run mock_claude_agent_record \
     "cafe0001-0000-4000-8000-000000000001" background /tmp/wt 1700000000000 blocked
-  assert_match "live status" '"status":"blocked"' "$output"
-  assert_match "live state is working" '"state":"working"' "$output"
+  assert_match "blocked status is idle" '"status":"idle"' "$output"
+  assert_match "blocked state is blocked" '"state":"blocked"' "$output"
 
   run mock_claude_agent_record \
     "cafe0001-0000-4000-8000-000000000001" background /tmp/wt 1700000000000 stopped
-  assert_match "terminal state" '"state":"stopped"' "$output"
-  if [[ "$output" == *'"status"'* ]]; then
-    echo "terminal record must not carry a status field: $output" >&2
+  assert_match "stopped status is idle" '"status":"idle"' "$output"
+  assert_match "stopped state" '"state":"stopped"' "$output"
+}
+
+@test "agent record with an unknown logical state fails noisily" {
+  run mock_claude_agent_record \
+    "cafe0001-0000-4000-8000-000000000001" background /tmp/wt 1700000000000 exploded
+  assert_eq "exit status" "1" "$status"
+}
+
+@test "record_pair emits explicit pairs; '-' omits the field" {
+  run mock_claude_agent_record_pair \
+    "cafe0001-0000-4000-8000-000000000001" background /tmp/wt 1700000000000 busy -
+  assert_match "status present" '"status":"busy"' "$output"
+  if [[ "$output" == *'"state"'* ]]; then
+    echo "record with state '-' must not carry a state field: $output" >&2
     return 1
   fi
+
+  run mock_claude_agent_record_pair \
+    "cafe0001-0000-4000-8000-000000000001" background /tmp/wt 1700000000000 - done
+  assert_match "state present" '"state":"done"' "$output"
+  if [[ "$output" == *'"status"'* ]]; then
+    echo "record with status '-' must not carry a status field: $output" >&2
+    return 1
+  fi
+}
+
+@test "mock_claude_fail_agents makes agents --json fail (query-failed contract)" {
+  mock_claude_fail_agents
+  run claude agents --json
+  assert_eq "exit status" "1" "$status"
+  assert_eq "no output" "" "$output"
 }
 
 @test "agent records emit startedAt as a JSON number (real epoch-millis shape)" {

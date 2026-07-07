@@ -8,7 +8,8 @@
 #
 # ADR-0016 Phase 3: the generated runner spawns `claude --bg` (prompt path —
 # the hidden/unstable `--exec` flag is NOT used) and supervises the run by
-# polling `agents --json` to a terminal state. `--bg` returns immediately,
+# polling the session verdict (claude-bg.sh, ADR-0018) to a terminal
+# state. `--bg` returns immediately,
 # so exit-code-based success/error recording is impossible; instead:
 #
 #   done                         → registry status "success"
@@ -86,24 +87,21 @@ source "\${CEKERNEL_DIR}/scripts/shared/claude-bg.sh"
 echo "\$(date '+%Y-%m-%dT%H:%M:%S%z') cekernel[\$ID]: START prompt=\"${prompt}\" repo=\"${repo}\"" >> "\$SYSLOG_FILE"
 SECONDS=0
 
-# Spawn as a \`claude --bg\` background agent session (ADR-0016 Phase 3).
+# Spawn as a \`claude --bg\` background agent session (ADR-0016 Phase 3)
+# via claude_bg_spawn — the --bg invocation, nested-session marker
+# unsetting, and spawn-line parsing live in claude-bg.sh (ADR-0018).
 # --bg returns immediately; the outcome is supervised by polling below.
-# Session markers are unset in case the runner is invoked manually from
-# inside a Claude Code session (nested-session detection).
 STATUS=error
 FINAL_STATE=spawn-failed
 TOKEN=""
-if cd "${repo}" && SPAWN_OUT=\$(
-  unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ACCESS_TOKEN
-  claude --bg ${bare_flags} "${prompt}" 2>> "\$RUN_LOG"
+if cd "${repo}" && SHORT_ID=\$(
+  claude_bg_spawn "${repo}" ${bare_flags} "${prompt}" 2>> "\$RUN_LOG"
 ); then
-  printf '%s\n' "\$SPAWN_OUT" >> "\$RUN_LOG"
+  echo "spawned short-id=\${SHORT_ID:-none}" >> "\$RUN_LOG"
 
   # Session-ID capture (ADR-0016 normative order): short ID from the
-  # human-oriented spawn line first, then kind+cwd+startedAt fallback
-  # (agents --json reports realpath'd cwd).
-  SHORT_ID=\$(printf '%s\n' "\$SPAWN_OUT" | awk '/backgrounded/ {print \$NF; exit}')
-  [[ "\$SHORT_ID" =~ ^[0-9a-f]{8}\$ ]] || SHORT_ID=""
+  # spawn line first, then kind+cwd+startedAt fallback (the roster
+  # reports realpath'd cwd).
   if TOKEN=\$(claude_bg_capture_session_id "\$SHORT_ID" "\$(pwd -P)"); then
     FINAL_STATE=\$(claude_bg_wait_terminal "\$TOKEN" "\$POLL_INTERVAL" "\$POLL_TIMEOUT")
     # done = the SESSION terminated, not that the job inside it succeeded
@@ -113,7 +111,7 @@ if cd "${repo}" && SPAWN_OUT=\$(
     # unblocks unattended. On timeout the session may still be doing
     # real work — record error but leave it running.
     if [[ "\$FINAL_STATE" != "timeout" ]]; then
-      claude stop "\$TOKEN" >/dev/null 2>&1 || true
+      claude_bg_stop "\$TOKEN"
     fi
   else
     FINAL_STATE=capture-failed

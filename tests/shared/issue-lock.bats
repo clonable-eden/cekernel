@@ -230,6 +230,17 @@ lock_with_token() {
   assert_eq "acquire fails (cannot verify → assume alive)" "1" "$status"
 }
 
+@test "acquire fails on an unknown (status, state) pair (conservative)" {
+  # ADR-0018 degradation policy: unknown-value is schema drift, not
+  # evidence of death — never steal a lock on doubt.
+  mock_claude
+  lock_with_token
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record_pair "$TOKEN" background /tmp/wt 1700000000000 idle working)]"
+  run issue_lock_acquire "$REPO_A" "$ISSUE"
+  assert_eq "acquire fails (unknown-value → assume alive)" "1" "$status"
+}
+
 @test "check reports locked while the token holder session is busy" {
   mock_claude
   lock_with_token

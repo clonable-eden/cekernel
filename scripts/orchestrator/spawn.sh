@@ -296,8 +296,8 @@ backend_spawn_worker "$ISSUE_NUMBER" "$AGENT_TYPE" "$WORKTREE" "$PROMPT" "$AGENT
 # spawn.sh ($$) is short-lived and exits after launching the process.
 # Without this update, stale detection would always see a dead holder,
 # causing false stale-lock recovery and potential duplicate spawns.
-# All backends return an opaque session token verified via
-# `claude agents --json` (ADR-0005 Amendment 1, ADR-0016 Phase 5);
+# All backends return an opaque session token verified via the
+# claude-bg session verdict (ADR-0005 Amendment 1, ADR-0016 Phase 5, ADR-0018);
 # issue-lock also still handles numeric PIDs (kill -0).
 BACKEND_HANDLE=$(backend_get_handle "$ISSUE_NUMBER" "$AGENT_TYPE" 2>/dev/null) || true
 if [[ -n "$BACKEND_HANDLE" && "$BACKEND_HANDLE" != "null" ]]; then

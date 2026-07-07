@@ -182,7 +182,8 @@ enqueue_session() {
     "END status=success state=done" "$syslog"
   assert_match "END line records the poll-window duration" "duration=" "$syslog"
 
-  assert_match "spawn line captured in run.log" "backgrounded" "$(cat "$W_RUN_LOG")"
+  assert_match "captured short ID logged in run.log" \
+    "spawned short-id=aaaa1111" "$(cat "$W_RUN_LOG")"
 }
 
 @test "wrapper: runner reaps the done session via claude stop" {

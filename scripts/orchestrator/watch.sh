@@ -6,11 +6,14 @@
 # Environment:
 #   CEKERNEL_WORKER_TIMEOUT — Process timeout in seconds (default: 3600)
 #   CEKERNEL_POLL_INTERVAL  — State file poll interval in seconds (default: 30)
+#   CEKERNEL_WATCH_QUERY_RETRY_MAX — Consecutive unverifiable polls
+#     (query-failed / unknown-value) tolerated before escalating an
+#     "error" result (default: 3; ADR-0018 degradation policy)
 #
 # Monitors each process via triple-path detection:
 #   1. FIFO (primary, sub-second latency)
 #   2. State file polling (fallback, up to POLL_INTERVAL latency)
-#   3. Process crash detection (backend status / liveness check);
+#   3. Process crash detection (backend verdict, ADR-0018);
 #      blocked sessions (permission-dialog stall) are surfaced as a
 #      distinct "blocked" result (ADR-0016)
 # Outputs results to stdout as JSON Lines.
@@ -30,6 +33,7 @@ RESULT_DIR=$(mktemp -d)
 PIDS=()
 TIMEOUT="${CEKERNEL_WORKER_TIMEOUT:-3600}"
 POLL_INTERVAL="${CEKERNEL_POLL_INTERVAL:-30}"
+QUERY_RETRY_MAX="${CEKERNEL_WATCH_QUERY_RETRY_MAX:-3}"
 
 # ── Helper: build result JSON from state file (fallback path) ──
 build_result_from_state() {
@@ -54,6 +58,7 @@ watch_one() {
   local has_fifo=1
   local result=""
   local elapsed=0
+  local query_failures=0
 
   log_event "$issue" "FIFO_WATCH_START" "issue=#${issue} timeout=${TIMEOUT} poll_interval=${POLL_INTERVAL}"
 
@@ -101,10 +106,14 @@ watch_one() {
     fi
 
     # Crash/blocked detection: only when a handle file is present (without
-    # it, we can't verify the worker). When the backend provides a status
-    # (headless: `claude agents --json` state, ADR-0016), `blocked`
-    # (permission-dialog stall) MUST be surfaced as a distinct result —
-    # nobody approves a dialog in a headless session, so it is terminal.
+    # it, we can't verify the worker). The backend reports the ADR-0018
+    # verdict vocabulary; `blocked` (permission-dialog stall) MUST be
+    # surfaced as a distinct result — nobody approves a dialog in a
+    # headless session, so it is terminal.
+    # Degradation policy (ADR-0018 — the consumer decides): query-failed
+    # and unknown-value are retried, then ESCALATED after
+    # QUERY_RETRY_MAX consecutive unverifiable polls — never coerced
+    # into a crash (#573, #581).
     local has_handle=0
     for _hf in "${CEKERNEL_IPC_DIR}"/handle-"${issue}".*; do
       [[ -f "$_hf" ]] && has_handle=1 && break
@@ -113,23 +122,41 @@ watch_one() {
       local worker_dead=0 worker_detail="Worker process died without completing"
       if declare -F backend_worker_status >/dev/null 2>&1; then
         local wstatus
-        wstatus=$(backend_worker_status "$issue" 2>/dev/null || true)
+        wstatus=$(backend_worker_status "$issue" 2>/dev/null) || true
         [[ -n "$wstatus" ]] || wstatus="missing"
-        if [[ "$wstatus" == "unknown" ]]; then
-          # Transient agents-query failure (daemon restarting) — not
-          # evidence of a crash; keep polling (#573).
-          :
-        elif [[ "$wstatus" == "blocked" ]]; then
-          result="{\"issue\":${issue},\"result\":\"blocked\",\"detail\":\"Worker session is waiting on a permission dialog\"}"
-          echo "Error: issue #${issue} Worker session is blocked (permission dialog)." >&2
-          log_event "$issue" "WORKER_BLOCKED" "issue=#${issue} state=${state}"
-          [[ $has_fifo -eq 1 ]] && exec 3>&-
-          rm -f "$fifo"
-          break
-        elif [[ "$wstatus" != "busy" ]]; then
-          worker_dead=1
-          worker_detail="Worker session ended without completing (session state: ${wstatus})"
-        fi
+        case "$wstatus" in
+          alive)
+            query_failures=0
+            ;;
+          blocked)
+            query_failures=0
+            result="{\"issue\":${issue},\"result\":\"blocked\",\"detail\":\"Worker session is waiting on a permission dialog\"}"
+            echo "Error: issue #${issue} Worker session is blocked (permission dialog)." >&2
+            log_event "$issue" "WORKER_BLOCKED" "issue=#${issue} state=${state}"
+            [[ $has_fifo -eq 1 ]] && exec 3>&-
+            rm -f "$fifo"
+            break
+            ;;
+          query-failed|unknown-value)
+            # Unverifiable — retry, escalate when persistent.
+            query_failures=$((query_failures + 1))
+            if [[ "$query_failures" -ge "$QUERY_RETRY_MAX" ]]; then
+              result="{\"issue\":${issue},\"result\":\"error\",\"detail\":\"agents query unverifiable (${wstatus}) for ${query_failures} consecutive polls — worker may still be running, do not clean up on this result alone\"}"
+              echo "Error: issue #${issue} agents query unverifiable (${wstatus}) ${query_failures} times — escalating." >&2
+              log_event "$issue" "WATCH_QUERY_ESCALATED" "issue=#${issue} report=${wstatus} failures=${query_failures}"
+              [[ $has_fifo -eq 1 ]] && exec 3>&-
+              rm -f "$fifo"
+              break
+            fi
+            log_event "$issue" "WATCH_QUERY_RETRY" "issue=#${issue} report=${wstatus} failures=${query_failures}"
+            ;;
+          *)
+            # done | stopped | not-listed | missing — verifiably ended
+            query_failures=0
+            worker_dead=1
+            worker_detail="Worker session ended without completing (verdict: ${wstatus})"
+            ;;
+        esac
       elif ! backend_worker_alive "$issue" 2>/dev/null; then
         worker_dead=1
       fi
