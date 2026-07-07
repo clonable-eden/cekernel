@@ -113,9 +113,19 @@ Parsimony). Revisit when a concrete Orchestrator long-run requirement exists.
 - Hook output is capped at 10,000 characters and the guard message is far
   below it; multiple hooks returning `additionalContext` for the same event
   all get delivered, so coexistence with target-repo Stop hooks is safe.
-- Plugin-hook loading under `--bare --plugin-dir` is documented but not yet
-  live-verified in a cekernel spawn; if it turns out not to load, the guard
-  silently does not fire and behavior is exactly today's baseline (fail-open).
-  Verify during the next long-run and note the result here.
+- Plugin-hook loading under `--plugin-dir` is **live-verified** (2026-07-07,
+  controlled experiment): a `claude -p` session started in a fake Worker
+  worktree (`.cekernel-task.md` with `issue: 999999`, `.cekernel-env`, a
+  non-`TERMINATED` state file) with `--plugin-dir <cekernel-root>` received
+  the guard's `additionalContext` and continued the Worker Protocol
+  (`num_turns=13`, session cited the Stop hook and drove the state file to
+  `TERMINATED`); the identical session **without** `--plugin-dir` stopped
+  after `num_turns=1` with no guard involvement. `--plugin-dir` therefore
+  enables `hooks/hooks.json` auto-discovery and `${CLAUDE_PLUGIN_ROOT}`
+  resolution, and since every spawn branch passes it (`bare-mode.sh`,
+  ADR-0016 Amendment 1) the guard reaches Worker sessions in **both** local
+  self-hosting and plugin-installed usage. The enabling mechanism is the
+  spawn-time `--plugin-dir`, not the parent session's plugin/local namespace.
+  If it ever fails to load, behavior degrades to the fail-open baseline.
 - `plugin.json` needs no change: `hooks/hooks.json` at the plugin root is the
   auto-discovered default location.

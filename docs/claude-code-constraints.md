@@ -492,6 +492,17 @@ bare-mode session. Only explicitly passed flags take effect — the documented
 injection paths are `--settings <file>` and `--plugin-dir <path>` (a plugin's
 `hooks/hooks.json` merges when the plugin is enabled).
 
+**Verified (2026-07-07, controlled experiment)**: `--plugin-dir <cekernel-root>`
+enables the cekernel plugin's `hooks/hooks.json` auto-discovery and resolves
+`${CLAUDE_PLUGIN_ROOT}` inside hook commands. A session started in a fake Worker
+worktree *with* `--plugin-dir` received the Stop guard's `additionalContext`
+and continued (`num_turns=13`); the identical session *without* it stopped at
+`num_turns=1`. Because every cekernel spawn branch passes `--plugin-dir`
+(`bare-mode.sh`, ADR-0016 Amendment 1), plugin hooks fire in spawned Worker
+sessions under **both** local self-hosting and plugin-installed usage — the
+enabling signal is the spawn-time flag, not the parent's plugin/local namespace.
+See ADR-0019 Consequences.
+
 **Implications for cekernel**:
 - cekernel-origin lifecycle hooks must ship in the plugin's `hooks/hooks.json`
   — cekernel passes `--plugin-dir <cekernel-root>` on every spawn branch
