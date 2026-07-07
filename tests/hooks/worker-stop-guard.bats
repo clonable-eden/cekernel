@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 # worker-stop-guard.bats — bats-core tests for scripts/hooks/worker-stop-guard.sh
 #
-# The guard is a Claude Code Stop hook (ADR-0018, #533). It receives the
+# The guard is a Claude Code Stop hook (ADR-0019, #533). It receives the
 # hook input JSON on stdin and:
 #   - stays silent (exit 0, no output) for non-Worker sessions
 #   - stays silent when the Worker state is TERMINATED (notify-complete.sh ran)

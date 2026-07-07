@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # worker-stop-guard.sh — Claude Code Stop hook: Worker lifecycle guard
 #
-# Registered in hooks/hooks.json (plugin Stop hook, ADR-0018, #533).
+# Registered in hooks/hooks.json (plugin Stop hook, ADR-0019, #533).
 # Keeps a Worker session running until its lifecycle completes: when the
 # session tries to end its turn before notify-complete.sh has recorded
 # TERMINATED, the guard returns hookSpecificOutput.additionalContext

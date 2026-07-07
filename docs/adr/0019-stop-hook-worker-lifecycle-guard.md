@@ -1,4 +1,4 @@
-# ADR-0018: Worker Lifecycle Stop Hook Guard via additionalContext
+# ADR-0019: Worker Lifecycle Stop Hook Guard via additionalContext
 
 ## Status
 

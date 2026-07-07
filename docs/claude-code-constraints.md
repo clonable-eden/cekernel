@@ -472,7 +472,7 @@ Additional verified facts:
   `StopFailure` instead (logging only, no decision control)
 
 **Implications for cekernel**:
-- `scripts/hooks/worker-stop-guard.sh` (ADR-0018) returns `additionalContext`
+- `scripts/hooks/worker-stop-guard.sh` (ADR-0019) returns `additionalContext`
   to keep a Worker session running until `notify-complete.sh` records
   TERMINATED — a turn-boundary guard against Workers dying before their
   completion notification (#558 family)
