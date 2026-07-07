@@ -14,10 +14,9 @@ See [README.md](./README.md) for architecture details.
 When implementing something, always check existing patterns first.
 
 - **Feasibility check before implementation**: When adopting an approach different from existing patterns, verify technical constraints first (e.g., tool availability, API limitations, call depth restrictions). Do not start implementation without confirming feasibility.
-- **Verify feasibility in BOTH local and plugin modes**: cekernel runs both as a local checkout (self-hosting) and as a distributed plugin (`--plugin-dir`). **Local self-hosting systematically hides plugin-mode failures** — agent namespacing (`reviewer` vs `cekernel:reviewer`), hook loading (`${CLAUDE_PLUGIN_ROOT}`), env delivery, and Agent-tool subagent registration all differ. Any ADR or change touching agent spawn, hooks, env, or subagents MUST be feasibility-checked in a **foreign repo via `--plugin-dir`**, not local-only. The release gate includes a foreign-repo `--plugin-dir` smoke test.
 - **Document deviations in ADR**: When choosing not to use an existing pattern, record the reason in an ADR. See the [ADRs](#adrs) section for how to create one.
 
-> **Background**: When designing the Reviewer, an existing spawn pattern was overlooked and a subagent-based approach was implemented instead, requiring a rework. The technical constraint (skill → agent → agent is not allowed) could have been discovered with prior investigation. **This recurred in v2 (#600)**: ADR-0012 Amendment 2 moved the Reviewer back to a subagent, validated only in local self-hosting; in plugin mode the `cekernel:reviewer` subagent cannot spawn (grant/namespace mismatch + plugin agents absent from the subagent registry), so the Reviewer flow silently breaks and the Orchestrator improvises a self-review that never posts. Same feasibility-check gap, exposed only because validation was local-only — hence the both-modes rule above.
+> **Background**: When designing the Reviewer, an existing spawn pattern was overlooked and a subagent-based approach was implemented instead, requiring a rework. The technical constraint (skill → agent → agent is not allowed) could have been discovered with prior investigation.
 
 ## Philosophy
 
