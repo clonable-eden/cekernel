@@ -52,9 +52,10 @@ Known characteristics:
 Additionally (observed 2026-07-07, claude v2.1.201): **the harness may
 auto-detach a long-running foreground Bash call into a background task**
 even when the agent intended a blocking call. In `claude -p` execution this
-is fatal in combination with turn-end process exit: the agent believes it
+was fatal in combination with turn-end process exit: the agent believes it
 will be re-invoked on completion, ends its turn, and the process dies with
-its watchers (#558). Setting `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` in
+its watchers (#558) — the failure class that motivated ADR-0016's move to
+`claude --bg`. Setting `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` in
 the spawned process's environment keeps Bash calls truly in the foreground.
 
 **Implications for cekernel**:
