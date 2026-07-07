@@ -59,6 +59,14 @@ EOF
 
 Display: runtime directory, backend, count of additional variables (or "none"), profile path — and point to `envs/README.md` for other options. If the user selected `wezterm`, also point to `config/README.md` for the WezTerm plugin installation (read these files to give the actual path relative to the plugin directory).
 
+Also present the **recommended target-repo allowlist** (ADR-0012 Amendment 4). Workers run headless in the target repository's checkout; without a pre-configured allowlist they may stall silently (`blocked`) on permission prompts. Recommend that each target repository ships a `.claude/settings.json` containing a non-empty `permissions.allow`, e.g.:
+
+```json
+{"permissions": {"allow": ["Bash", "Edit", "Write", "Read"]}}
+```
+
+Do NOT create or modify the target repo's settings — this is a recommendation only; permission configuration is the operator's decision (`spawn.sh` warns at spawn time when it is missing, and `--permission-mode acceptEdits` is the alternative escape).
+
 ## Important
 
 - Do NOT run `sudo` at any point — the purpose of this skill is to avoid it via user-local paths.
