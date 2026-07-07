@@ -1,7 +1,7 @@
 ---
 name: orchestrator
 description: Orchestrator agent that manages issue lifecycle in the main working tree. Handles issue intake, worktree creation, Worker spawning, completion monitoring, review coordination, and cleanup.
-tools: Read, Edit, Write, Bash, Agent(reviewer)
+tools: Read, Edit, Write, Bash, Agent
 ---
 
 # Orchestrator Agent
@@ -166,6 +166,8 @@ the final output line.
 ```
 
 The Reviewer's temporary worktree is auto-removed by Claude Code (detached, read-only checkout). It inherits your session's tool permissions — a permission gap stalls the review silently (`blocked`).
+
+**Never review the PR yourself.** The verdict comes only from the Reviewer subagent's final output line. If the Agent tool errors (e.g. the reviewer agent type is not found), or the subagent returns no recognizable verdict, treat it as **escalation** below — do NOT run `gh pr review` / `gh api .../reviews` yourself, and do NOT send an `approved` notification. Send `approved` (and merge, if `CEKERNEL_AUTO_MERGE=true`) only when the Reviewer returned the `approved` verdict.
 
 ### Handling the Verdict (final output line)
 

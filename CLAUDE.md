@@ -14,9 +14,10 @@ See [README.md](./README.md) for architecture details.
 When implementing something, always check existing patterns first.
 
 - **Feasibility check before implementation**: When adopting an approach different from existing patterns, verify technical constraints first (e.g., tool availability, API limitations, call depth restrictions). Do not start implementation without confirming feasibility.
+- **Verify feasibility in BOTH local and plugin modes**: cekernel runs both as a local checkout (self-hosting) and as a distributed plugin (`--plugin-dir`). **Local self-hosting systematically hides plugin-mode failures** — agent namespacing (`reviewer` vs `cekernel:reviewer`), hook loading (`${CLAUDE_PLUGIN_ROOT}`), env delivery, and Agent-tool subagent allowlists all differ. Any change touching agent spawn, hooks, env, or subagents MUST be feasibility-checked in a **foreign repo via `--plugin-dir`**, not local-only. Dogfood via `--plugin-dir` in a foreign repo before every release.
 - **Document deviations in ADR**: When choosing not to use an existing pattern, record the reason in an ADR. See the [ADRs](#adrs) section for how to create one.
 
-> **Background**: When designing the Reviewer, an existing spawn pattern was overlooked and a subagent-based approach was implemented instead, requiring a rework. The technical constraint (skill → agent → agent is not allowed) could have been discovered with prior investigation.
+> **Background**: When designing the Reviewer, an existing spawn pattern was overlooked and a subagent-based approach was implemented instead, requiring a rework. The `skill → agent → agent` nesting constraint **was true at the time (2026-03)** and could have been discovered with prior investigation. Nested subagents were later unlocked in claude **v2.1.172 (2026-06-10)**, so ADR-0012 Amendment 2 (2026-07) moved the Reviewer back to a subagent — a sound call, but it reused the 2026-03 `Agent(reviewer)` grant unchanged, which broke in plugin mode (#600: the grant did not permit the plugin-namespaced `cekernel:reviewer`). The durable lesson is not the constraint (now lifted) but the both-modes feasibility check above.
 
 ## Philosophy
 

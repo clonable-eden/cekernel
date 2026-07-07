@@ -452,6 +452,28 @@ assumptions; CLAUDE.md feasibility-check rule applies):
    is retained because rules auto-loading inside agent worktrees is still
    not guaranteed.
 
+**Correction (2026-07-08, #602): results #1 and #2 hold only in interactive
+sessions.** Both verifications above were done interactively / by binary
+inspection of the removal code path — they confirmed *what the routine does
+when it runs*, not *whether it runs* in cekernel's actual execution mode. A
+controlled `claude -p` test (#602) showed that under non-interactive parents
+(`claude --bg` / `-p`, the Orchestrator's default per ADR-0016), **neither**
+mechanism fires on subagent completion: the `.claude/worktrees/agent-*`
+worktree is not auto-removed (#1) and the `.git/info/exclude` runtime marker
+is not written (#2, so `git status` shows `?? .claude/worktrees/`). The test
+isolated firing from config-load — a `SessionEnd` control hook fired while
+`WorktreeRemove` did not. Consequently the `isolation: worktree` sub-choice
+of this amendment **leaks worktrees under `--bg`**. Amendment 2's core
+decision (Reviewer as a subagent) is sound and stays; only the
+platform-managed worktree is the defect. The root fix — keep the subagent but
+move its worktree onto a cekernel-managed path (`.worktrees/reviewer-*` via
+`cleanup-worktree.sh`, restoring cekernel ownership of the lifecycle) — is
+tracked in #602 and is post-2.0. For 2.0, the leftover worktrees are cleaned
+manually and documented as a Known Issue; `.claude/worktrees/` is
+deliberately **not** gitignored so the untracked entry stays a visible
+cleanup signal (Rule of Transparency). This is the same mode-blindspot class
+as #600 (Amendment 5).
+
 ### Amendment 3: `CEKERNEL_KEEP_WORKTREE` — Optional Worktree Retention After Approval (2026-07)
 
 The Worktree Lifetime table above mandates immediate worktree removal on
@@ -535,6 +557,36 @@ classifier.
 guidance are 2.0-sized. Layer-2 verification and goal-loop permission
 policy are post-2.0 (v2.1). **2.0 release is not blocked on this
 Amendment.**
+
+### Amendment 5: Reviewer Subagent Grant Must Be Namespace-Agnostic (2026-07-07)
+
+Amendment 2 is **kept** — the Reviewer stays an Orchestrator subagent. But
+its first plugin-mode run (#600) exposed a latent defect: the Orchestrator's
+`tools: ... Agent(reviewer)` allowlist only permits the bare name `reviewer`.
+That name exists in **local** self-hosting (`.claude/agents/reviewer.md`), so
+23 spawns succeeded during the Waves; under **plugin** distribution the
+Reviewer is the namespaced `cekernel:reviewer`, which `Agent(reviewer)`
+silently blocks (the Agent tool reports "not found" with an empty available
+list). The Orchestrator then improvised a self-review via `gh pr review
+--approve` — which fails on an author's own PR — and still sent an `approved`
+notification (a Rule of Repair violation: success reported on a broken state).
+
+The grant was itself a fossil: it was added 2026-03 for the *first* subagent
+attempt, went vestigial when Amendment 1 moved the Reviewer to spawn + FIFO,
+and was silently reactivated by Amendment 2 (2026-07) without updating for
+plugin namespacing. Live testing confirmed plugin agents **can** be
+subagents (a `--plugin-dir` session spawned `cekernel:probe`); the sole
+cause was the grant name.
+
+**Decision**: grant the Orchestrator unrestricted `Agent` (no parentheses),
+which permits the subagent under either namespace. Plugin-namespaced
+allowlist entries (`Agent(cekernel:reviewer)`) are undocumented, so an
+allowlist is not a reliable cross-mode option; the Orchestrator is
+first-party and spawns Workers as processes (not subagents), so dropping the
+allowlist costs nothing. The Orchestrator must **never review the PR itself**
+and must gate the `approved` notification on the Reviewer's actual verdict
+(orchestrator.md). The durable lesson — verify feasibility in both local and
+plugin modes — is recorded in CLAUDE.md (Design Decisions).
 
 ## Alternatives Considered
 
