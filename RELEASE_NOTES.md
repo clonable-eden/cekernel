@@ -68,13 +68,27 @@ the `1.9.x` line (see **Migration** below). Requires a recent Claude Code
 - **Staying on 1.x**: if you depend on `-p` spawning, pin to `cekernel-v1.9.x`.
   The 1.x line is the supported legacy mode; 2.0 does not run alongside it.
 
+## Known Issues
+
+- **Reviewer worktrees are not auto-cleaned under `--bg`**
+  ([#602](https://github.com/clonable-eden/cekernel/issues/602)): when the
+  Orchestrator runs non-interactively (`claude --bg`, the default in 2.0), the
+  platform's worktree auto-cleanup and `.git/info/exclude` auto-ignore do
+  **not** fire on Reviewer (`isolation: worktree`) subagent completion.
+  Leftover `.claude/worktrees/agent-*` accumulate on disk and show as
+  untracked `?? .claude/worktrees/` in `git status`. **Workaround**:
+  periodically run `git worktree prune` / `git worktree remove`. Left
+  intentionally visible (not gitignored) as a cleanup signal. The root fix —
+  moving the Reviewer onto a cekernel-managed worktree — is tracked in #602
+  and scheduled post-2.0.
+
 ## Architecture Decisions
 
 This release lands five ADRs: **0015** (/workflows boundary), **0016** (`--bg`
 spawn delegation, + Amendment 1 conditional `--bare`), **0017** (test-suite
 overhaul), **0018** (platform interface contracts), **0019** (Worker lifecycle
-Stop hook). ADR-0012 gains Amendments 2–4 (Reviewer subagent, KEEP_WORKTREE,
-permission portability).
+Stop hook). ADR-0012 gains Amendments 2–5 (Reviewer subagent, KEEP_WORKTREE,
+permission portability, namespace-agnostic Reviewer grant — the #600 fix).
 
 ## What's Changed
 
