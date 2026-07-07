@@ -255,6 +255,36 @@ fi
 echo "worktree: $WORKTREE" >&2
 echo "branch:   $BRANCH" >&2
 
+# ── Permission preflight (ADR-0012 Amendment 4, layer 1) ──
+# Coarse check only: warn when the target repo checkout lacks a
+# .claude/settings.json with a non-empty permissions.allow, because the
+# spawned process may then stall silently on a permission prompt
+# ("blocked"). Full resolution (settings hierarchy, Bash(cmd) globs, the
+# safety classifier) is an explicit Non-Goal — there is no platform query
+# API, and reimplementing the engine would fail worse than the gap it
+# closes. Per-tool permit/deny is caught at layer 3 via bg_is_blocked
+# (ADR-0018). The preflight warns noisily and never aborts the spawn.
+permission_preflight() {
+  local settings="${1}/.claude/settings.json"
+  local gap=""
+  if [[ ! -f "$settings" ]]; then
+    gap="no .claude/settings.json in the target repo"
+  elif ! jq -e '.permissions.allow | length > 0' "$settings" >/dev/null 2>&1; then
+    gap="permissions.allow in .claude/settings.json is empty, missing, or unparsable"
+  fi
+  [[ -n "$gap" ]] || return 0
+  cat >&2 <<EOF
+Warning: permission preflight: ${gap}.
+  The spawned process may stall silently (blocked) waiting for tool
+  permission. To avoid this, either:
+    - add an allowlist to the target repo's .claude/settings.json, e.g.
+        {"permissions": {"allow": ["Bash", "Edit", "Write", "Read"]}}
+    - or launch with an explicit --permission-mode acceptEdits.
+  Proceeding anyway (coarse check only — ADR-0012 Amendment 4).
+EOF
+}
+permission_preflight "$WORKTREE"
+
 # ── Compute cekernel script paths for process PATH ──
 CEKERNEL_WORKER_SCRIPTS="$(cd "${SCRIPT_DIR}/../process" && pwd)"
 CEKERNEL_SHARED_SCRIPTS="$(cd "${SCRIPT_DIR}/../shared" && pwd)"

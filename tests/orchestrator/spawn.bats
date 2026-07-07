@@ -184,6 +184,45 @@ run_spawn() {
     "$(cat "${ipc_dir}/handle-42.worker")"
 }
 
+# ── Permission preflight (ADR-0012 Amendment 4, layer 1) ──
+# Coarse check: warn when the target repo lacks a usable permissions.allow,
+# but never abort the spawn.
+
+# commit_settings <json> — commit .claude/settings.json to upstream so the
+# worktree checkout (created from origin/main) contains it
+commit_settings() {
+  mkdir -p "${TMP}/upstream/.claude"
+  printf '%s\n' "$1" > "${TMP}/upstream/.claude/settings.json"
+  git -C "${TMP}/upstream" add .claude/settings.json
+  git -C "${TMP}/upstream" -c user.email=test@test -c user.name=test \
+    commit -q -m "add settings"
+}
+
+@test "spawn.sh warns but proceeds when target repo has no .claude/settings.json" {
+  run_spawn
+  assert_eq "spawn exits 0 (preflight never aborts)" "0" "$status"
+  assert_match "warns about missing settings" "permission preflight" "$output"
+  wait_for_file "$ARGS_FILE"
+}
+
+@test "spawn.sh does not warn when permissions.allow is non-empty" {
+  commit_settings '{"permissions": {"allow": ["Bash", "Edit", "Write", "Read"]}}'
+  run_spawn
+  assert_eq "spawn exits 0" "0" "$status"
+  if [[ "$output" == *"permission preflight"* ]]; then
+    echo "FAIL: no preflight warning expected with non-empty allow: ${output}" >&2
+    return 1
+  fi
+}
+
+@test "spawn.sh warns but proceeds when permissions.allow is empty" {
+  commit_settings '{"permissions": {"allow": []}}'
+  run_spawn
+  assert_eq "spawn exits 0 (preflight never aborts)" "0" "$status"
+  assert_match "warns about empty allow" "permission preflight" "$output"
+  wait_for_file "$ARGS_FILE"
+}
+
 @test "spawn.sh without --repo keeps current-repo behavior" {
   run_spawn
   assert_eq "spawn exits 0" "0" "$status"
