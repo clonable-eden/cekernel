@@ -152,6 +152,24 @@ Related observations (claude v2.1.201, 2026-07-06):
   is removed automatically
 - Relative symlinks (e.g., `.claude/rules/*.md` → `../../docs/*.md`) resolve
   correctly inside a full worktree checkout
+
+**Interactive-only: worktree cleanup does NOT fire under `--bg` / `-p`**
+(verified 2026-07-08, #602). The two mechanisms above — auto-removal and the
+`.git/info/exclude` auto-ignore — only run in **interactive** sessions. In a
+non-interactive parent (`claude --bg` / `-p`, cekernel's default execution
+mode for the Orchestrator), an `isolation: worktree` subagent's
+`.claude/worktrees/agent-*` is **not** removed on completion, and the
+`# claude-code-runtime` exclude marker is **not** written — so leftover
+worktrees accumulate and show as untracked `?? .claude/worktrees/` in
+`git status`. A controlled `-p` test confirmed this is a firing gap, not a
+config-load gap: a `SessionEnd` control hook fired (project `settings.json`
+loads under `-p`) while a `WorktreeRemove` hook did **not**. The docs describe
+`WorktreeRemove` as firing "at session exit or when a subagent finishes", but
+that firing is interactive-only. **Implication**: a plugin/hook-based root fix
+is not viable for cekernel's `--bg` Orchestrator; the worktree lifecycle must
+be owned by cekernel (tracked in #602). This is a mode-blindspot of the same
+class as #600 — a mechanism verified in one execution mode but broken in the
+one cekernel actually uses.
 - A main-thread agent can restrict spawnable subagent types with the
   `Agent(agent_type)` allowlist syntax in its `tools` frontmatter
 
