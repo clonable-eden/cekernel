@@ -215,7 +215,9 @@ $CEKERNEL_VAR_DIR/              # default: ~/.local/var/cekernel (user-specified
 `scripts/scheduler/wrapper.sh` generates runner scripts at `runners/<id>.sh`. Each wrapper:
 
 1. Sets `PATH` (registration-time snapshot)
-2. Executes `claude -p` with `if/else` pattern (`set -e` safe)
+2. Spawns a `claude --bg` background session via `claude_bg_spawn`, then polls
+   it to a terminal state with `claude_bg_wait_terminal` (ADR-0016 Phase 3;
+   `if/else` pattern, `set -e` safe)
 3. Updates registry status (`success` / `error`)
 4. Sends OS-native notification on failure (best-effort)
 
