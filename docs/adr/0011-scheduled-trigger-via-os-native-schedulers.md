@@ -4,6 +4,14 @@
 
 Accepted
 
+> **Superseded in part by ADR-0016 (2.0.0)**: the spawn mechanism described
+> throughout this ADR — wrapper scripts invoking `claude -p` — was replaced by
+> `claude --bg` background sessions (`claude_bg_spawn` /
+> `claude_bg_wait_terminal`, ADR-0016 Phase 3). The scheduling architecture
+> (OS-native schedulers, registry, wrapper generation, log layout) remains
+> current. The `claude -p` references below are preserved as the historical
+> record of this decision.
+
 ## Context
 
 cekernel currently operates in a pull model — a human runs `/dispatch` or `/orchestrate` to trigger issue processing. There is no automated scheduling capability.

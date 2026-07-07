@@ -32,9 +32,11 @@ the `1.9.x` line (see **Migration** below). Requires a recent Claude Code
   non-executable files ("assert behavior, never text").
 - **Worker lifecycle Stop hook (ADR-0019)**: a plugin `Stop` hook keeps a Worker
   session alive until `notify-complete.sh` records `TERMINATED`, closing the
-  "Worker dies before its completion notification" gap. Live-verified to fire in
-  both local self-hosting and plugin-installed usage (via spawn-time
-  `--plugin-dir`).
+  "Worker dies before its completion notification" gap. Live-verified to fire
+  in local self-hosting and in the spawn-time `--plugin-dir` plugin path (the
+  route cekernel itself uses to spawn sessions). Verification via an actual
+  `/plugin install` distribution is still open — tracked in
+  [#604](https://github.com/clonable-eden/cekernel/issues/604).
 - **/workflows boundary (ADR-0015)**: state that survives the session belongs to
   cekernel; in-session fan-out belongs to `/workflows` — documented usage guide.
 - **Conditional `--bare` (ADR-0016 Amendment 1)**: bare mode is now selected by
@@ -109,12 +111,15 @@ permission portability, namespace-agnostic Reviewer grant — the #600 fix).
 * feat: Phase 5 — wezterm/tmux backend を claude attach UX に再構築 by @clonable-eden in #578
 * feat: Phase 2 — spawn-orchestrator.sh を claude --bg 化 by @clonable-eden in #580
 * feat: Phase 4 — orchctl ps を claude agents --json の view 層に by @clonable-eden in #582
-* feat: Worker lifecycle Stop hook guard via additionalContext (ADR-0018) by @clonable-eden in #583
+* feat: Worker lifecycle Stop hook guard via additionalContext (ADR-0019) by @clonable-eden in #583
 * fix: prefer status over state when reading claude agents --json liveness by @clonable-eden in #584
 * feat: Phase 3 — wrapper.sh を claude --bg 化 + registry 意味論変更 by @clonable-eden in #585
 * refactor: agents/skills markdown のスリム化 — 指示のみに縮退、env 儀式の撤去 by @clonable-eden in #590
 * fix: PR #572 レビューの非ブロッキング指摘 5 件のフォローアップ by @clonable-eden in #592
 * feat: ADR-0018 実装 — claude CLI 契約層の確立(#591/#589 を契約内で修正) by @clonable-eden in #596
 * feat: Worker spawn 前の粗い permission preflight(ADR-0012 Amendment 4 層1) by @clonable-eden in #597
+* fix: Reviewer subagent grant を plugin モード対応に(namespace-agnostic) by @clonable-eden in #601
+* docs: --bg での worktree cleanup 発火ギャップを記録 (#602) by @clonable-eden in #603
+* docs: 2.0 --bg 移行で残った claude -p 記述の更新漏れを修正 by @clonable-eden in #605
 
 **Full Changelog**: https://github.com/clonable-eden/cekernel/compare/cekernel-v1.9.0...cekernel-v2.0.0
