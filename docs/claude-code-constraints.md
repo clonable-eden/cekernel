@@ -151,10 +151,26 @@ Related observations (claude v2.1.201, 2026-07-06):
 - A main-thread agent can restrict spawnable subagent types with the
   `Agent(agent_type)` allowlist syntax in its `tools` frontmatter
 
+**Plugin-mode caveat (verified 2026-07-07, #600)**: subagent spawning that
+works in **local self-hosting fails under plugin distribution**. A
+`claude --bg --agent cekernel:orchestrator` session (plugin mode, via
+`--plugin-dir`) could not spawn `cekernel:reviewer` as a subagent — the Agent
+tool reported `not found` with an **empty available list** (even
+`general-purpose` was absent). In local mode the same Orchestrator spawns the
+project agent `reviewer` (from `.claude/agents/reviewer.md`) successfully.
+Root cause is a combination of the `Agent(reviewer)` grant not matching the
+plugin-namespaced `cekernel:reviewer`, and plugin-provided agents apparently
+not being registered as Agent-tool subagent types. **Do not rely on
+subagent spawning for plugin-distributed flows** until this is re-verified;
+prefer independent `claude --bg --agent` processes (which Workers already use
+and which work in plugin mode).
+
 **Implications for cekernel**:
 - The Reviewer runs as an Orchestrator subagent with `isolation: worktree`
   and a structured return contract (ADR-0012 Amendment 2), replacing the
-  spawn + FIFO pattern
+  spawn + FIFO pattern — **but this breaks in plugin mode (#600); see the
+  plugin-mode caveat above.** The fix direction is to return the Reviewer to
+  an independent `--bg` process like Workers.
 - Independent processes with FIFO IPC remain the right tool where
   **cross-session persistence** is required (Workers) — subagents live and
   die with their parent session
