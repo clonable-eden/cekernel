@@ -94,9 +94,13 @@ the spawned process's environment keeps Bash calls truly in the foreground.
 **Confidence: Stable**
 
 Each Claude Code session runs a single agent. There is no built-in mechanism
-for an agent to spawn peer agents within the same session. Multi-agent
+for an agent to spawn *peer* agents within the same session. Multi-agent
 coordination requires external orchestration (separate terminal sessions,
-separate processes).
+separate processes). (This concerns *peer* agents sharing one context;
+**subagents**, which each get their own context window, are a distinct
+mechanism and *are* supported — see [Subagent Nesting](#subagent-nesting)
+below. cekernel uses both: Workers are peer processes, the Reviewer is a
+subagent.)
 
 **Implications for cekernel**:
 - The Orchestrator/Worker separation maps correctly to separate sessions
@@ -150,6 +154,18 @@ Related observations (claude v2.1.201, 2026-07-06):
   correctly inside a full worktree checkout
 - A main-thread agent can restrict spawnable subagent types with the
   `Agent(agent_type)` allowlist syntax in its `tools` frontmatter
+
+**Plugin-mode note (verified 2026-07-07, #600)**: plugin-provided agents
+**can** be spawned as Agent-tool subagents — a `--plugin-dir` session
+successfully spawned `cekernel:probe` as a subagent. The catch is the
+parent agent's `Agent(...)` allowlist: it must permit the name actually
+used, which is plugin-namespaced (`cekernel:reviewer`) in plugin mode but
+bare (`reviewer`) in local mode. A grant of `Agent(reviewer)` silently
+blocks `cekernel:reviewer` (the tool reports "not found" with an empty
+available list) — this is how #600 broke the Reviewer under plugin
+distribution. Plugin-namespaced allowlist entries (`Agent(cekernel:reviewer)`)
+are **undocumented**; for an agent that must spawn a sibling in both modes,
+use unrestricted `Agent` (no parentheses).
 
 **Implications for cekernel**:
 - The Reviewer runs as an Orchestrator subagent with `isolation: worktree`

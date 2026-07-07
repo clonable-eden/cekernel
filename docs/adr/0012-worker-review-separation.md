@@ -536,6 +536,36 @@ guidance are 2.0-sized. Layer-2 verification and goal-loop permission
 policy are post-2.0 (v2.1). **2.0 release is not blocked on this
 Amendment.**
 
+### Amendment 5: Reviewer Subagent Grant Must Be Namespace-Agnostic (2026-07-07)
+
+Amendment 2 is **kept** — the Reviewer stays an Orchestrator subagent. But
+its first plugin-mode run (#600) exposed a latent defect: the Orchestrator's
+`tools: ... Agent(reviewer)` allowlist only permits the bare name `reviewer`.
+That name exists in **local** self-hosting (`.claude/agents/reviewer.md`), so
+23 spawns succeeded during the Waves; under **plugin** distribution the
+Reviewer is the namespaced `cekernel:reviewer`, which `Agent(reviewer)`
+silently blocks (the Agent tool reports "not found" with an empty available
+list). The Orchestrator then improvised a self-review via `gh pr review
+--approve` — which fails on an author's own PR — and still sent an `approved`
+notification (a Rule of Repair violation: success reported on a broken state).
+
+The grant was itself a fossil: it was added 2026-03 for the *first* subagent
+attempt, went vestigial when Amendment 1 moved the Reviewer to spawn + FIFO,
+and was silently reactivated by Amendment 2 (2026-07) without updating for
+plugin namespacing. Live testing confirmed plugin agents **can** be
+subagents (a `--plugin-dir` session spawned `cekernel:probe`); the sole
+cause was the grant name.
+
+**Decision**: grant the Orchestrator unrestricted `Agent` (no parentheses),
+which permits the subagent under either namespace. Plugin-namespaced
+allowlist entries (`Agent(cekernel:reviewer)`) are undocumented, so an
+allowlist is not a reliable cross-mode option; the Orchestrator is
+first-party and spawns Workers as processes (not subagents), so dropping the
+allowlist costs nothing. The Orchestrator must **never review the PR itself**
+and must gate the `approved` notification on the Reviewer's actual verdict
+(orchestrator.md). The durable lesson — verify feasibility in both local and
+plugin modes — is recorded in CLAUDE.md (Design Decisions).
+
 ## Alternatives Considered
 
 ### Alternative: Human-Only Review
