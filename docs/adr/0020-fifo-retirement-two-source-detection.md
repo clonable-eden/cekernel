@@ -20,7 +20,7 @@ Workers by iterating pipes (fact 6) and the reaper that removes them
 (fact 7).
 
 Investigation (#586, 2026-07-08) established five facts; architecture
-review of this ADR (PR #610, 2026-07-08, six passes) added four more:
+review of this ADR (PR #610, 2026-07-08, seven passes) added four more:
 
 1. **Degradation is already implemented.** `notify-complete.sh` writes the
    state file *first* and exits 0 when the FIFO is absent; `watch.sh`
@@ -46,9 +46,13 @@ review of this ADR (PR #610, 2026-07-08, six passes) added four more:
 6. **The FIFO is also the roster key for process tooling.** `orchctl`
    `list`/`status`/`gc`, `process-status.sh`, and `health-check.sh`
    discover Workers by iterating pipes (`for fifo in ... worker-*;
-   [[ -p ]]`). This is a second hidden coupling of the same kind as
+   [[ -p ]]`). `orchctl`'s `resolve_target` goes further: **every
+   targeted command** (`recover`/`kill`/`term`/`resume`/…) resolves
+   its issue argument by pipe existence, so a pipe-less Worker is not
+   merely unlisted but *unaddressable* (found in the seventh review
+   pass). This is a second hidden coupling of the same kind as
    fact 2 — the "notification channel" doubles as the process-table
-   entry. `health-check.sh` couples deepest: its zombie *definition* is
+   entry *and* the name-resolution key. `health-check.sh` couples deepest: its zombie *definition* is
    FIFO-based ("FIFO exists but process dead"; "no active FIFO =
    completed"), not just its discovery loop. (Elapsed time already
    comes from the `.spawned` file, not the pipe; enumeration and the
@@ -153,12 +157,21 @@ distinct axes**: the state file is the semantic record (what happened);
    orphan sweep's **protection key** changes in Phase 1, ahead of the
    rest of gc's migration: a non-`TERMINATED` state file marks the
    issue active regardless of pipe presence. Pipe removal on exit
-   stays exactly as today — which also keeps `notify-complete.sh` on
-   its exit-0 fallback (fact 1), never the blocking write.
-   Doubt is resolved by the existing operator paths,
-   which already write the exit record: `orchctl recover`
+   stays exactly as today — which keeps `notify-complete.sh` on its
+   exit-0 fallback (fact 1) on these paths (fact 4's original
+   trigger, a killed Orchestrator's leftover pipe, persists until
+   Phase 3 deletes the write itself).
+   Doubt is resolved by the existing operator paths, which already
+   write the exit record: `orchctl recover`
    (`TERMINATED … crashed:detected-by-recover`) and `orchctl kill`
-   (`TERMINATED … killed`). `orchctl gc`'s reap action likewise becomes
+   (`TERMINATED … killed`). That requires the resolvers to *address*
+   a pipe-less held slot — `resolve_target` resolves issues by pipe
+   existence today (fact 6) — so its resolution key moves to
+   state-file existence in Phase 1. The state file is written
+   unconditionally at spawn and is never removed before the pipe
+   (cleanup deletes both together; every other path removes only the
+   pipe), so the new key is a superset of the old: nothing
+   addressable today becomes unaddressable. `orchctl gc`'s reap action likewise becomes
    a `TERMINATED … crashed:detected-by-gc` write instead of a pipe
    removal — an exit record beats erased history (Rule of
    Representation).
@@ -207,6 +220,12 @@ distinct axes**: the state file is the semantic record (what happened);
    reproduces today's pipe semantics (a pipe exists only while a
    Worker is active), so `worker-*.state` files persisting after
    `TERMINATED` do not leak completed Workers into `orchctl list`.
+   (`resolve_target`'s key migrates earlier, in Phase 1 — Decision 2;
+   it is a point lookup, not an enumeration, and the doubt resolvers
+   depend on it. Its key is bare file existence, not non-`TERMINATED`
+   state — `resume` must address `TERMINATED:crashed` entries — so a
+   lingering exit record can widen the ambiguous-target candidate
+   list; `--session` disambiguates, as today.)
    For four consumers only the discovery key changes.
    `health-check.sh` is a redesign, not a key swap: its zombie
    predicate is FIFO-defined (fact 6) and is redefined on the state
@@ -251,7 +270,9 @@ load-bearing, not editorial):
   slot-release mechanism, not an optimization. Phase 1 also carries
   the orphan-sweep protection-key change (Decision 2, fact 9: a
   non-`TERMINATED` state file marks the issue active, pulled ahead
-  of the rest of gc's migration) and both reaper changes
+  of the rest of gc's migration), the `resolve_target` key change
+  (Decision 2, fact 6: `recover`/`kill` must be able to address the
+  pipe-less held slots Phase 1 creates), and both reaper changes
   (Decision 2, fact 8): log-before-delete for `--force` on a
   non-`TERMINATED` state, and log retention (the
   `rm -f logs/worker-<issue>.log` leaves `cleanup-worktree.sh`).
@@ -268,8 +289,10 @@ load-bearing, not editorial):
     running `watch.sh` observes): gc reaps the stale pipe but the
     sweep spares the state file, so the slot stays held — the
     conservative direction (over-hold, never over-spawn) — until
-    `orchctl recover` writes the exit record, or Phase 2's reap
-    change lets gc write it (`crashed:detected-by-gc`) itself.
+    `orchctl recover` writes the exit record (addressable despite
+    the missing pipe: Phase 1 re-keyed `resolve_target` on the
+    state file), or Phase 2's reap change lets gc write it
+    (`crashed:detected-by-gc`) itself.
   Must precede Phase 3 (after which no pipes exist to iterate).
 - **Phase 3** = `notify-complete.sh` and `spawn.sh` drop FIFO
   creation/write. Requires Phase 1 (once `mkfifo` is gone, a
