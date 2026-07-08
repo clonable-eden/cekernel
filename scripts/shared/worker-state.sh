@@ -3,8 +3,8 @@
 #
 # Usage: source worker-state.sh
 #
-# Provides functions to read/write Worker state files.
-# State files live alongside FIFOs in the session IPC directory.
+# Provides functions to read/write/enumerate Worker state files.
+# State files are the roster key for active workers (ADR-0020 Phase 2).
 #
 # State machine:
 #   NEW → READY → RUNNING → WAITING → TERMINATED
@@ -18,6 +18,7 @@
 # Functions:
 #   worker_state_write <issue-number> <state> [detail]
 #   worker_state_read <issue-number>  → JSON to stdout
+#   worker_state_list_active <ipc-dir>  → issue numbers (non-TERMINATED), one per line
 
 # Valid states
 _CEKERNEL_VALID_STATES="NEW READY RUNNING WAITING SUSPENDED TERMINATED"
