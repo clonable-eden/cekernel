@@ -56,6 +56,20 @@ worker_state() {
   cat "${IPC}/worker-${1}.state"
 }
 
+# ── ADR-0020 Phase 1: resolve_target uses state file, not FIFO ──
+
+@test "resolve_target finds worker by state file (no FIFO needed)" {
+  mkdir -p "$IPC"
+  # Create state file but NO FIFO
+  echo "RUNNING:2026-02-28T10:00:00Z:phase1:implement" > "${IPC}/worker-10.state"
+  echo "10" > "${IPC}/worker-10.priority"
+
+  # term should find the worker via state file
+  run bash "$ORCHCTL" term 10 --session "$SESSION"
+  assert_eq "term exits 0 (worker found via state)" "0" "$status"
+  assert_file_exists "signal file created" "${IPC}/worker-10.signal"
+}
+
 # ── term ──
 
 @test "term creates TERM signal file" {
@@ -176,6 +190,16 @@ worker_state() {
     "$(cat "${MOCK_CLAUDE_STATE_DIR}/stop.log")"
   assert_match "tmux window killed" "kill-window -t my-session:1" \
     "$(cat "${BATS_TEST_TMPDIR}/tmux-argv.log")"
+}
+
+# ── ADR-0020 Phase 1: kill write-once guard ──
+
+@test "kill does NOT overwrite existing TERMINATED state (write-once)" {
+  make_worker 10 "TERMINATED:2026-02-28T10:00:00Z:ci-passed:55"
+  run bash "$ORCHCTL" kill 10 --session "$SESSION"
+  assert_eq "kill exits 0" "0" "$status"
+  # State must still be ci-passed:55, NOT killed
+  assert_match "state preserved as ci-passed" "ci-passed:55" "$(worker_state 10)"
 }
 
 @test "kill stops a wezterm-backend session AND kills the pane (Phase 5 contract)" {
@@ -346,7 +370,7 @@ worker_state() {
   assert_not_exists "priority removed" "${session_dir}/worker-296.priority"
 }
 
-@test "gc removes stale FIFO when NEW + no handle + past stale timeout" {
+@test "gc removes stale FIFO when NEW + no handle + past stale timeout (state held)" {
   local session_dir="${IPC_BASE}/session-gc-stale2"
   mkdir -p "$session_dir"
   mkfifo "${session_dir}/worker-297"
@@ -354,11 +378,14 @@ worker_state() {
   echo "worker" > "${session_dir}/worker-297.type"
   run env CEKERNEL_GC_STALE_TIMEOUT=0 bash "$ORCHCTL" gc
   assert_not_exists "stale NEW FIFO removed" "${session_dir}/worker-297"
-  assert_not_exists "state removed" "${session_dir}/worker-297.state"
-  assert_not_exists "type removed" "${session_dir}/worker-297.type"
+  # ADR-0020 Phase 1: non-TERMINATED state files hold the slot — gc does
+  # not remove them. The slot is freed by `orchctl recover` or Phase 2's gc
+  # TERMINATED write.
+  assert_file_exists "state held (non-TERMINATED)" "${session_dir}/worker-297.state"
+  assert_file_exists "type held" "${session_dir}/worker-297.type"
 }
 
-@test "gc removes stale FIFO with dead handle PID" {
+@test "gc removes stale FIFO with dead handle PID (state held)" {
   local session_dir="${IPC_BASE}/session-gc-stale3"
   mkdir -p "$session_dir"
   mkfifo "${session_dir}/worker-298"
@@ -367,8 +394,11 @@ worker_state() {
   echo "99999999" > "${session_dir}/handle-298.worker"
   run bash "$ORCHCTL" gc
   assert_not_exists "stale FIFO removed" "${session_dir}/worker-298"
-  assert_not_exists "state removed" "${session_dir}/worker-298.state"
-  assert_not_exists "dead handle removed" "${session_dir}/handle-298.worker"
+  # ADR-0020 Phase 1: non-TERMINATED state holds the slot and all
+  # companion files (handle included). The held slot is addressed by
+  # `orchctl recover` or Phase 2's gc TERMINATED write.
+  assert_file_exists "state held (non-TERMINATED)" "${session_dir}/worker-298.state"
+  assert_file_exists "handle held (companion of held slot)" "${session_dir}/handle-298.worker"
 }
 
 @test "gc preserves FIFO with live handle" {
@@ -389,7 +419,7 @@ worker_state() {
 # `claude agents --json` instead of assuming they are always alive.
 # A failed query stays conservative (assume alive — never gc on doubt).
 
-@test "gc removes stale FIFO when the token handle session is not listed" {
+@test "gc removes stale FIFO when the token handle session is not listed (state held)" {
   mock_claude
   local session_dir="${IPC_BASE}/session-gc-token1"
   mkdir -p "$session_dir"
@@ -400,8 +430,9 @@ worker_state() {
   # empty agents queue → [] → session not listed → dead
   run bash "$ORCHCTL" gc
   assert_not_exists "stale FIFO removed" "${session_dir}/worker-573"
-  assert_not_exists "state removed" "${session_dir}/worker-573.state"
-  assert_not_exists "dead token handle removed" "${session_dir}/handle-573.worker"
+  # ADR-0020 Phase 1: non-TERMINATED state holds the slot and all companion files
+  assert_file_exists "state held (non-TERMINATED)" "${session_dir}/worker-573.state"
+  assert_file_exists "handle held (companion of held slot)" "${session_dir}/handle-573.worker"
 }
 
 @test "gc preserves FIFO when the token handle session is busy" {
@@ -606,6 +637,34 @@ worker_state() {
 # active_issues records "session_dir:issue" but the log orphan check was
 # passing "session_dir/logs/" as sdir, producing "session_dir/logs/:issue"
 # which never matches — making all logs appear orphan.
+
+# ── ADR-0020 Phase 1: gc orphan-sweep protection key ──
+# Non-TERMINATED state files protect the issue from gc orphan sweep,
+# regardless of FIFO existence. This ensures held slots survive gc.
+
+@test "gc preserves non-TERMINATED state files (held slot survives gc)" {
+  local session_dir="${IPC_BASE}/session-gc-held"
+  mkdir -p "$session_dir"
+  # No FIFO, but non-TERMINATED state → held slot, must survive
+  echo "RUNNING:2026-02-28T10:00:00Z:phase1:implement" > "${session_dir}/worker-710.state"
+  echo "10" > "${session_dir}/worker-710.priority"
+  echo "worker" > "${session_dir}/worker-710.type"
+  run bash "$ORCHCTL" gc
+  assert_file_exists "held slot state preserved" "${session_dir}/worker-710.state"
+  assert_file_exists "held slot priority preserved" "${session_dir}/worker-710.priority"
+  assert_file_exists "held slot type preserved" "${session_dir}/worker-710.type"
+}
+
+@test "gc removes TERMINATED state files without FIFO (orphan cleanup)" {
+  local session_dir="${IPC_BASE}/session-gc-orphterm"
+  mkdir -p "$session_dir"
+  # TERMINATED state, no FIFO → orphan, should be cleaned
+  echo "TERMINATED:2026-02-28T10:00:00Z:ci-passed:99" > "${session_dir}/worker-711.state"
+  echo "10" > "${session_dir}/worker-711.priority"
+  run bash "$ORCHCTL" gc
+  assert_not_exists "orphan TERMINATED state removed" "${session_dir}/worker-711.state"
+  assert_not_exists "orphan priority removed" "${session_dir}/worker-711.priority"
+}
 
 @test "gc preserves log files of active workers" {
   mock_claude

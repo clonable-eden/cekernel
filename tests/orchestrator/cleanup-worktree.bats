@@ -111,3 +111,66 @@ setup_ipc() {
   assert_eq "keep=true + --force: cleanup exits 0" "0" "$status"
   assert_not_exists "keep=true + --force: worktree removed" "$worktree"
 }
+
+# ── ADR-0020 Phase 1: reaper log retention + exit event on non-TERMINATED reap ──
+
+@test "cleanup retains the lifecycle log (no longer deletes it)" {
+  local issue="303"
+  local worktree
+  worktree=$(setup_worktree "$issue")
+  setup_ipc "$issue"
+
+  # Create log file
+  mkdir -p "${CEKERNEL_IPC_DIR}/logs"
+  echo "[2026-07-09T00:00:00Z] SPAWN issue=#${issue}" > "${CEKERNEL_IPC_DIR}/logs/worker-${issue}.log"
+
+  run bash "$CLEANUP_SCRIPT" "$issue"
+  assert_eq "cleanup exits 0" "0" "$status"
+
+  # ADR-0020: log is RETAINED (no longer deleted)
+  assert_file_exists "log file retained" "${CEKERNEL_IPC_DIR}/logs/worker-${issue}.log"
+}
+
+@test "cleanup appends exit event to log when reaping non-TERMINATED state" {
+  local issue="304"
+  local worktree
+  worktree=$(setup_worktree "$issue")
+  setup_ipc "$issue"
+
+  # Set state to RUNNING (non-TERMINATED)
+  echo "RUNNING:2026-07-09T00:00:00Z:phase1:implement" > "${CEKERNEL_IPC_DIR}/worker-${issue}.state"
+
+  # Create log file
+  mkdir -p "${CEKERNEL_IPC_DIR}/logs"
+  echo "[2026-07-09T00:00:00Z] SPAWN issue=#${issue}" > "${CEKERNEL_IPC_DIR}/logs/worker-${issue}.log"
+
+  run bash "$CLEANUP_SCRIPT" "$issue"
+  assert_eq "cleanup exits 0" "0" "$status"
+
+  # ADR-0020: exit event appended for non-TERMINATED reap
+  assert_file_exists "log file retained" "${CEKERNEL_IPC_DIR}/logs/worker-${issue}.log"
+  assert_match "exit event logged" "REAP_EXIT" "$(cat "${CEKERNEL_IPC_DIR}/logs/worker-${issue}.log")"
+}
+
+@test "cleanup does NOT append exit event when reaping TERMINATED state" {
+  local issue="305"
+  local worktree
+  worktree=$(setup_worktree "$issue")
+  setup_ipc "$issue"
+
+  # Set state to TERMINATED (already completed)
+  echo "TERMINATED:2026-07-09T00:00:00Z:ci-passed:55" > "${CEKERNEL_IPC_DIR}/worker-${issue}.state"
+
+  # Create log file
+  mkdir -p "${CEKERNEL_IPC_DIR}/logs"
+  echo "[2026-07-09T00:00:00Z] SPAWN issue=#${issue}" > "${CEKERNEL_IPC_DIR}/logs/worker-${issue}.log"
+
+  run bash "$CLEANUP_SCRIPT" "$issue"
+  assert_eq "cleanup exits 0" "0" "$status"
+
+  # No REAP_EXIT event for TERMINATED
+  if grep -q "REAP_EXIT" "${CEKERNEL_IPC_DIR}/logs/worker-${issue}.log" 2>/dev/null; then
+    echo "FAIL: REAP_EXIT must not be logged for TERMINATED state" >&2
+    return 1
+  fi
+}
