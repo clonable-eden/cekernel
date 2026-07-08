@@ -22,7 +22,7 @@ Workers by iterating pipes (fact 6) and the reaper that removes them
 (fact 7).
 
 Investigation (#586, 2026-07-08) established five facts; architecture
-review of this ADR (PR #610, 2026-07-08, thirteen passes) added four
+review of this ADR (PR #610, 2026-07-08, fifteen passes) added four
 more (the eleventh added no fact — it verified the document's claims
 against the repository and corrected three misstatements; the twelfth
 re-verified all claims, corrected fact 4's hang placement — widening
@@ -34,7 +34,11 @@ bats-lane coupling the "legacy files" framing had hidden; the
 fourteenth re-verified all claims and corrected fact 1 — the exit-0
 fallback also skips the issue-lock release — and gave Decision 2's
 `blocked` pairing a documented home in Phase 1, which had declared
-it normative with no handler in orchestrator.md):
+it normative with no handler in orchestrator.md; the fifteenth found
+Decision 2's write-once invariant under-scoped — `orchctl kill`'s
+unconditional `TERMINATED:killed` write clobbers a completion the
+operator races, so the invariant now guards kill as it guards
+`watch.sh` and gc):
 
 1. **Degradation is already implemented.** `notify-complete.sh` writes the
    state file *first* and exits 0 when the FIFO is absent; `watch.sh`
@@ -206,7 +210,19 @@ distinct axes**: the state file is the semantic record (what happened);
    `crashed:detected-by-gc`) to non-`TERMINATED` entries — gc's
    stale classes include "`TERMINATED` with no live handle"
    (fact 9), and an unscoped write would clobber a real result in
-   the same breath as reaping it.
+   the same breath as reaping it. `orchctl kill` carries the same
+   exposure from the opposite motive: an operator killing a Worker
+   that has *already* completed (state `TERMINATED:ci-passed`,
+   worktree pending review) — its unconditional `TERMINATED:killed`
+   write relabels the completion, and because `resume` addresses
+   only `TERMINATED:crashed` entries the issue is stranded
+   non-resumable with its PR detail erased. Kill's write is scoped
+   to non-`TERMINATED` entries under the same invariant; the session
+   stop it performs stays unconditional, so a kill that meets a
+   terminal record still stops the process (a no-op on an
+   already-finished session, but the session-stop a
+   `TERMINATED:blocked` record legitimately needs) and leaves the
+   record intact (found in the fifteenth review pass).
 
    **The held slot must survive `orchctl gc` — but not by retaining
    the pipe.** The pipe is the key that protects an issue's companion
@@ -425,6 +441,11 @@ load-bearing, not editorial):
   result handler orchestrator.md lacks today (Decision 2's normative
   pairing: exit record → `cleanup-worktree.sh` stops the session in
   the same handling step).
+  Phase 1 also scopes `orchctl kill`'s unconditional
+  `TERMINATED:killed` write to non-`TERMINATED` entries (Decision 2's
+  write-once invariant) — the one remaining terminal writer that can
+  clobber a completion — so its guard lands with the invariant's
+  behavior tests.
   Slot release via state-file deletion itself needs no change.
 - **Phase 2** = roster enumeration migration (Decision 4), including
   `orchctl gc`'s reap change (pipe removal → `TERMINATED` write, on
