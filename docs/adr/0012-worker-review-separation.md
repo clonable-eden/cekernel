@@ -537,6 +537,12 @@ permissions (it cannot: there is no platform query API, only bypass flags):
    claim is asserted. A minimal experiment (auto-mode vs non-auto
    supervisor → does the Worker's classifier behavior change?) is a
    verification item, foldable into #587.
+   *(Resolved by #595, 2026-07-08, v2.1.202: layer 2 is the `auto`-mode
+   classifier and runs only in `auto`. The Worker inherits `auto` from the
+   operator's `~/.claude/settings.json` `defaultMode` — not from headless
+   intrinsics. The classifier is intent-sensitive: it blocks the Worker's
+   *unrequested* escalations, not commands per se. See
+   `docs/claude-code-constraints.md` § Permission Model.)*
 3. **Worker keeps avoidance-first on denial.** On a classifier denial the
    Worker first attempts a workaround (as in `#543`, which fell back from
    `bats` to a `ruby` check and still reached ci-passed); only when no

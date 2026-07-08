@@ -604,13 +604,26 @@ outcomes must either try the action and observe, or coarsely inspect
 1. **settings.json allowlist** — `permissions.allow` in the target repo's
    `.claude/settings.json`. Depends on the *target repo* having one
    (`#543` passed normal Bash/Edit/Write/Read via `allow:[...]`).
-2. **Safety classifier** — a classifier still rejects dangerous patterns
-   even when layer 1 allows the tool broadly. Observed: `#543` had `bats`
-   (external-repo code) rejected as "[Code from External]"; `#593` had
-   `rm -rf /tmp/...` "denied". **The mechanism is unconfirmed** — whether
-   it is inherited from the spawning supervisor's auto mode, or is a
-   classifier intrinsic to headless sessions, is not yet distinguished
-   (an earlier spawn mix-up, #545, warns against asserting inheritance).
+2. **Safety classifier (`auto` mode only)** — in `auto` permission mode a
+   classifier reviews each action and blocks ones that escalate *beyond the
+   user's explicit request*: spawning unsandboxed agents
+   (`[Create Unsafe Agents]`), executing externally-sourced code
+   (`[Code from External]`), or routing around a prior block
+   (`[Auto-Mode Bypass]`). It is **intent-sensitive, not command-based** —
+   the identical command runs untouched when the prompt explicitly asks for
+   it. It does **not** run in `default` / `acceptEdits` / `dontAsk`.
+   Workers meet it because the operator's `~/.claude/settings.json`
+   `defaultMode: auto` reaches the `claude --bg` Worker (cekernel passes no
+   `--permission-mode`), so a Worker that spawns an agent or runs cloned
+   test code *on its own initiative* while resolving an issue is blocked.
+   Verified v2.1.202, 2026-07-08 (#595): 7 Worker transcripts (all `auto`,
+   explicit "auto mode classifier" denials) plus a mode×command matrix in
+   which the classifier fired in 0/12 cells — every probe command was
+   explicitly requested. Scope of what is confirmed: only `defaultMode:
+   auto` is observed to propagate to the `--bg` Worker here. Whether a
+   *runtime* mode toggle propagates is untested; and `defaultMode:
+   bypassPermissions` is reported *not* to reach background sessions
+   (anthropics/claude-code#59112, v2.1.141 — unre-verified on 2.1.202).
 3. **blocked / denied** — when layers 1–2 are not satisfied, the session
    either stalls silently on a permission dialog (`blocked`) or the tool
    returns a denial the agent must handle.
@@ -624,8 +637,13 @@ outcomes must either try the action and observe, or coarsely inspect
 - cekernel delegates permission configuration to the target repository
   (separation of authority) — and cannot reimplement the resolution engine
   (no query API). See ADR-0012 Amendment 4.
-- Layer 2 is outside cekernel's control; its mechanism is Evolving and
-  should be re-verified (supervisor-auto-mode vs headless-intrinsic).
+- Layer 2 is the `auto`-mode classifier and exists only in `auto`. It comes
+  from the operator's setting (`defaultMode`), inherited by the Worker — not
+  intrinsic to headless sessions (#595 disproved the headless-intrinsic
+  hypothesis). cekernel does not override the mode (separation of authority,
+  ADR-0012 Amendment 4); mode selection is the operator's. Still Evolving:
+  platform behavior is version-specific (cf. #59112) and should be
+  re-verified as the CLI changes.
 
 ## Concurrency and Multi-Session
 
