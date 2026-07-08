@@ -169,7 +169,7 @@ worker_state() {
   run bash "$ORCHCTL" kill 10 --session "$SESSION"
   assert_eq "kill exits 0" "0" "$status"
   assert_file_exists "claude stop recorded" "${MOCK_CLAUDE_STATE_DIR}/stop.log"
-  assert_eq "stop called with the session token" "$SESSION_TOKEN" \
+  assert_eq "stop called with truncated job ID (#621)" "${SESSION_TOKEN:0:8}" \
     "$(cat "${MOCK_CLAUDE_STATE_DIR}/stop.log")"
 }
 
@@ -186,7 +186,7 @@ worker_state() {
   run bash "$ORCHCTL" kill 10 --session "$SESSION"
   assert_eq "kill exits 0" "0" "$status"
   assert_file_exists "claude stop recorded" "${MOCK_CLAUDE_STATE_DIR}/stop.log"
-  assert_eq "stop called with the session token" "$SESSION_TOKEN" \
+  assert_eq "stop called with truncated job ID (#621)" "${SESSION_TOKEN:0:8}" \
     "$(cat "${MOCK_CLAUDE_STATE_DIR}/stop.log")"
   assert_match "tmux window killed" "kill-window -t my-session:1" \
     "$(cat "${BATS_TEST_TMPDIR}/tmux-argv.log")"
@@ -212,7 +212,7 @@ worker_state() {
   run bash "$ORCHCTL" kill 10 --session "$SESSION"
   assert_eq "kill exits 0" "0" "$status"
   assert_file_exists "claude stop recorded" "${MOCK_CLAUDE_STATE_DIR}/stop.log"
-  assert_eq "stop called with the session token" "$SESSION_TOKEN" \
+  assert_eq "stop called with truncated job ID (#621)" "${SESSION_TOKEN:0:8}" \
     "$(cat "${MOCK_CLAUDE_STATE_DIR}/stop.log")"
   assert_match "wezterm pane killed" "cli kill-pane --pane-id 42" \
     "$(cat "${BATS_TEST_TMPDIR}/wezterm-argv.log")"
@@ -534,7 +534,7 @@ worker_state() {
   run bash "$ORCHCTL" gc
   assert_file_exists "lingering done session reaped via claude stop" \
     "${MOCK_CLAUDE_STATE_DIR}/stop.log"
-  assert_eq "stop called with the token" "$SESSION_TOKEN" \
+  assert_eq "stop called with truncated job ID (#621)" "${SESSION_TOKEN:0:8}" \
     "$(cat "${MOCK_CLAUDE_STATE_DIR}/stop.log")"
   assert_not_exists "orchestrator.claude-session-id removed" \
     "${session_dir}/orchestrator.claude-session-id"

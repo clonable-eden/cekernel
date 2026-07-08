@@ -256,7 +256,7 @@ enqueue_spawn_capture() {
   backend_kill_worker 400
 
   assert_file_exists "claude stop recorded" "${MOCK_CLAUDE_STATE_DIR}/stop.log"
-  assert_eq "stop called with the token" "$FULL_UUID" \
+  assert_eq "stop called with truncated job ID (#621)" "${FULL_UUID:0:8}" \
     "$(cat "${MOCK_CLAUDE_STATE_DIR}/stop.log")"
   assert_match "window killed" "kill-window -t my-session:1" \
     "$(cat "${MOCK_TMUX_STATE_DIR}/argv.log")"

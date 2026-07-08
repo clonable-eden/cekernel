@@ -193,7 +193,7 @@ enqueue_session() {
   run "$W_RUNNER"
 
   assert_file_exists "stop recorded" "${MOCK_CLAUDE_STATE_DIR}/stop.log"
-  assert_eq "stop called with the captured token" "$W_UUID" \
+  assert_eq "stop called with truncated job ID (#621)" "${W_UUID:0:8}" \
     "$(cat "${MOCK_CLAUDE_STATE_DIR}/stop.log")"
 }
 
@@ -209,7 +209,7 @@ enqueue_session() {
   assert_match "END line records the blocked state" \
     "END status=error state=blocked" "$(cat "$W_SYSLOG")"
   # blocked never unblocks unattended — the session must be reaped
-  assert_eq "blocked session stopped" "$W_UUID" \
+  assert_eq "blocked session stopped (#621 truncated)" "${W_UUID:0:8}" \
     "$(cat "${MOCK_CLAUDE_STATE_DIR}/stop.log")"
 }
 

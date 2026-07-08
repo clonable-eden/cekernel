@@ -320,7 +320,7 @@ FULL_UUID="aaaa1111-2222-4333-8444-555566667777"
   echo "$FULL_UUID" > "${CEKERNEL_IPC_DIR}/handle-500.worker"
   backend_kill_worker 500
   assert_file_exists "stop recorded" "${MOCK_CLAUDE_STATE_DIR}/stop.log"
-  assert_eq "stop called with the token" "$FULL_UUID" \
+  assert_eq "stop called with truncated job ID (#621)" "${FULL_UUID:0:8}" \
     "$(cat "${MOCK_CLAUDE_STATE_DIR}/stop.log")"
 }
 
@@ -328,7 +328,7 @@ FULL_UUID="aaaa1111-2222-4333-8444-555566667777"
   echo "$FULL_UUID" > "${CEKERNEL_IPC_DIR}/handle-500.worker"
   echo "bbbb0000-1111-4222-8333-444455556666" > "${CEKERNEL_IPC_DIR}/handle-500.reviewer"
   backend_kill_worker 500 worker
-  assert_eq "only the worker token stopped" "$FULL_UUID" \
+  assert_eq "only the worker token stopped (#621 truncated)" "${FULL_UUID:0:8}" \
     "$(cat "${MOCK_CLAUDE_STATE_DIR}/stop.log")"
 }
 
@@ -338,8 +338,9 @@ FULL_UUID="aaaa1111-2222-4333-8444-555566667777"
   backend_kill_worker 500
   local stopped
   stopped=$(sort "${MOCK_CLAUDE_STATE_DIR}/stop.log")
-  assert_match "worker token stopped" "$FULL_UUID" "$stopped"
-  assert_match "reviewer token stopped" "bbbb0000-1111-4222-8333-444455556666" "$stopped"
+  # #621: tokens are truncated to 8 chars before claude stop
+  assert_match "worker token stopped" "${FULL_UUID:0:8}" "$stopped"
+  assert_match "reviewer token stopped" "bbbb0000" "$stopped"
 }
 
 @test "backend_kill_worker exits cleanly for a non-existent handle" {
