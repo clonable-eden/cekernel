@@ -82,12 +82,73 @@ teardown() {
   bash "$WATCH_SCRIPT" 182 > "$out" 2>/dev/null &
   local watch_pid=$!
   sleep 2
-  worker_state_write 182 TERMINATED "merged:#999"
+  worker_state_write 182 TERMINATED "merged:99"
   wait "$watch_pid"
 
-  assert_match "completion detected via state fallback" \
-    "detected-via-state-fallback" "$(cat "$out")"
-  assert_match "result carries the state detail" "merged:#999" "$(cat "$out")"
+  local result_json
+  result_json=$(cat "$out")
+  assert_match "result is merged" '"result":"merged"' "$result_json"
+  assert_match "detail is 99" '"detail":"99"' "$result_json"
+}
+
+# ── ADR-0020 Phase 1a: build_result_from_state splits result and detail ──
+
+@test "state fallback splits result and detail from state payload" {
+  worker_state_write 620 RUNNING "phase1:implement"
+  echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-620.worker"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$TOKEN" background /tmp/wt 1700000000000 busy)]"
+
+  local out="${BATS_TEST_TMPDIR}/watch-out.json"
+  bash "$WATCH_SCRIPT" 620 > "$out" 2>/dev/null &
+  local watch_pid=$!
+  sleep 2
+  worker_state_write 620 TERMINATED "ci-passed:42"
+  wait "$watch_pid"
+
+  local result_json
+  result_json=$(cat "$out")
+  assert_match "result is ci-passed" '"result":"ci-passed"' "$result_json"
+  assert_match "detail is PR number" '"detail":"42"' "$result_json"
+}
+
+@test "state fallback handles detail with colons (backward compat)" {
+  worker_state_write 621 RUNNING "phase1:implement"
+  echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-621.worker"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$TOKEN" background /tmp/wt 1700000000000 busy)]"
+
+  local out="${BATS_TEST_TMPDIR}/watch-out.json"
+  bash "$WATCH_SCRIPT" 621 > "$out" 2>/dev/null &
+  local watch_pid=$!
+  sleep 2
+  worker_state_write 621 TERMINATED "failed:CI failed: 3 times"
+  wait "$watch_pid"
+
+  local result_json
+  result_json=$(cat "$out")
+  assert_match "result is failed" '"result":"failed"' "$result_json"
+  assert_match "detail preserves colons" '"detail":"CI failed: 3 times"' "$result_json"
+}
+
+@test "state fallback handles old format without detail (backward compat)" {
+  worker_state_write 622 RUNNING "phase1:implement"
+  echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-622.worker"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$TOKEN" background /tmp/wt 1700000000000 busy)]"
+
+  local out="${BATS_TEST_TMPDIR}/watch-out.json"
+  bash "$WATCH_SCRIPT" 622 > "$out" 2>/dev/null &
+  local watch_pid=$!
+  sleep 2
+  # Old format: detail is just the result, no colon separator
+  worker_state_write 622 TERMINATED "ci-passed"
+  wait "$watch_pid"
+
+  local result_json
+  result_json=$(cat "$out")
+  assert_match "result is ci-passed" '"result":"ci-passed"' "$result_json"
+  assert_match "detail is empty for old format" '"detail":""' "$result_json"
 }
 
 @test "watch does not false-crash on a transient agents query failure" {
