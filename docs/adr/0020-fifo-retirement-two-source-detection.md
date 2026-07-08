@@ -22,13 +22,15 @@ Workers by iterating pipes (fact 6) and the reaper that removes them
 (fact 7).
 
 Investigation (#586, 2026-07-08) established five facts; architecture
-review of this ADR (PR #610, 2026-07-08, twelve passes) added four
+review of this ADR (PR #610, 2026-07-08, thirteen passes) added four
 more (the eleventh added no fact — it verified the document's claims
 against the repository and corrected three misstatements; the twelfth
 re-verified all claims, corrected fact 4's hang placement — widening
 the hazard to a leaked issue lock — and completed Decision 5's
 deletion inventory with `docs/internals.md` and eight legacy test
-files):
+files; the thirteenth re-verified all claims and corrected that test
+inventory — one file misattributed to the `mkfifo` fixtures, and one
+bats-lane coupling the "legacy files" framing had hidden):
 
 1. **Degradation is already implemented.** `notify-complete.sh` writes the
    state file *first* and exits 0 when the FIFO is absent; `watch.sh`
@@ -347,15 +349,30 @@ distinct axes**: the state file is the semantic record (what happened);
    the end (ADR-0017: tests assert the behavior each phase ships):
    the concurrency-guard, watch-FIFO-logging, health-check,
    process-status, notify-complete, cleanup-worktree, and orchctl
-   suites follow the scripts they test. Those named suites are not
-   the whole surface (found in the twelfth pass): eight further
+   suites follow the scripts they test (the cleanup-worktree suite
+   spans three files — `cleanup-worktree.bats`,
+   `test-cleanup-session.sh`, `test-cleanup-pane.sh` — all
+   `mkfifo`-fixtured). Those named suites are not
+   the whole surface (found in the twelfth pass): seven further
    legacy files build their fixtures with `mkfifo` —
    `test-rollback.sh`, `test-timeout.sh`, `test-logging.sh`,
-   `test-spawn-max-processes.sh`, `test-watch.sh`,
-   `test-watch-state-fallback.sh` (orchestrator),
+   `test-spawn-max-processes.sh`, `test-watch.sh` (orchestrator),
    `test-json-output.sh`, `test-session-isolation.sh` (shared) —
    and each migrates with the phase that retires the behavior it
-   fixtures. The `assert_fifo_exists`
+   fixtures. `test-watch-state-fallback.sh` is coupled the opposite
+   way (the thirteenth pass corrected the twelfth, which had listed
+   it among the `mkfifo` fixtures): it constructs the FIFO's
+   *absence* to exercise the fallback path, and migrates with
+   Phase 4, which makes that fallback the only path. The
+   legacy-file framing itself hid one more coupling (found in the
+   thirteenth pass — classification hiding substance, the same
+   pattern as fact 6): `tests/shared/load-env.bats` builds a
+   `mkfifo` Worker fixture for its orchestrator-integration tests,
+   two of which assert pipe-based discovery — `process-status.sh`
+   lists the fixture Worker; `health-check.sh` does not report it
+   completed — and break when Phase 2 migrates enumeration, so the
+   fixture moves to a state-file write with Phase 2. The
+   `assert_fifo_exists`
    helper (`tests/helpers/assertions.bash`, `tests/helpers.sh`) is
    deleted with Phase 4 — after retirement there is no pipe left to
    assert on.
