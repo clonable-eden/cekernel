@@ -3,8 +3,8 @@
 #
 # Usage: source worker-state.sh
 #
-# Provides functions to read/write Worker state files.
-# State files live alongside FIFOs in the session IPC directory.
+# Provides functions to read/write/enumerate Worker state files.
+# State files are the roster key for active workers (ADR-0020 Phase 2).
 #
 # State machine:
 #   NEW → READY → RUNNING → WAITING → TERMINATED
@@ -18,9 +18,33 @@
 # Functions:
 #   worker_state_write <issue-number> <state> [detail]
 #   worker_state_read <issue-number>  → JSON to stdout
+#   worker_state_list_active <ipc-dir>  → issue numbers (non-TERMINATED), one per line
 
 # Valid states
 _CEKERNEL_VALID_STATES="NEW READY RUNNING WAITING SUSPENDED TERMINATED"
+
+# worker_state_list_active <ipc-dir>
+#   List issue numbers of non-TERMINATED workers in the given IPC directory.
+#   Outputs one issue number per line, sorted.
+#   Used by roster consumers (orchctl ls, process-status.sh, health-check.sh)
+#   to enumerate active workers without relying on FIFO existence.
+#   ADR-0020 Phase 2: single enumeration primitive, multiple consumers.
+worker_state_list_active() {
+  local ipc_dir="${1:?Usage: worker_state_list_active <ipc-dir>}"
+
+  for state_file in "${ipc_dir}"/worker-*.state; do
+    [[ -f "$state_file" ]] || continue
+    local fname issue state line
+    fname=$(basename "$state_file")
+    issue="${fname#worker-}"
+    issue="${issue%.state}"
+    line=$(cat "$state_file")
+    state="${line%%:*}"
+    if [[ "$state" != "TERMINATED" ]]; then
+      echo "$issue"
+    fi
+  done | sort -n
+}
 
 # worker_state_write <issue-number> <state> [detail]
 #   Write state to the worker state file.

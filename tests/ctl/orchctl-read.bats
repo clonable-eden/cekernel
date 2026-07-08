@@ -522,6 +522,33 @@ make_handle() {
 
 # ── usage ──
 
+# ── ls: ADR-0020 Phase 2 — state-based enumeration ──
+
+@test "ls enumerates by state file, not FIFO (ADR-0020 Phase 2)" {
+  # Worker with state file but NO FIFO should appear in ls
+  mkdir -p "$IPC_A"
+  echo "RUNNING:2026-02-28T10:00:00Z:phase1:implement" > "${IPC_A}/worker-10.state"
+  echo "10" > "${IPC_A}/worker-10.priority"
+  run bash "$ORCHCTL" ls
+  assert_match "lists worker without FIFO" '"issue":10' "$output"
+  assert_match "shows state RUNNING" '"state":"RUNNING"' "$output"
+}
+
+@test "ls excludes TERMINATED workers (ADR-0020 Phase 2)" {
+  mkdir -p "$IPC_A"
+  echo "RUNNING:2026-02-28T10:00:00Z:phase1:implement" > "${IPC_A}/worker-10.state"
+  echo "10" > "${IPC_A}/worker-10.priority"
+  echo "TERMINATED:2026-02-28T10:00:00Z:ci-passed:55" > "${IPC_A}/worker-20.state"
+  echo "10" > "${IPC_A}/worker-20.priority"
+  run bash "$ORCHCTL" ls
+  local line_count
+  line_count=$(echo "$output" | grep -c '"issue"' || true)
+  assert_eq "only non-TERMINATED listed" "1" "$line_count"
+  assert_match "active worker listed" '"issue":10' "$output"
+}
+
+# ── usage ──
+
 @test "no command prints usage and exits 1" {
   run bash "$ORCHCTL"
   assert_eq "no command: exit 1" "1" "$status"

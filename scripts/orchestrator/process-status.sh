@@ -3,7 +3,9 @@
 #
 # Usage: process-status.sh
 # Output: JSON Lines (1 line = 1 process)
-#   {"issue": 4, "type": "worker", "worktree": "...", "fifo": "...", "uptime": "12m", "state": "RUNNING", "state_detail": "phase1:implement", "priority": 10, "priority_name": "normal"}
+#   {"issue": 4, "type": "worker", "worktree": "...", "uptime": "12m", "state": "RUNNING", "state_detail": "phase1:implement", "priority": 10, "priority_name": "normal"}
+#
+# ADR-0020 Phase 2: enumerates non-TERMINATED state files (not FIFOs).
 #
 # Exit codes:
 #   0 — Success
@@ -24,10 +26,8 @@ fi
 
 REPO_ROOT="$(resolve_repo_root 2>/dev/null || echo "")"
 
-# Collect process info from FIFO list
-find "$CEKERNEL_IPC_DIR" -maxdepth 1 -name 'worker-*' -type p 2>/dev/null | sort | while read -r fifo; do
-  basename_fifo=$(basename "$fifo")
-  issue="${basename_fifo#worker-}"
+# ADR-0020 Phase 2: enumerate by non-TERMINATED state files, not FIFOs.
+for issue in $(worker_state_list_active "$CEKERNEL_IPC_DIR"); do
 
   # Read process type from .type file
   type_file="${CEKERNEL_IPC_DIR}/worker-${issue}.type"
@@ -72,16 +72,15 @@ find "$CEKERNEL_IPC_DIR" -maxdepth 1 -name 'worker-*' -type p 2>/dev/null | sort
   worker_priority=$(echo "$priority_json" | jq -r '.priority')
   worker_priority_name=$(echo "$priority_json" | jq -r '.priority_name')
 
-  # JSON output
+  # JSON output (ADR-0020 Phase 2: fifo field removed)
   jq -cn \
     --argjson issue "$issue" \
     --arg type "$process_type" \
     --arg worktree "$worktree" \
-    --arg fifo "$fifo" \
     --arg uptime "$uptime" \
     --arg state "$worker_state" \
     --arg state_detail "$worker_state_detail" \
     --argjson priority "$worker_priority" \
     --arg priority_name "$worker_priority_name" \
-    '{issue: $issue, type: $type, worktree: $worktree, fifo: $fifo, uptime: $uptime, state: $state, state_detail: $state_detail, priority: $priority, priority_name: $priority_name}'
+    '{issue: $issue, type: $type, worktree: $worktree, uptime: $uptime, state: $state, state_detail: $state_detail, priority: $priority, priority_name: $priority_name}'
 done

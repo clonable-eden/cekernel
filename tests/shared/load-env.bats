@@ -287,6 +287,8 @@ setup_orchestrator_fixture() {
   mkdir -p "$MOCK_USER_ENVS" "${MOCK_VAR_DIR}/ipc/${TEST_SESSION}"
   printf 'CEKERNEL_VAR_DIR=%s\n' "$MOCK_VAR_DIR" > "${MOCK_USER_ENVS}/default.env"
   mkfifo "${MOCK_VAR_DIR}/ipc/${TEST_SESSION}/worker-99"
+  # ADR-0020 Phase 2: scripts enumerate by state file, not FIFO.
+  echo "RUNNING:2026-02-28T10:00:00Z:phase1:implement" > "${MOCK_VAR_DIR}/ipc/${TEST_SESSION}/worker-99.state"
 }
 
 # Runs a script with CEKERNEL_VAR_DIR unset and the user profile pointing to
@@ -317,11 +319,11 @@ run_with_user_profile() {
 
 @test "health-check.sh uses CEKERNEL_VAR_DIR from user profile" {
   setup_orchestrator_fixture
-  # When load-env works, health-check finds the FIFO and does not report
-  # "completed" (which it would at the wrong default path).
+  # When load-env works, health-check finds the worker state file and does
+  # not report "No active workers" (which it would at the wrong default path).
   run run_with_user_profile "${CEKERNEL_DIR}/scripts/orchestrator/health-check.sh" 99
-  if [[ "$output" == *'"status":"completed"'* ]]; then
-    echo "FAIL: health-check.sh did not find FIFO via user profile: ${output}" >&2
+  if [[ "$output" == *"No active workers"* ]]; then
+    echo "FAIL: health-check.sh did not find state file via user profile: ${output}" >&2
     return 1
   fi
 }

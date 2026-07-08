@@ -370,7 +370,7 @@ worker_state() {
   assert_not_exists "priority removed" "${session_dir}/worker-296.priority"
 }
 
-@test "gc removes stale FIFO when NEW + no handle + past stale timeout (state held)" {
+@test "gc removes stale FIFO when NEW + no handle + past stale timeout (reap write)" {
   local session_dir="${IPC_BASE}/session-gc-stale2"
   mkdir -p "$session_dir"
   mkfifo "${session_dir}/worker-297"
@@ -378,14 +378,16 @@ worker_state() {
   echo "worker" > "${session_dir}/worker-297.type"
   run env CEKERNEL_GC_STALE_TIMEOUT=0 bash "$ORCHCTL" gc
   assert_not_exists "stale NEW FIFO removed" "${session_dir}/worker-297"
-  # ADR-0020 Phase 1: non-TERMINATED state files hold the slot — gc does
-  # not remove them. The slot is freed by `orchctl recover` or Phase 2's gc
-  # TERMINATED write.
-  assert_file_exists "state held (non-TERMINATED)" "${session_dir}/worker-297.state"
-  assert_file_exists "type held" "${session_dir}/worker-297.type"
+  # ADR-0020 Phase 2: gc writes TERMINATED:crashed:detected-by-gc for
+  # stale non-TERMINATED entries, freeing the slot.
+  assert_file_exists "state file exists" "${session_dir}/worker-297.state"
+  local state_content
+  state_content=$(cat "${session_dir}/worker-297.state")
+  assert_match "state written to TERMINATED" "^TERMINATED:" "$state_content"
+  assert_match "detail is detected-by-gc" "crashed:detected-by-gc" "$state_content"
 }
 
-@test "gc removes stale FIFO with dead handle PID (state held)" {
+@test "gc removes stale FIFO with dead handle PID (reap write)" {
   local session_dir="${IPC_BASE}/session-gc-stale3"
   mkdir -p "$session_dir"
   mkfifo "${session_dir}/worker-298"
@@ -394,11 +396,12 @@ worker_state() {
   echo "99999999" > "${session_dir}/handle-298.worker"
   run bash "$ORCHCTL" gc
   assert_not_exists "stale FIFO removed" "${session_dir}/worker-298"
-  # ADR-0020 Phase 1: non-TERMINATED state holds the slot and all
-  # companion files (handle included). The held slot is addressed by
-  # `orchctl recover` or Phase 2's gc TERMINATED write.
-  assert_file_exists "state held (non-TERMINATED)" "${session_dir}/worker-298.state"
-  assert_file_exists "handle held (companion of held slot)" "${session_dir}/handle-298.worker"
+  # ADR-0020 Phase 2: gc writes TERMINATED:crashed:detected-by-gc
+  assert_file_exists "state file exists" "${session_dir}/worker-298.state"
+  local state_content
+  state_content=$(cat "${session_dir}/worker-298.state")
+  assert_match "state written to TERMINATED" "^TERMINATED:" "$state_content"
+  assert_match "detail is detected-by-gc" "crashed:detected-by-gc" "$state_content"
 }
 
 @test "gc preserves FIFO with live handle" {
@@ -419,7 +422,7 @@ worker_state() {
 # `claude agents --json` instead of assuming they are always alive.
 # A failed query stays conservative (assume alive — never gc on doubt).
 
-@test "gc removes stale FIFO when the token handle session is not listed (state held)" {
+@test "gc removes stale FIFO when the token handle session is not listed (reap write)" {
   mock_claude
   local session_dir="${IPC_BASE}/session-gc-token1"
   mkdir -p "$session_dir"
@@ -430,9 +433,12 @@ worker_state() {
   # empty agents queue → [] → session not listed → dead
   run bash "$ORCHCTL" gc
   assert_not_exists "stale FIFO removed" "${session_dir}/worker-573"
-  # ADR-0020 Phase 1: non-TERMINATED state holds the slot and all companion files
-  assert_file_exists "state held (non-TERMINATED)" "${session_dir}/worker-573.state"
-  assert_file_exists "handle held (companion of held slot)" "${session_dir}/handle-573.worker"
+  # ADR-0020 Phase 2: gc writes TERMINATED:crashed:detected-by-gc
+  assert_file_exists "state file exists" "${session_dir}/worker-573.state"
+  local state_content
+  state_content=$(cat "${session_dir}/worker-573.state")
+  assert_match "state written to TERMINATED" "^TERMINATED:" "$state_content"
+  assert_match "detail is detected-by-gc" "crashed:detected-by-gc" "$state_content"
 }
 
 @test "gc preserves FIFO when the token handle session is busy" {
@@ -680,4 +686,79 @@ worker_state() {
   run bash "$ORCHCTL" gc
   assert_file_exists "active worker log preserved" "${session_dir}/logs/worker-622.log"
   assert_file_exists "active worker stdout log preserved" "${session_dir}/logs/worker-622.stdout.log"
+}
+
+# ── gc: ADR-0020 Phase 2 — reap writes TERMINATED:crashed:detected-by-gc ──
+
+@test "gc reap writes crashed:detected-by-gc for stale non-TERMINATED worker" {
+  mock_claude
+  local session_dir="${IPC_BASE}/session-gc-reap1"
+  mkdir -p "$session_dir"
+  mkfifo "${session_dir}/worker-630"
+  echo "RUNNING:2026-02-28T10:00:00Z:working" > "${session_dir}/worker-630.state"
+  echo "$SESSION_TOKEN" > "${session_dir}/handle-630.worker"
+  # empty agents queue → session not listed → dead
+  run bash "$ORCHCTL" gc
+  # The stale FIFO should be removed
+  assert_not_exists "stale FIFO removed" "${session_dir}/worker-630"
+  # State should be rewritten to TERMINATED:crashed:detected-by-gc
+  assert_file_exists "state file still exists" "${session_dir}/worker-630.state"
+  local state_content
+  state_content=$(cat "${session_dir}/worker-630.state")
+  assert_match "state is TERMINATED" "^TERMINATED:" "$state_content"
+  assert_match "detail is crashed:detected-by-gc" "crashed:detected-by-gc" "$state_content"
+}
+
+@test "gc reap does NOT overwrite existing TERMINATED state (write-once)" {
+  mock_claude
+  local session_dir="${IPC_BASE}/session-gc-reap2"
+  mkdir -p "$session_dir"
+  mkfifo "${session_dir}/worker-631"
+  echo "TERMINATED:2026-02-28T10:00:00Z:ci-passed:55" > "${session_dir}/worker-631.state"
+  # TERMINATED + no live handle → stale FIFO removed.
+  # Write-once: gc must NOT write detected-by-gc over existing TERMINATED.
+  # The orphan sweep may later delete the state file (separate concern).
+  run bash "$ORCHCTL" gc
+  local state_content
+  state_content=$(cat "${session_dir}/worker-631.state" 2>/dev/null || true)
+  # If the file still exists, it must still say ci-passed (not detected-by-gc).
+  # If the file was deleted by orphan sweep, that's also correct (not overwritten).
+  if [[ -n "$state_content" ]]; then
+    assert_match "state preserved as ci-passed" "ci-passed:55" "$state_content"
+  fi
+  # Either way, detected-by-gc must NOT appear
+  if [[ "$state_content" == *"detected-by-gc"* ]]; then
+    echo "FAIL: TERMINATED state was overwritten with detected-by-gc" >&2
+    return 1
+  fi
+}
+
+@test "gc reap writes crashed:detected-by-gc for dead handle PID" {
+  local session_dir="${IPC_BASE}/session-gc-reap3"
+  mkdir -p "$session_dir"
+  mkfifo "${session_dir}/worker-632"
+  echo "RUNNING:2026-02-28T10:00:00Z:working" > "${session_dir}/worker-632.state"
+  echo "99999999" > "${session_dir}/handle-632.worker"
+  run bash "$ORCHCTL" gc
+  assert_not_exists "stale FIFO removed" "${session_dir}/worker-632"
+  assert_file_exists "state file still exists" "${session_dir}/worker-632.state"
+  local state_content
+  state_content=$(cat "${session_dir}/worker-632.state")
+  assert_match "state is TERMINATED" "^TERMINATED:" "$state_content"
+  assert_match "detail is crashed:detected-by-gc" "crashed:detected-by-gc" "$state_content"
+}
+
+@test "gc reap writes crashed:detected-by-gc for stale NEW past timeout" {
+  local session_dir="${IPC_BASE}/session-gc-reap4"
+  mkdir -p "$session_dir"
+  mkfifo "${session_dir}/worker-633"
+  echo "NEW:2026-02-28T01:00:00Z:spawning" > "${session_dir}/worker-633.state"
+  echo "worker" > "${session_dir}/worker-633.type"
+  run env CEKERNEL_GC_STALE_TIMEOUT=0 bash "$ORCHCTL" gc
+  assert_not_exists "stale FIFO removed" "${session_dir}/worker-633"
+  assert_file_exists "state file still exists" "${session_dir}/worker-633.state"
+  local state_content
+  state_content=$(cat "${session_dir}/worker-633.state")
+  assert_match "state is TERMINATED" "^TERMINATED:" "$state_content"
+  assert_match "detail is crashed:detected-by-gc" "crashed:detected-by-gc" "$state_content"
 }

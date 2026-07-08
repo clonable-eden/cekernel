@@ -90,7 +90,7 @@ Use `process-status.sh` to check active processes (Workers and Reviewers) in the
 
 ```bash
 scripts/orchestrator/process-status.sh
-# {"issue":4,"type":"worker","worktree":"/path/.worktrees/issue/4-...","fifo":"/usr/local/var/cekernel/ipc/.../worker-4","uptime":"12m"}
+# {"issue":4,"type":"worker","worktree":"/path/.worktrees/issue/4-...","uptime":"12m","state":"RUNNING","state_detail":"phase1:implement"}
 ```
 
 ## IPC: Named Pipe
