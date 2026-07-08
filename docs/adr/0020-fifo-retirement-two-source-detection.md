@@ -20,7 +20,7 @@ Workers by iterating pipes (fact 6) and the reaper that removes them
 (fact 7).
 
 Investigation (#586, 2026-07-08) established five facts; architecture
-review of this ADR (PR #610, 2026-07-08, four passes) added three more:
+review of this ADR (PR #610, 2026-07-08, five passes) added four more:
 
 1. **Degradation is already implemented.** `notify-complete.sh` writes the
    state file *first* and exits 0 when the FIFO is absent; `watch.sh`
@@ -69,6 +69,20 @@ review of this ADR (PR #610, 2026-07-08, four passes) added three more:
    the reap path must change log retention explicitly — it cannot be
    assumed (a claim of exactly this kind survived three review passes
    of this ADR because it was coherent in-document and false in-repo).
+9. **gc's orphan sweep reaps by pipe absence — a fourth reap site.**
+   `orchctl gc` first classifies each pipe via `_gc_is_stale_fifo`
+   (liveness verified through the handle with ADR-0018
+   refuse-on-doubt: `query-failed`/`unknown-value` count as alive;
+   `TERMINATED` state, a verifiably dead handle, or a handle-less
+   non-terminal entry — abnormal by definition — means stale), removes
+   stale pipes, then `_gc_clean_orphan_files` deletes **every**
+   `worker-*.*` companion file — the state file included — for any
+   issue with no surviving pipe. Under state-based slot accounting,
+   deleting a non-`TERMINATED` state file *frees the slot*: if
+   `watch.sh` kept mechanically removing the pipe on unverified exits,
+   a gc run would hand back exactly the held slot that Decision 2
+   refuses to free — the over-spawn side door, opened by an operator
+   sweep (found in the fifth review pass).
 
 The deeper context is the project's standing: the platform is absorbing
 agent-infrastructure concerns release by release, and cekernel is a
@@ -120,7 +134,19 @@ distinct axes**: the state file is the semantic record (what happened);
    still be running"): on doubt, refuse to free — over-holding degrades
    throughput; over-freeing over-spawns past `MAX_ORCH_CHILDREN`. This
    is the same degradation posture as `orchctl gc`'s "refuse to reap on
-   doubt" (ADR-0018). Doubt is resolved by the existing operator paths,
+   doubt" (ADR-0018).
+
+   **Hold-on-doubt applies to both tokens.** While the pipe still
+   exists (Phases 1–2), the unverified exits also stop removing it:
+   `rm -f "$fifo"` leaves the timeout and query-escalated paths in
+   Phase 1, not Phase 4. The pipe remains the key that protects an
+   issue's companion files from `orchctl gc`'s orphan sweep (fact 9);
+   removing it on doubt while the state file holds the slot would let
+   a gc run delete that state file and free the held slot with no
+   exit record. A live Worker's retained pipe is never reaped
+   (`_gc_is_stale_fifo` sees a live handle), so the over-spawn side
+   door stays closed for exactly the "worker may still be running"
+   case the hold exists for. Doubt is resolved by the existing operator paths,
    which already write the exit record: `orchctl recover`
    (`TERMINATED … crashed:detected-by-recover`) and `orchctl kill`
    (`TERMINATED … killed`). `orchctl gc`'s reap action likewise becomes
@@ -184,12 +210,22 @@ distinct axes**: the state file is the semantic record (what happened);
    `health-check.sh`; the pipe removal (and its "slots do not leak"
    rationale) leaves `cleanup-worktree.sh`; the writer-hang hazard
    ceases to exist.
-   `README.md`'s OS-concept table re-maps two rows: completion =
-   process table + exit record (`agents --json` + state file), not
-   pipes; semaphore = non-`TERMINATED` state count, not FIFO count.
+   `spawn.sh`'s stdout contract ("Output: FIFO path (stdout last
+   line)", echoed by the `spawn-worker.sh` wrapper header) goes with
+   Phase 3 — nothing captures the path today (`watch.sh` takes issue
+   numbers), so the last-line output is simply dropped, not replaced.
+   `README.md`'s OS-concept table re-maps two rows and drops one:
+   completion = process table + exit record (`agents --json` + state
+   file), not pipes; semaphore = non-`TERMINATED` state count, not
+   FIFO count; the "IPC pipe" row is removed outright — after
+   retirement cekernel contains no named pipe for the row to describe
+   (the "Trigger: Event-driven (FIFO, …)" line updates likewise).
    `agents/orchestrator.md`'s FIFO-premised prose (the
    completion-mechanism description and "Worker FIFO events buffer
-   during the block") updates with Phases 3–4.
+   during the block") updates with Phases 3–4, and
+   `skills/references/postmortem-patterns.md`'s "FIFO corruption or
+   missing" detection pattern is pruned with them — a post-mortem
+   pattern for a retired mechanism only misdirects diagnosis.
 
 Phasing (each phase lands and reverts separately; the order below is
 load-bearing, not editorial):
@@ -201,18 +237,30 @@ load-bearing, not editorial):
   counting is state-based, a crashed Worker whose exit record nobody
   writes leaks its slot — the terminal-state writes are the
   slot-release mechanism, not an optimization. Phase 1 also carries
-  both reaper changes (Decision 2, fact 8): log-before-delete for
-  `--force` on a non-`TERMINATED` state, and log retention (the
+  the pipe-retention change for unverified exits (Decision 2, fact 9:
+  hold-on-doubt covers both tokens) and both reaper changes
+  (Decision 2, fact 8): log-before-delete for `--force` on a
+  non-`TERMINATED` state, and log retention (the
   `rm -f logs/worker-<issue>.log` leaves `cleanup-worktree.sh`).
   Slot release via state-file deletion itself needs no change.
 - **Phase 2** = roster enumeration migration (Decision 4), including
   `orchctl gc`'s reap change (pipe removal → `TERMINATED` write,
-  Decision 2). Independent of Phase 1, with one interim caveat: after
-  Phase 1 and before Phase 2, gc still removes pipes — which no
-  longer free slots — so the backstop for crashes that no running
-  `watch.sh` observes is `orchctl recover` alone. Acceptable: Phase
-  1's terminal-state writes cover the watched path. Must precede
-  Phase 3 (after which no pipes exist to iterate).
+  Decision 2) and the orphan sweep's protection key (pipe absence →
+  non-`TERMINATED` state, fact 9). Independent of Phase 1, with a
+  bounded interim exposure — after Phase 1 and before Phase 2, gc
+  still keys on pipes, which no longer free slots:
+  - *Live Worker, held slot* (the case the hold exists for): safe.
+    Phase 1 retains the pipe on unverified exits, and
+    `_gc_is_stale_fifo` never reaps a pipe with a live handle
+    (refuse-on-doubt), so the orphan sweep cannot touch the held
+    state file.
+  - *Verifiably dead Worker, non-`TERMINATED` state* (a crash no
+    running `watch.sh` observes): gc reaps the stale pipe and its
+    orphan sweep deletes the state file, freeing the slot for a
+    Worker whose death the handle check verified — slot-correct, but
+    with no exit record until Phase 2's reap change lands. The
+    backstop that *does* write the record is `orchctl recover`.
+  Must precede Phase 3 (after which no pipes exist to iterate).
 - **Phase 3** = `notify-complete.sh` and `spawn.sh` drop FIFO
   creation/write. Requires Phase 1 (once `mkfifo` is gone, a
   pipe-counting guard reads zero and over-spawns without bound) and
