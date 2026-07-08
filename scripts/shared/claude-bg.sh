@@ -246,7 +246,17 @@ claude_bg_spawn() {
 claude_bg_stop() {
   local token="${1:-}"
   [[ -n "$token" ]] || return 0
-  claude stop "$token" >/dev/null 2>&1 || true
+
+  # `claude stop` accepts only the short 8-char job ID (first 8 hex chars
+  # of the sessionId). Full UUIDs always fail with "No job matching" (#621).
+  local job_id="${token:0:8}"
+  local stop_err
+  if ! stop_err=$(claude stop "$job_id" 2>&1); then
+    # Rule of Repair: make stop failure visible — the previous || true
+    # silently swallowed every failure, hiding #621 for weeks.
+    echo "Warning: claude stop '${job_id}' failed: ${stop_err}" >&2
+  fi
+  return 0
 }
 
 # claude_bg_wait_terminal <token> <interval> <timeout>

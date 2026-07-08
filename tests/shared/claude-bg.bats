@@ -276,7 +276,7 @@ enqueue_pair() {
   mock_bin claude 'if [ "$1" = "stop" ]; then echo "No job matching" >&2; exit 1; fi'
   run --separate-stderr claude_bg_stop "deadbeef"
   assert_eq "exit status (reap semantics)" "0" "$status"
-  assert_match "stderr warns about stop failure" "stop.*failed\|Warning.*stop" "$stderr"
+  assert_match "stderr warns about stop failure" "stop.*failed|Warning.*stop" "$stderr"
 }
 
 # ── claude_bg_capture_session_id ──
