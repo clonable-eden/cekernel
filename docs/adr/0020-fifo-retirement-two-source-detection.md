@@ -43,12 +43,15 @@ review of this ADR (PR #610, 2026-07-08) added a sixth:
    is <1%, and the state read is a local-filesystem operation cheap
    enough to poll faster.
 6. **The FIFO is also the roster key for process tooling.** `orchctl`
-   `list`/`status`/`gc` and `process-status.sh` discover Workers by
-   iterating pipes (`for fifo in ... worker-*; [[ -p ]]`). This is a
-   second hidden coupling of the same kind as fact 2 — the "notification
-   channel" doubles as the process-table entry. (Elapsed time already
-   comes from the `.spawned` file, not the pipe; only enumeration is
-   coupled.)
+   `list`/`status`/`gc`, `process-status.sh`, and `health-check.sh`
+   discover Workers by iterating pipes (`for fifo in ... worker-*;
+   [[ -p ]]`). This is a second hidden coupling of the same kind as
+   fact 2 — the "notification channel" doubles as the process-table
+   entry. `health-check.sh` couples deepest: its zombie *definition* is
+   FIFO-based ("FIFO exists but process dead"; "no active FIFO =
+   completed"), not just its discovery loop. (Elapsed time already
+   comes from the `.spawned` file, not the pipe; enumeration and the
+   zombie predicate are what's coupled.)
 
 The deeper context is the project's standing: the platform is absorbing
 agent-infrastructure concerns release by release, and cekernel is a
@@ -114,30 +117,53 @@ distinct axes**: the state file is the semantic record (what happened);
    latency: sub-second → ≤5s.
 4. **Roster enumeration moves to state files.** All pipe-iteration
    consumers (fact 6) — `orchctl list`/`status`/`gc`,
-   `process-status.sh` — switch to enumerating `worker-*.state` files
-   via one shared helper in `worker-state.sh` (Rule of Modularity: one
-   enumeration primitive, four consumers). Semantics per consumer are
-   unchanged; only the discovery key changes.
+   `process-status.sh`, `health-check.sh` — switch to enumerating
+   `worker-*.state` files via one shared helper in `worker-state.sh`
+   (Rule of Modularity: one enumeration primitive, five consumers).
+   Enumeration semantics: the helper lists all state files with their
+   states; consumers filter to non-`TERMINATED` entries. That
+   reproduces today's pipe semantics (a pipe exists only while a
+   Worker is active), so `worker-*.state` files persisting after
+   `TERMINATED` do not leak completed Workers into `orchctl list`.
+   For four consumers only the discovery key changes.
+   `health-check.sh` is a redesign, not a key swap: its zombie
+   predicate is FIFO-defined (fact 6) and is redefined on the state
+   model as **non-`TERMINATED` state + dead backend verdict** — which
+   is exactly Decision 2's held slot, so a zombie flag now points at
+   the same doubt that `orchctl recover` resolves.
 5. **Deletions.** `mkfifo` leaves `spawn.sh`; the FIFO branch leaves
    `watch.sh`; the FIFO write leaves `notify-complete.sh`; pipe
-   iteration leaves `orchctl` and `process-status.sh`; the writer-hang
-   hazard ceases to exist. `README.md`'s OS-concept table re-maps IPC:
-   completion = process table + exit record (`agents --json` + state
-   file), not pipes.
+   iteration leaves `orchctl`, `process-status.sh`, and
+   `health-check.sh`; the writer-hang hazard ceases to exist.
+   `README.md`'s OS-concept table re-maps IPC: completion = process
+   table + exit record (`agents --json` + state file), not pipes.
 
-Phasing (each independently mergeable and revertable):
+Phasing (each phase lands and reverts separately; the order below is
+load-bearing, not editorial):
 
 - **Phase 1** = state detail + `watch.sh` terminal-state writes + slot
-  migration. These three land **together**: once counting is
-  state-based, a crashed Worker whose exit record nobody writes leaks
-  its slot — the terminal-state writes are the slot-release mechanism,
-  not an optimization.
+  migration (plus the `envs/README.md` catalog entry for
+  `CEKERNEL_STATE_POLL_INTERVAL`). These land **together**: once
+  counting is state-based, a crashed Worker whose exit record nobody
+  writes leaks its slot — the terminal-state writes are the
+  slot-release mechanism, not an optimization.
 - **Phase 2** = roster enumeration migration (Decision 4). Independent
-  of Phase 1; must precede Phase 4 (after which no pipes exist to
+  of Phase 1; must precede Phase 3 (after which no pipes exist to
   iterate).
-- **Phase 3** = `watch.sh` drops the FIFO read path.
-- **Phase 4** = `notify-complete.sh` and `spawn.sh` drop FIFO
-  creation/write.
+- **Phase 3** = `notify-complete.sh` and `spawn.sh` drop FIFO
+  creation/write. Requires Phase 1 (once `mkfifo` is gone, a
+  pipe-counting guard reads zero and over-spawns without bound) and
+  Phase 2 (pipe-iterating tooling would see no Workers). Safe while
+  the read path still exists: `watch.sh` already degrades to state
+  polling when the pipe is absent (fact 1's `FIFO_MISSING` fallback).
+- **Phase 4** = `watch.sh` drops the FIFO read path, by now dead code.
+
+**The write side retires before the read side — never the reverse.**
+If the read path went first, `spawn.sh` would still create pipes that
+no reader ever opens, and every Worker's `notify-complete.sh` would
+block forever on write-open — promoting fact 4's hazard from
+"Orchestrator killed" to every normal completion. Phases 3 and 4 may
+land as one PR; they must not land in the reverse order.
 
 **Explicitly deferred: hook-based push.** A Worker `SessionEnd`/`Stop`
 hook writing the terminal state would restore event-driven semantics (the
