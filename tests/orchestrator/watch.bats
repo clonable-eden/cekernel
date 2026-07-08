@@ -212,6 +212,147 @@ teardown() {
   assert_match "detail is #999" '"detail":"#999"' "$result_json"
 }
 
+# ── ADR-0020 Phase 1: watch.sh terminal-state writes ──
+
+@test "watch writes TERMINATED:crashed state when backend reports crashed" {
+  worker_state_write 700 RUNNING "phase1:implement"
+  echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-700.worker"
+  # empty agents queue → [] → session missing → crashed
+  mkfifo "${CEKERNEL_IPC_DIR}/worker-700"
+
+  run bash "$WATCH_SCRIPT" 700
+  assert_eq "watch exits non-zero" "1" "$status"
+  assert_match "result is crashed" '"result":"crashed"' "$output"
+  # ADR-0020: watch.sh writes TERMINATED state for crashed exit
+  local state_line
+  state_line=$(cat "${CEKERNEL_IPC_DIR}/worker-700.state")
+  assert_match "state is TERMINATED" "^TERMINATED:" "$state_line"
+  assert_match "detail is crashed" "crashed:" "$state_line"
+}
+
+@test "watch writes TERMINATED:blocked state when backend reports blocked" {
+  worker_state_write 701 RUNNING "phase1:implement"
+  echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-701.worker"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$TOKEN" background /tmp/wt 1700000000000 blocked)]"
+  mkfifo "${CEKERNEL_IPC_DIR}/worker-701"
+
+  run bash "$WATCH_SCRIPT" 701
+  assert_eq "watch exits non-zero" "1" "$status"
+  assert_match "result is blocked" '"result":"blocked"' "$output"
+  # ADR-0020: watch.sh writes TERMINATED state for blocked exit
+  local state_line
+  state_line=$(cat "${CEKERNEL_IPC_DIR}/worker-701.state")
+  assert_match "state is TERMINATED" "^TERMINATED:" "$state_line"
+  assert_match "detail is blocked" "blocked:" "$state_line"
+}
+
+@test "watch does NOT write TERMINATED for timeout (slot held)" {
+  worker_state_write 702 RUNNING "phase1:implement"
+  echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-702.worker"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$TOKEN" background /tmp/wt 1700000000000 busy)]"
+  mkfifo "${CEKERNEL_IPC_DIR}/worker-702"
+  export CEKERNEL_WORKER_TIMEOUT=2
+
+  run bash "$WATCH_SCRIPT" 702
+  # timeout exits non-zero
+  assert_eq "watch exits non-zero" "1" "$status"
+  assert_match "result is timeout" '"result":"timeout"' "$output"
+  # ADR-0020: timeout does NOT write TERMINATED — slot held
+  local state_line
+  state_line=$(cat "${CEKERNEL_IPC_DIR}/worker-702.state")
+  assert_match "state is NOT TERMINATED" "^RUNNING:" "$state_line"
+}
+
+@test "watch does NOT write TERMINATED for query-escalated (slot held)" {
+  worker_state_write 703 RUNNING "phase1:implement"
+  echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-703.worker"
+  mock_bin claude 'exit 1'
+  mkfifo "${CEKERNEL_IPC_DIR}/worker-703"
+  export CEKERNEL_WATCH_QUERY_RETRY_MAX=2
+
+  run bash "$WATCH_SCRIPT" 703
+  assert_eq "watch exits non-zero" "1" "$status"
+  assert_match "result is error" '"result":"error"' "$output"
+  # ADR-0020: query-escalated does NOT write TERMINATED — slot held
+  local state_line
+  state_line=$(cat "${CEKERNEL_IPC_DIR}/worker-703.state")
+  assert_match "state is NOT TERMINATED" "^RUNNING:" "$state_line"
+}
+
+# ── ADR-0020 Phase 1: write-once race (dead verdict + prior TERMINATED record) ──
+
+@test "watch consumes existing TERMINATED record instead of writing crashed" {
+  # Simulate: Worker writes TERMINATED just before backend reports dead
+  worker_state_write 704 RUNNING "phase1:implement"
+  echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-704.worker"
+  mkfifo "${CEKERNEL_IPC_DIR}/worker-704"
+
+  # Start watch in background
+  local out="${BATS_TEST_TMPDIR}/watch-out-704.json"
+  bash "$WATCH_SCRIPT" 704 > "$out" 2>/dev/null &
+  local watch_pid=$!
+  sleep 1
+
+  # Worker writes TERMINATED (simulating notify-complete before backend finishes)
+  worker_state_write 704 TERMINATED "ci-passed:55"
+  wait "$watch_pid" || true
+
+  local result_json
+  result_json=$(cat "$out")
+  # write-once: watch should report ci-passed (from state), NOT crashed
+  assert_match "result is ci-passed (write-once)" '"result":"ci-passed"' "$result_json"
+  assert_match "detail is 55" '"detail":"55"' "$result_json"
+
+  # State file must still say TERMINATED with ci-passed (not overwritten with crashed)
+  local state_line
+  state_line=$(cat "${CEKERNEL_IPC_DIR}/worker-704.state")
+  assert_match "state preserved as ci-passed" "ci-passed:55" "$state_line"
+}
+
+# ── ADR-0020 Phase 1: polling split (state 5s, backend 30s) ──
+
+@test "watch polls state at STATE_POLL_INTERVAL, not POLL_INTERVAL" {
+  worker_state_write 705 RUNNING "phase1:implement"
+  echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-705.worker"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$TOKEN" background /tmp/wt 1700000000000 busy)]"
+  mkfifo "${CEKERNEL_IPC_DIR}/worker-705"
+
+  # Set state poll to 1s and backend poll to 30s
+  # If state poll works at 1s, completion via state should be detected quickly
+  export CEKERNEL_STATE_POLL_INTERVAL=1
+  export CEKERNEL_POLL_INTERVAL=30
+  export CEKERNEL_WORKER_TIMEOUT=10
+
+  local out="${BATS_TEST_TMPDIR}/watch-out-705.json"
+  bash "$WATCH_SCRIPT" 705 > "$out" 2>/dev/null &
+  local watch_pid=$!
+
+  # Write TERMINATED after 2s — should be detected within ~3s (1s poll + margin)
+  sleep 2
+  worker_state_write 705 TERMINATED "ci-passed:66"
+
+  # Wait for watch to finish (with a timeout)
+  local waited=0
+  while kill -0 "$watch_pid" 2>/dev/null && [[ $waited -lt 8 ]]; do
+    sleep 1
+    waited=$((waited + 1))
+  done
+
+  if kill -0 "$watch_pid" 2>/dev/null; then
+    kill "$watch_pid" 2>/dev/null || true
+    echo "FAIL: watch did not detect state within 8s (STATE_POLL_INTERVAL should be 1s)" >&2
+    return 1
+  fi
+
+  wait "$watch_pid" || true
+  local result_json
+  result_json=$(cat "$out")
+  assert_match "result is ci-passed" '"result":"ci-passed"' "$result_json"
+}
+
 @test "watch resolves the headless backend from the env profile (#182 regression)" {
   worker_state_write 183 RUNNING "phase1:implement"
   echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-183.worker"

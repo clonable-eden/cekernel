@@ -239,3 +239,60 @@ commit_settings() {
     return 1
   fi
 }
+
+# ── ADR-0020 Phase 1: active_worker_count counts non-TERMINATED state files ──
+
+@test "active_worker_count counts non-TERMINATED state files, not pipes" {
+  run_spawn
+  assert_eq "spawn exits 0" "0" "$status"
+
+  # After a successful spawn, the state file should be READY (post-spawn)
+  # and should count as 1 active worker
+  local ipc_dir
+  ipc_dir=$(find "${CEKERNEL_VAR_DIR}/ipc" -maxdepth 1 -type d -name "test-spawn-*" | head -1)
+
+  # Verify: state file exists and counts toward the active count
+  assert_file_exists "state file exists" "${ipc_dir}/worker-42.state"
+  local state_line
+  state_line=$(cat "${ipc_dir}/worker-42.state")
+  # State should be READY (not TERMINATED)
+  assert_match "state is READY" "^READY:" "$state_line"
+}
+
+@test "spawn.sh exits 2 when MAX_ORCH_CHILDREN non-TERMINATED state files exist" {
+  # First spawn succeeds
+  run_spawn
+  assert_eq "first spawn exits 0" "0" "$status"
+
+  # Find the IPC dir
+  local ipc_dir
+  ipc_dir=$(find "${CEKERNEL_VAR_DIR}/ipc" -maxdepth 1 -type d -name "test-spawn-*" | head -1)
+
+  # Create additional non-TERMINATED state files to hit the limit
+  # Default MAX_ORCH_CHILDREN is 5, so create 4 more (total 5 with the spawned one)
+  for i in 100 101 102 103; do
+    echo "RUNNING:2026-07-09T00:00:00Z:phase1:implement" > "${ipc_dir}/worker-${i}.state"
+  done
+
+  # Next spawn should fail with exit 2
+  run bash -c "cd '${TMP}/repo' && CEKERNEL_MAX_ORCH_CHILDREN=5 bash '${SPAWN_SCRIPT}' --agent worker 43 main"
+  assert_eq "spawn exits 2 at capacity" "2" "$status"
+}
+
+@test "spawn.sh does not count TERMINATED state files toward capacity" {
+  run_spawn
+  assert_eq "first spawn exits 0" "0" "$status"
+
+  local ipc_dir
+  ipc_dir=$(find "${CEKERNEL_VAR_DIR}/ipc" -maxdepth 1 -type d -name "test-spawn-*" | head -1)
+
+  # Create state files: 3 TERMINATED + 1 RUNNING = only 2 active (inc. issue 42)
+  echo "TERMINATED:2026-07-09T00:00:00Z:ci-passed:99" > "${ipc_dir}/worker-100.state"
+  echo "TERMINATED:2026-07-09T00:00:00Z:merged:88" > "${ipc_dir}/worker-101.state"
+  echo "TERMINATED:2026-07-09T00:00:00Z:crashed:boom" > "${ipc_dir}/worker-102.state"
+  echo "RUNNING:2026-07-09T00:00:00Z:phase1:implement" > "${ipc_dir}/worker-103.state"
+
+  # With MAX=3 and 2 active, should succeed
+  run bash -c "cd '${TMP}/repo' && CEKERNEL_MAX_ORCH_CHILDREN=3 bash '${SPAWN_SCRIPT}' --agent worker 44 main"
+  assert_eq "spawn succeeds with terminated workers not counting" "0" "$status"
+}
