@@ -30,12 +30,23 @@ the hazard to a leaked issue lock — and completed Decision 5's
 deletion inventory with `docs/internals.md` and eight legacy test
 files; the thirteenth re-verified all claims and corrected that test
 inventory — one file misattributed to the `mkfifo` fixtures, and one
-bats-lane coupling the "legacy files" framing had hidden):
+bats-lane coupling the "legacy files" framing had hidden; the
+fourteenth re-verified all claims and corrected fact 1 — the exit-0
+fallback also skips the issue-lock release — and gave Decision 2's
+`blocked` pairing a documented home in Phase 1, which had declared
+it normative with no handler in orchestrator.md):
 
 1. **Degradation is already implemented.** `notify-complete.sh` writes the
    state file *first* and exits 0 when the FIFO is absent; `watch.sh`
    falls back to state polling with a `FIFO_MISSING` log. The FIFO is
-   de facto optional today.
+   de facto optional today. The exit-0 path is lossy beyond fact 3's
+   payload gap: it returns before the terminal-result issue-lock
+   release, so a pipe-less completion leaves the issue lock held (it
+   does append the lifecycle-log event — the hang in fact 4 differs by
+   blocking the script and losing that event too, not by lock
+   disposition; found in the fourteenth review pass). Phase 3 closes
+   this: with the FIFO block deleted, the log append and lock release
+   become unconditional.
 2. **The FIFO's load-bearing role is not notification.** `spawn.sh`'s
    concurrency guard counts named pipes (`active_worker_count()`), and
    `watch.sh`'s `rm -f "$fifo"` on read is what frees a slot — the FIFO
@@ -270,7 +281,13 @@ distinct axes**: the state file is the semantic record (what happened);
    the exit record deliberately leads the process table, and Decision
    4's zombie predicate cannot flag the state (it is its inverse).
    The pairing is therefore normative: a `blocked` exit record is
-   always followed by session stop in the same handling step.
+   always followed by session stop in the same handling step. No such
+   handling step exists today — `watch.sh` has surfaced `blocked` as a
+   distinct result since ADR-0016, but `agents/orchestrator.md` routes
+   only timeout, CI failure, and Reviewer failure — so Phase 1 wires
+   it alongside the timeout branch (found in the fourteenth review
+   pass: a pairing declared normative with no documented home is the
+   same gap class as the timeout protocol's unwired dead branch).
 3. **Polling splits by cost.** `watch.sh` polls the state file every
    `CEKERNEL_STATE_POLL_INTERVAL` (default 5s, local fs, negligible) and
    queries the backend verdict every `CEKERNEL_POLL_INTERVAL` (default
@@ -335,9 +352,12 @@ distinct axes**: the state file is the semantic record (what happened);
    pass): CLAUDE.md's platform-constraints line ("independent
    processes with FIFO IPC") and its `assert_fifo_exists` listing,
    the matching FIFO-IPC mentions in
-   `docs/claude-code-constraints.md`, and the "live alongside FIFOs"
-   comments in `worker-state.sh`, `worker-priority.sh`,
-   `spawn-orchestrator.sh`, and `agents/reviewer.md`.
+   `docs/claude-code-constraints.md`, and the FIFO-describing
+   comments in `worker-state.sh` and `worker-priority.sh` ("live
+   alongside FIFOs"), `spawn-orchestrator.sh` (no FIFO needed for
+   the Orchestrator), and `agents/reviewer.md` ("no FIFO, no state
+   files") — earlier passes labeled all four with the first phrase;
+   only two carry it (corrected in the fourteenth pass).
    `docs/internals.md` joins the sweep (found in the twelfth pass —
    the largest single omission): its `## IPC: Named Pipe` section is
    removed outright, its concurrency-limit section re-keys on
@@ -401,7 +421,10 @@ load-bearing, not editorial):
   Phase 1 also wires that unspecified branch in orchestrator.md's
   timeout protocol (Worker dead after TERM → plain
   `cleanup-worktree.sh`), so the reap path it depends on is
-  documented, not inferred.
+  documented, not inferred. The same wiring pass adds the `blocked`
+  result handler orchestrator.md lacks today (Decision 2's normative
+  pairing: exit record → `cleanup-worktree.sh` stops the session in
+  the same handling step).
   Slot release via state-file deletion itself needs no change.
 - **Phase 2** = roster enumeration migration (Decision 4), including
   `orchctl gc`'s reap change (pipe removal → `TERMINATED` write, on
@@ -427,6 +450,10 @@ load-bearing, not editorial):
   Phase 2 (pipe-iterating tooling would see no Workers). Safe while
   the read path still exists: `watch.sh` already degrades to state
   polling when the pipe is absent (fact 1's `FIFO_MISSING` fallback).
+  Dropping the write means deleting the FIFO-missing early return
+  with it: the lifecycle-log append and the issue-lock release run
+  unconditionally — a deliberate behavior change on today's fallback
+  path, which skips the lock release (fact 1).
 - **Phase 4** = `watch.sh` drops the FIFO read path, by now dead code.
 
 **The write side retires before the read side — never the reverse.**
