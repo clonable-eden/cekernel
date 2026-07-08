@@ -14,10 +14,12 @@ poll fallback), and **`claude agents --json`** (liveness verdicts via
 `-p` fork model there was no supervisor, so parent-child completion
 signaling had to be hand-built. ADR-0016 gave cekernel a kernel-grade
 process roster; ADR-0012 Amendment 2 already moved the Reviewer off the
-FIFO (subagent return value). The FIFO's remaining user is the Worker
-completion path.
+FIFO (subagent return value). The FIFO's remaining users are the Worker
+completion path and, less visibly, the process tooling that enumerates
+Workers by iterating pipes (fact 6).
 
-Investigation (#586, 2026-07-08) established five facts:
+Investigation (#586, 2026-07-08) established five facts; architecture
+review of this ADR (PR #610, 2026-07-08) added a sixth:
 
 1. **Degradation is already implemented.** `notify-complete.sh` writes the
    state file *first* and exits 0 when the FIFO is absent; `watch.sh`
@@ -40,6 +42,13 @@ Investigation (#586, 2026-07-08) established five facts:
    lifecycles are minutes to hours; the relative cost of polling latency
    is <1%, and the state read is a local-filesystem operation cheap
    enough to poll faster.
+6. **The FIFO is also the roster key for process tooling.** `orchctl`
+   `list`/`status`/`gc` and `process-status.sh` discover Workers by
+   iterating pipes (`for fifo in ... worker-*; [[ -p ]]`). This is a
+   second hidden coupling of the same kind as fact 2 — the "notification
+   channel" doubles as the process-table entry. (Elapsed time already
+   comes from the `.spawned` file, not the pipe; only enumeration is
+   coupled.)
 
 The deeper context is the project's standing: the platform is absorbing
 agent-infrastructure concerns release by release, and cekernel is a
@@ -64,27 +73,71 @@ distinct axes**: the state file is the semantic record (what happened);
    in the detail field). `watch.sh`'s `build_result_from_state` splits
    result and detail, eliminating the fallback payload gap.
 2. **Slot accounting moves to state files.** `active_worker_count()`
-   counts `worker-*.state` files whose state is not `TERMINATED`. A slot
-   frees the moment `notify-complete.sh` writes `TERMINATED` — the same
-   instant the FIFO removal frees it today, preserving ADR-0012's slot
-   semantics (slot free during review, worktree retained). Stale
-   non-terminal state from crashed Workers is handled by the existing
-   `orchctl recover` path, unchanged.
+   counts `worker-*.state` files whose state is not `TERMINATED`. On the
+   normal path a slot frees the moment `notify-complete.sh` writes
+   `TERMINATED` — the same instant the FIFO removal frees it today,
+   preserving ADR-0012's slot semantics (slot free during review,
+   worktree retained). The reject → re-spawn cycle holds with no code
+   change: `spawn.sh` writes `NEW` unconditionally, including under
+   `--resume`, so a re-spawned Worker re-consumes a slot exactly as a
+   fresh FIFO does today.
+
+   **Abnormal paths write the exit record where the verdict is
+   verified.** Today `watch.sh` frees the slot mechanically (`rm -f
+   "$fifo"`) on *every* exit path, including unverified ones. The
+   state model makes this decision explicit, per exit class:
+
+   | `watch.sh` exit | Verdict quality | State write | Slot |
+   |---|---|---|---|
+   | completion (state read) | verified | already `TERMINATED` | frees |
+   | crashed (`done`/`stopped`/`not-listed`/`missing`) | verified | `TERMINATED:<ts>:crashed:<detail>` | frees |
+   | blocked | verified | `TERMINATED:<ts>:blocked:<detail>` | frees |
+   | timeout | **unverified** | none | held |
+   | query-escalated | **unverified** | none | held |
+
+   Holding the slot on unverified exits is a deliberate behavior change
+   from the FIFO model (which freed the slot even when "worker may
+   still be running"): on doubt, refuse to free — over-holding degrades
+   throughput; over-freeing over-spawns past `MAX_ORCH_CHILDREN`. This
+   is the same degradation posture as `orchctl gc`'s "refuse to reap on
+   doubt" (ADR-0018). Doubt is resolved by the existing operator paths,
+   which already write the exit record: `orchctl recover`
+   (`TERMINATED … crashed:detected-by-recover`) and `orchctl kill`
+   (`TERMINATED … killed`). `orchctl gc`'s reap action likewise becomes
+   a `TERMINATED … crashed:detected-by-gc` write instead of a pipe
+   removal — an exit record beats erased history (Rule of
+   Representation).
 3. **Polling splits by cost.** `watch.sh` polls the state file every
    `CEKERNEL_STATE_POLL_INTERVAL` (default 5s, local fs, negligible) and
    queries the backend verdict every `CEKERNEL_POLL_INTERVAL` (default
    30s, unchanged — `agents --json` spawns a process). Completion
    latency: sub-second → ≤5s.
-4. **Deletions.** `mkfifo` leaves `spawn.sh`; the FIFO branch leaves
-   `watch.sh`; the FIFO write leaves `notify-complete.sh`; the writer-hang
+4. **Roster enumeration moves to state files.** All pipe-iteration
+   consumers (fact 6) — `orchctl list`/`status`/`gc`,
+   `process-status.sh` — switch to enumerating `worker-*.state` files
+   via one shared helper in `worker-state.sh` (Rule of Modularity: one
+   enumeration primitive, four consumers). Semantics per consumer are
+   unchanged; only the discovery key changes.
+5. **Deletions.** `mkfifo` leaves `spawn.sh`; the FIFO branch leaves
+   `watch.sh`; the FIFO write leaves `notify-complete.sh`; pipe
+   iteration leaves `orchctl` and `process-status.sh`; the writer-hang
    hazard ceases to exist. `README.md`'s OS-concept table re-maps IPC:
    completion = process table + exit record (`agents --json` + state
    file), not pipes.
 
-Phasing (each independently mergeable and revertable): Phase 1 = state
-detail + slot migration (FIFO still present, now redundant); Phase 2 =
-`watch.sh` drops the FIFO path; Phase 3 = `notify-complete.sh` and
-`spawn.sh` drop FIFO creation/write.
+Phasing (each independently mergeable and revertable):
+
+- **Phase 1** = state detail + `watch.sh` terminal-state writes + slot
+  migration. These three land **together**: once counting is
+  state-based, a crashed Worker whose exit record nobody writes leaks
+  its slot — the terminal-state writes are the slot-release mechanism,
+  not an optimization.
+- **Phase 2** = roster enumeration migration (Decision 4). Independent
+  of Phase 1; must precede Phase 4 (after which no pipes exist to
+  iterate).
+- **Phase 3** = `watch.sh` drops the FIFO read path.
+- **Phase 4** = `notify-complete.sh` and `spawn.sh` drop FIFO
+  creation/write.
 
 **Explicitly deferred: hook-based push.** A Worker `SessionEnd`/`Stop`
 hook writing the terminal state would restore event-driven semantics (the
@@ -170,7 +223,10 @@ have only just finished characterizing (#604). Deferred, not refused.
 - One mechanism deleted end-to-end: `mkfifo`, the blocking-read loop, the
   FIFO write, and the writer-hang hazard class.
 - Slot accounting becomes explicit and inspectable (state files) instead
-  of incidental (pipe existence).
+  of incidental (pipe existence), and every slot release is a written
+  exit record — `orchctl list` and the state files tell the same story.
+- Process tooling (`orchctl`, `process-status.sh`) enumerates one
+  durable artifact instead of a pipe that doubles as a roster key.
 - The fallback path stops being second-class: payload parity closes the
   detail gap; there is only one path to test.
 - `watch.sh` loses its most intricate branch (fd 3 lifecycle,
@@ -183,6 +239,12 @@ have only just finished characterizing (#604). Deferred, not refused.
 - Migration risk in slot accounting — the guard is load-bearing for
   scheduler correctness; Phase 1 must land with behavior tests
   (ADR-0017: assert effects, never text).
+- Unverified exits (timeout, query-escalated) now **hold** their slot
+  until `orchctl recover`/`kill` writes the exit record, where the FIFO
+  model freed it mechanically. Chosen deliberately (fail-safe against
+  over-spawn), but a stalled Orchestrator that never resolves doubt now
+  costs a slot instead of silently over-committing — surface it, don't
+  hide it (Rule of Repair).
 - Loses the event-driven wakeup pattern; if a future consumer needs
   sub-second reaction, it must build on hooks (deferred option), not
   pipes.
