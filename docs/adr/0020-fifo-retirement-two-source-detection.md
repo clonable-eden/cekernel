@@ -22,7 +22,9 @@ Workers by iterating pipes (fact 6) and the reaper that removes them
 (fact 7).
 
 Investigation (#586, 2026-07-08) established five facts; architecture
-review of this ADR (PR #610, 2026-07-08, ten passes) added four more:
+review of this ADR (PR #610, 2026-07-08, eleven passes) added four
+more (the eleventh added no fact — it verified the document's claims
+against the repository and corrected three misstatements):
 
 1. **Degradation is already implemented.** `notify-complete.sh` writes the
    state file *first* and exits 0 when the FIFO is absent; `watch.sh`
@@ -47,7 +49,8 @@ review of this ADR (PR #610, 2026-07-08, ten passes) added four more:
    enough to poll faster.
 6. **The FIFO is also the roster key for process tooling.** `orchctl`
    `ls`/`gc`, `process-status.sh`, and `health-check.sh` discover
-   Workers by iterating pipes (`for fifo in ... worker-*; [[ -p ]]`);
+   Workers by iterating pipes (`for fifo in ... worker-*; [[ -p ]]`;
+   `process-status.sh` via `find -type p`);
    `orchctl ps` is the one exception — it enumerates `handle-*.*`
    files and never reads pipes. `orchctl`'s `resolve_target` goes
    further: **every targeted command**
@@ -207,10 +210,11 @@ distinct axes**: the state file is the semantic record (what happened);
    a pipe-less held slot — `resolve_target` resolves issues by pipe
    existence today (fact 6) — so its resolution key moves to
    state-file existence in Phase 1. The state file is written
-   unconditionally at spawn and is never removed before the pipe
-   (cleanup and spawn's failure rollback delete both together; every
-   other path removes only the pipe), so the new key is a superset
-   of the old: nothing
+   unconditionally at spawn, and no path removes a state file while
+   its pipe still exists (cleanup and spawn's failure rollback delete
+   both together; gc's orphan sweep deletes state files only for
+   issues whose pipe is already gone — fact 9), so the new key is a
+   superset of the old: nothing
    addressable today becomes unaddressable. `orchctl gc`'s reap action likewise becomes
    a `TERMINATED … crashed:detected-by-gc` write instead of a pipe
    removal — an exit record beats erased history (Rule of
@@ -224,13 +228,19 @@ distinct axes**: the state file is the semantic record (what happened);
    `TERMINATED` entry needs no further record — the exit was already
    written and consumed. Reaping a non-`TERMINATED` entry appends the
    exit event to the lifecycle log (`logs/worker-<issue>.log`) before
-   deletion. The condition is the **state, not the flag**: the timeout
-   protocol reaches cleanup *without* `--force` when the TERM succeeds
-   (`health-check.sh` reports the Worker dead, the `--force` branch is
-   skipped, and the escalation flow's plain `cleanup-worktree.sh`
-   performs the reap) — a `--force`-scoped log-append would free
-   exactly that slot by erasing history (found in the tenth review
-   pass). This requires a second
+   deletion. The condition is the **state, not the flag**: when the
+   TERM succeeds (`health-check.sh` reports the Worker dead), the
+   `--force` branch is skipped — and orchestrator.md's timeout
+   protocol specifies *only* the still-alive branch, leaving the
+   dead-Worker outcome unwired, so cleanup arrives without `--force`
+   by whatever handling follows (the escalation flow's plain
+   `cleanup-worktree.sh` is the natural route, but nothing documents
+   it). A `--force`-scoped log-append would free exactly that slot by
+   erasing history (found in the tenth review pass; the eleventh
+   corrected its premise — the dead branch is not *documented* to
+   route through escalation, it is unspecified, which argues harder
+   for keying on state; Phase 1 closes the gap by wiring the branch
+   explicitly in orchestrator.md). This requires a second
    behavior change (fact 8): today `cleanup-worktree.sh` deletes that
    log with the rest of cleanup, which would erase the record in the
    same breath — Phase 1 makes cleanup **retain** the log. Its terminal
@@ -307,7 +317,22 @@ distinct axes**: the state file is the semantic record (what happened);
    missing" detection pattern is pruned with them (along with the
    neighboring IPC-directory pattern's "FIFO-related errors" clause)
    — a post-mortem pattern for a retired mechanism only misdirects
-   diagnosis.
+   diagnosis. The same sweep covers prose and comments that describe
+   the FIFO without implementing it (found in the eleventh review
+   pass): CLAUDE.md's platform-constraints line ("independent
+   processes with FIFO IPC") and its `assert_fifo_exists` listing,
+   the matching FIFO-IPC mentions in
+   `docs/claude-code-constraints.md`, and the "live alongside FIFOs"
+   comments in `worker-state.sh`, `worker-priority.sh`,
+   `spawn-orchestrator.sh`, and `agents/reviewer.md`. The
+   FIFO-coupled test surface migrates with each phase rather than at
+   the end (ADR-0017: tests assert the behavior each phase ships):
+   the concurrency-guard, watch-FIFO-logging, health-check,
+   process-status, notify-complete, cleanup-worktree, and orchctl
+   suites follow the scripts they test, and the `assert_fifo_exists`
+   helper (`tests/helpers/assertions.bash`, `tests/helpers.sh`) is
+   deleted with Phase 4 — after retirement there is no pipe left to
+   assert on.
 
 Phasing (each phase lands and reverts separately; the order below is
 load-bearing, not editorial):
@@ -326,9 +351,14 @@ load-bearing, not editorial):
   pipe-less held slots Phase 1 creates), and both reaper changes
   (Decision 2, fact 8): log-before-delete whenever cleanup deletes a
   non-`TERMINATED` state — with or without `--force`; the timeout
-  protocol's TERM-succeeded path reaches cleanup unflagged — and log
+  protocol leaves its TERM-succeeded path unwired, so cleanup can
+  arrive unflagged — and log
   retention (the
   `rm -f logs/worker-<issue>.log` leaves `cleanup-worktree.sh`).
+  Phase 1 also wires that unspecified branch in orchestrator.md's
+  timeout protocol (Worker dead after TERM → plain
+  `cleanup-worktree.sh`), so the reap path it depends on is
+  documented, not inferred.
   Slot release via state-file deletion itself needs no change.
 - **Phase 2** = roster enumeration migration (Decision 4), including
   `orchctl gc`'s reap change (pipe removal → `TERMINATED` write, on
