@@ -16,10 +16,11 @@ signaling had to be hand-built. ADR-0016 gave cekernel a kernel-grade
 process roster; ADR-0012 Amendment 2 already moved the Reviewer off the
 FIFO (subagent return value). The FIFO's remaining users are the Worker
 completion path and, less visibly, the process tooling that enumerates
-Workers by iterating pipes (fact 6).
+Workers by iterating pipes (fact 6) and the reaper that removes them
+(fact 7).
 
 Investigation (#586, 2026-07-08) established five facts; architecture
-review of this ADR (PR #610, 2026-07-08) added a sixth:
+review of this ADR (PR #610, 2026-07-08, three passes) added two more:
 
 1. **Degradation is already implemented.** `notify-complete.sh` writes the
    state file *first* and exits 0 when the FIFO is absent; `watch.sh`
@@ -52,6 +53,15 @@ review of this ADR (PR #610, 2026-07-08) added a sixth:
    completed"), not just its discovery loop. (Elapsed time already
    comes from the `.spawned` file, not the pipe; enumeration and the
    zombie predicate are what's coupled.)
+7. **The FIFO has a third slot-release site: the reaper.**
+   `cleanup-worktree.sh` removes the pipe expressly so that
+   "concurrency slots do not leak" (its header comment) and deletes
+   the state file with it. It is the lifecycle's reap step, invoked by
+   the Orchestrator after handling a result — and the terminus of the
+   documented timeout protocol (`send-signal TERM` → grace →
+   `cleanup-worktree.sh --force`, orchestrator.md). Any slot-accounting
+   migration must give the reaper explicit semantics, or the timeout
+   path frees slots by erasing history.
 
 The deeper context is the project's standing: the platform is absorbing
 agent-infrastructure concerns release by release, and cekernel is a
@@ -110,6 +120,28 @@ distinct axes**: the state file is the semantic record (what happened);
    a `TERMINATED … crashed:detected-by-gc` write instead of a pipe
    removal — an exit record beats erased history (Rule of
    Representation).
+
+   The third resolver is the Orchestrator's own timeout protocol,
+   which ends in `cleanup-worktree.sh --force` (fact 7). In the state
+   model `cleanup-worktree.sh` is the **reap**: deleting the state
+   file retires the roster entry and frees the slot, exactly as
+   `wait()` consumes a zombie's process-table entry. Reaping a
+   `TERMINATED` entry needs no further record — the exit was already
+   written and consumed. Reaping a non-`TERMINATED` entry (`--force`
+   on a hung Worker) appends the exit event to the lifecycle log
+   (`logs/worker-<issue>.log`, which cleanup retains) before deletion,
+   so record-beats-erasure holds here too: the process-table entry
+   goes, the accounting stays.
+
+   One table row is asymmetric by design: `blocked` records a session
+   that is still *alive* (stalled on a permission dialog) as
+   `TERMINATED` — terminal **by policy**, because nobody approves a
+   dialog in a headless run (ADR-0016). Until cleanup stops the
+   session (`cleanup-worktree.sh` kills the Worker via the backend),
+   the exit record deliberately leads the process table, and Decision
+   4's zombie predicate cannot flag the state (it is its inverse).
+   The pairing is therefore normative: a `blocked` exit record is
+   always followed by session stop in the same handling step.
 3. **Polling splits by cost.** `watch.sh` polls the state file every
    `CEKERNEL_STATE_POLL_INTERVAL` (default 5s, local fs, negligible) and
    queries the backend verdict every `CEKERNEL_POLL_INTERVAL` (default
@@ -120,6 +152,9 @@ distinct axes**: the state file is the semantic record (what happened);
    `process-status.sh`, `health-check.sh` — switch to enumerating
    `worker-*.state` files via one shared helper in `worker-state.sh`
    (Rule of Modularity: one enumeration primitive, five consumers).
+   The helper takes the IPC directory as an argument (defaulting to
+   the session's own): four consumers are session-scoped, but
+   `orchctl gc` sweeps every session directory under the IPC base.
    Enumeration semantics: the helper lists all state files with their
    states; consumers filter to non-`TERMINATED` entries. That
    reproduces today's pipe semantics (a pipe exists only while a
@@ -134,7 +169,9 @@ distinct axes**: the state file is the semantic record (what happened);
 5. **Deletions.** `mkfifo` leaves `spawn.sh`; the FIFO branch leaves
    `watch.sh`; the FIFO write leaves `notify-complete.sh`; pipe
    iteration leaves `orchctl`, `process-status.sh`, and
-   `health-check.sh`; the writer-hang hazard ceases to exist.
+   `health-check.sh`; the pipe removal (and its "slots do not leak"
+   rationale) leaves `cleanup-worktree.sh`; the writer-hang hazard
+   ceases to exist.
    `README.md`'s OS-concept table re-maps IPC: completion = process
    table + exit record (`agents --json` + state file), not pipes.
 
@@ -146,10 +183,18 @@ load-bearing, not editorial):
   `CEKERNEL_STATE_POLL_INTERVAL`). These land **together**: once
   counting is state-based, a crashed Worker whose exit record nobody
   writes leaks its slot — the terminal-state writes are the
-  slot-release mechanism, not an optimization.
-- **Phase 2** = roster enumeration migration (Decision 4). Independent
-  of Phase 1; must precede Phase 3 (after which no pipes exist to
-  iterate).
+  slot-release mechanism, not an optimization. Phase 1 also carries
+  the reaper's log-before-delete for `--force` on a non-`TERMINATED`
+  state (Decision 2); slot release via state-file deletion itself
+  needs no `cleanup-worktree.sh` change.
+- **Phase 2** = roster enumeration migration (Decision 4), including
+  `orchctl gc`'s reap change (pipe removal → `TERMINATED` write,
+  Decision 2). Independent of Phase 1, with one interim caveat: after
+  Phase 1 and before Phase 2, gc still removes pipes — which no
+  longer free slots — so the backstop for crashes that no running
+  `watch.sh` observes is `orchctl recover` alone. Acceptable: Phase
+  1's terminal-state writes cover the watched path. Must precede
+  Phase 3 (after which no pipes exist to iterate).
 - **Phase 3** = `notify-complete.sh` and `spawn.sh` drop FIFO
   creation/write. Requires Phase 1 (once `mkfifo` is gone, a
   pipe-counting guard reads zero and over-spawns without bound) and
@@ -249,8 +294,9 @@ have only just finished characterizing (#604). Deferred, not refused.
 - One mechanism deleted end-to-end: `mkfifo`, the blocking-read loop, the
   FIFO write, and the writer-hang hazard class.
 - Slot accounting becomes explicit and inspectable (state files) instead
-  of incidental (pipe existence), and every slot release is a written
-  exit record — `orchctl list` and the state files tell the same story.
+  of incidental (pipe existence), and every slot release leaves a durable
+  record — a state-file exit record, or the lifecycle log on the reap
+  path — so `orchctl list` and the records tell the same story.
 - Process tooling (`orchctl`, `process-status.sh`) enumerates one
   durable artifact instead of a pipe that doubles as a roster key.
 - The fallback path stops being second-class: payload parity closes the
@@ -266,7 +312,8 @@ have only just finished characterizing (#604). Deferred, not refused.
   scheduler correctness; Phase 1 must land with behavior tests
   (ADR-0017: assert effects, never text).
 - Unverified exits (timeout, query-escalated) now **hold** their slot
-  until `orchctl recover`/`kill` writes the exit record, where the FIFO
+  until `orchctl recover`/`kill` writes the exit record or the timeout
+  protocol reaps via `cleanup-worktree.sh --force`, where the FIFO
   model freed it mechanically. Chosen deliberately (fail-safe against
   over-spawn), but a stalled Orchestrator that never resolves doubt now
   costs a slot instead of silently over-committing — surface it, don't
@@ -274,6 +321,11 @@ have only just finished characterizing (#604). Deferred, not refused.
 - Loses the event-driven wakeup pattern; if a future consumer needs
   sub-second reaction, it must build on hooks (deferred option), not
   pipes.
+- Between a `blocked` exit record and the cleanup that stops the
+  session, the state file (`TERMINATED`) and the process table
+  (alive) intentionally disagree. Tooling that cross-checks the two
+  must treat the exit record as authoritative for scheduling and the
+  process table as authoritative for cleanup.
 
 ### Trade-offs
 
