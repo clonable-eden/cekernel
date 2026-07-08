@@ -6,611 +6,256 @@ Proposed
 
 ## Context
 
-Worker completion is detected through three sources (`watch.sh`'s header
-names the triple-path; ADR-0016 keeps ADR-0007's dual completion path and
-adds liveness via `agents --json` as a separate axis — the axis structure
-this decision completes): the **FIFO** (`${CEKERNEL_IPC_DIR}/worker-<issue>`, push,
-sub-second), the **state file** (`worker-<issue>.state`, semantic record,
-poll fallback), and **`claude agents --json`** (liveness verdicts via
-`claude-bg.sh`, ADR-0018). The FIFO predates the v2 platform: under v1's
-`-p` fork model there was no supervisor, so parent-child completion
-signaling had to be hand-built. ADR-0016 gave cekernel a kernel-grade
-process roster; ADR-0012 Amendment 2 already moved the Reviewer off the
-FIFO (subagent return value). The FIFO's remaining users are the Worker
-completion path and, less visibly, the process tooling that enumerates
-Workers by iterating pipes (fact 6) and the reaper that removes them
-(fact 7).
+Worker completion is detected through three sources:
 
-Investigation (#586, 2026-07-08) established five facts; architecture
-review of this ADR (PR #610, 2026-07-08, fifteen passes) added four
-more (the eleventh added no fact — it verified the document's claims
-against the repository and corrected three misstatements; the twelfth
-re-verified all claims, corrected fact 4's hang placement — widening
-the hazard to a leaked issue lock — and completed Decision 5's
-deletion inventory with `docs/internals.md` and eight legacy test
-files; the thirteenth re-verified all claims and corrected that test
-inventory — one file misattributed to the `mkfifo` fixtures, and one
-bats-lane coupling the "legacy files" framing had hidden; the
-fourteenth re-verified all claims and corrected fact 1 — the exit-0
-fallback also skips the issue-lock release — and gave Decision 2's
-`blocked` pairing a documented home in Phase 1, which had declared
-it normative with no handler in orchestrator.md; the fifteenth found
-Decision 2's write-once invariant under-scoped — `orchctl kill`'s
-unconditional `TERMINATED:killed` write clobbers a completion the
-operator races, so the invariant now guards kill as it guards
-`watch.sh` and gc):
+| Source | Role | Latency |
+|---|---|---|
+| FIFO (`worker-<issue>`) | push notification **+ concurrency-slot token + roster key** | sub-second |
+| state file (`worker-<issue>.state`) | semantic record — *what happened* | poll |
+| `claude agents --json` | liveness verdict (ADR-0018) — *is it still running* | poll |
 
-1. **Degradation is already implemented.** `notify-complete.sh` writes the
-   state file *first* and exits 0 when the FIFO is absent; `watch.sh`
-   falls back to state polling with a `FIFO_MISSING` log. The FIFO is
-   de facto optional today. The exit-0 path is lossy beyond fact 3's
-   payload gap: it returns before the terminal-result issue-lock
-   release, so a pipe-less completion leaves the issue lock held (it
-   does append the lifecycle-log event — the hang in fact 4 differs by
-   blocking the script and losing that event too, not by lock
-   disposition; found in the fourteenth review pass). Phase 3 closes
-   this: with the FIFO block deleted, the log append and lock release
-   become unconditional.
-2. **The FIFO's load-bearing role is not notification.** `spawn.sh`'s
-   concurrency guard counts named pipes (`active_worker_count()`), and
-   `watch.sh`'s `rm -f "$fifo"` on read is what frees a slot — the FIFO
-   is the **concurrency-slot token** (ADR-0012 § Concurrency Slot
-   Behavior).
-3. **The fallback path loses payload.** The state file carries the result
-   (`TERMINATED:<ts>:ci-passed`) but not the notify `detail` (PR number);
-   state-fallback results substitute `detected-via-state-fallback`.
-4. **The FIFO has a verified writer-hang hazard.** A write to a pipe with
-   no reader blocks forever (measured). If the Orchestrator dies leaving
-   the pipe file (SIGKILL — normal exits remove it), the Worker's
-   `notify-complete.sh` hangs at the FIFO write — the state write has
-   landed by then, but the lifecycle-log append and the issue-lock
-   release (terminal results — `merged`/`failed`/`cancelled` — release
-   the lock there) never run, so the hang also holds the issue lock
-   indefinitely and blocks any re-spawn of the issue. (The twelfth
-   review pass corrected this fact's placement: earlier passes put the
-   hang "at its final step", understating the hazard — it is a lost
-   notification *plus* a leaked lock.)
-5. **Push latency is not load-bearing.** FIFO push is sub-second; state
-   polling detects within `CEKERNEL_POLL_INTERVAL` (30s). Worker
-   lifecycles are minutes to hours; the relative cost of polling latency
-   is <1%, and the state read is a local-filesystem operation cheap
-   enough to poll faster.
-6. **The FIFO is also the roster key for process tooling.** `orchctl`
-   `ls`/`gc`, `process-status.sh`, and `health-check.sh` discover
-   Workers by iterating pipes (`for fifo in ... worker-*; [[ -p ]]`;
-   `process-status.sh` via `find -type p`);
-   `orchctl ps` is the one exception — it enumerates `handle-*.*`
-   files and never reads pipes. `orchctl`'s `resolve_target` goes
-   further: **every targeted command**
-   (`inspect`/`recover`/`kill`/`term`/`resume`/…) resolves its issue
-   argument by pipe existence, so a pipe-less Worker is not merely
-   unlisted but *unaddressable* (found in the seventh review pass;
-   command inventory corrected in the eighth). This is a second
-   hidden coupling of the same kind as fact 2 — the "notification
-   channel" doubles as the process-table entry *and* the
-   name-resolution key. `health-check.sh` couples deepest: its
-   zombie *definition* is FIFO-based ("FIFO exists but process
-   dead"; "no active FIFO = completed"), not just its discovery
-   loop. (Elapsed time is computed from the `.spawned` file, not the
-   pipe — but `inspect` gates that computation on pipe existence, so
-   a pipe-less Worker's elapsed reads blank; the gate migrates with
-   the enumeration key.)
-7. **The FIFO has a third slot-release site: the reaper.**
-   `cleanup-worktree.sh` removes the pipe expressly so that
-   "concurrency slots do not leak" (its header comment) and deletes
-   the state file with it. It is the lifecycle's reap step, invoked by
-   the Orchestrator after handling a result — and the terminus of the
-   documented timeout protocol (`send-signal TERM` → grace →
-   `cleanup-worktree.sh --force`, orchestrator.md). Any slot-accounting
-   migration must give the reaper explicit semantics, or the timeout
-   path frees slots by erasing history.
-8. **The reap step erases the lifecycle log today.**
-   `cleanup-worktree.sh` deletes `logs/worker-<issue>.log` along with
-   the other IPC files, and `orchctl gc`'s orphan sweep removes logs
-   for issues with no active pipe. Any record-beats-erasure claim on
-   the reap path must change log retention explicitly — it cannot be
-   assumed (a claim of exactly this kind survived three review passes
-   of this ADR because it was coherent in-document and false in-repo).
-9. **gc's orphan sweep reaps by pipe absence — a fourth reap site.**
-   `orchctl gc` first classifies each pipe via `_gc_is_stale_fifo`
-   (liveness verified through the handle with ADR-0018
-   refuse-on-doubt: `query-failed`/`unknown-value` count as alive;
-   stale means `TERMINATED` with no live handle, a verifiably dead
-   handle, or a handle-less entry that is either `NEW`/`READY` past
-   its spawn grace or in any remaining state —
-   `RUNNING`/`WAITING`/`SUSPENDED`/`UNKNOWN`: running without a
-   handle is abnormal by definition, and `SUSPENDED`, nominally a
-   legitimate dormant state, has no writer today because the suspend
-   protocol terminates via `notify-complete.sh cancelled`, leaving
-   `TERMINATED:cancelled`), removes
-   stale pipes, then `_gc_clean_orphan_files` deletes **every**
-   `worker-*.*` companion file — the state file included — for any
-   issue with no surviving pipe. Under state-based slot accounting,
-   deleting a non-`TERMINATED` state file *frees the slot*: if
-   `watch.sh` kept mechanically removing the pipe on unverified exits,
-   a gc run would hand back exactly the held slot that Decision 2
-   refuses to free — the over-spawn side door, opened by an operator
-   sweep (found in the fifth review pass).
+The FIFO predates the v2 platform. Under v1's `-p` fork model there was no
+supervisor, so parent–child completion signaling was hand-built. ADR-0016 gave
+cekernel a kernel-grade process roster; ADR-0012 Amendment 2 already moved the
+Reviewer off the FIFO. Five facts establish that the FIFO now costs more than it
+carries:
 
-The deeper context is the project's standing: the platform is absorbing
-agent-infrastructure concerns release by release, and cekernel is a
-**transitional artifact by design** — its mechanisms are scaffolding to be
-removed as the platform provides them natively (owner position,
-2026-07-08). In OS terms: v1 had no kernel, so a hand-rolled pipe was
-honest IPC; v2 has a kernel, and a real UNIX parent learns of a child's
-exit from `wait()`/`SIGCHLD` — kernel accounting — not from a pipe the
-child writes to before dying (a child that crashes writes nothing, which
-is exactly why the third source exists). Counting pipes to limit
-concurrency has no OS analog at all; the real thing is kernel process
-accounting. The OS analogy, examined closely, argues *for* retirement.
+1. **It is already optional.** `notify-complete.sh` writes the state file *first*
+   and exits 0 when the FIFO is absent; `watch.sh` falls back to state polling.
+   The FIFO is de facto optional today — but the exit-0 path is lossy: it returns
+   before the terminal issue-lock release, so a pipe-less completion leaks the
+   issue lock (and loses the lifecycle-log append).
+2. **Its load-bearing role is not notification.** `spawn.sh`'s concurrency guard
+   counts pipes (`active_worker_count`), and `watch.sh`'s `rm -f "$fifo"` frees
+   the slot — the FIFO *is* the concurrency-slot token (ADR-0012).
+3. **The fallback loses payload.** The state file carries the result (`ci-passed`)
+   but not the notify detail (PR number); fallback results substitute
+   `detected-via-state-fallback`.
+4. **It has a verified writer-hang hazard.** A write to a reader-less pipe blocks
+   forever. If the Orchestrator is SIGKILLed leaving the pipe, the Worker's
+   `notify-complete.sh` hangs at the write — the state write has landed, but the
+   lifecycle-log append and issue-lock release never run, so the hang also holds
+   the issue lock and blocks re-spawn.
+5. **Push latency is not load-bearing.** FIFO push is sub-second; state polling
+   detects within seconds. Worker lifecycles are minutes to hours — polling
+   latency is <1%.
+
+In OS terms: v1 had no kernel, so a hand-rolled pipe was honest IPC; v2 has a
+kernel, and a real parent learns of a child's exit from `wait()`/`SIGCHLD` —
+kernel accounting — not a pipe the child writes to before dying (a crashed child
+writes nothing, which is why the liveness source exists). Counting pipes to cap
+concurrency has no OS analog at all. The analogy argues *for* retirement.
+cekernel is a transitional artifact by design: what the platform's kernel now
+provides, it stops hand-building.
+
+Four further couplings constrain *how* the FIFO is removed (implementation
+detail, not motivation):
+
+| # | Coupling | Consequence for migration |
+|---|---|---|
+| 6 | **Roster + name-resolution key.** `orchctl ls`/`gc`, `process-status.sh`, `health-check.sh` discover Workers by iterating pipes; `resolve_target` resolves *every* targeted command by pipe existence. | A pipe-less Worker is unlisted *and* unaddressable. `health-check.sh` couples deepest — its zombie *definition* is "FIFO exists but process dead." |
+| 7 | **Reaper is a slot-release site.** `cleanup-worktree.sh` removes the pipe ("so slots do not leak") and is the terminus of the timeout protocol. | Any slot-accounting migration must give the reaper explicit semantics. |
+| 8 | **Reap erases the lifecycle log.** `cleanup-worktree.sh` deletes `logs/worker-<issue>.log`; `gc` sweeps logs for pipe-less issues. | A record-beats-erasure claim on the reap path must change log retention explicitly. |
+| 9 | **gc reaps by pipe absence.** `gc` classifies pipes by liveness (ADR-0018 refuse-on-doubt), removes stale ones, then deletes every `worker-*.*` companion — the state file included — for any pipe-less issue. | Under state-based accounting, deleting a non-`TERMINATED` state file *frees the slot* — an over-spawn side door. |
 
 ## Decision
 
-Retire the FIFO in 2.1. Completion detection becomes **two sources with
-distinct axes**: the state file is the semantic record (what happened);
-`claude agents --json` is liveness (is it still running). Concretely:
+Retire the FIFO in 2.1. Completion becomes **two sources on distinct axes**: the
+state file is the semantic record; `claude agents --json` is liveness.
 
-1. **State format carries the full payload.** `notify-complete.sh` writes
-   `TERMINATED:<ts>:<result>:<detail>` (the format already permits colons
-   in the detail field). `watch.sh`'s `build_result_from_state` splits
-   result and detail, eliminating the fallback payload gap.
-2. **Slot accounting moves to state files.** `active_worker_count()`
-   counts `worker-*.state` files whose state is not `TERMINATED`. On the
-   normal path a slot frees the moment `notify-complete.sh` writes
-   `TERMINATED` — the same instant the FIFO removal frees it today,
-   preserving ADR-0012's slot semantics (slot free during review,
-   worktree retained). The reject → re-spawn cycle holds with no code
-   change: `spawn.sh` writes `NEW` unconditionally, including under
-   `--resume`, so a re-spawned Worker re-consumes a slot exactly as a
-   fresh FIFO does today. (`orchctl resume` moves the consumption
-   point slightly earlier: its `READY:resume-requested` write is
-   already non-`TERMINATED`, so the slot is held from resume-request
-   rather than from the spawn that follows — the over-hold direction,
-   and the entry stays addressable via the Phase 1 key if that spawn
-   never comes.)
+**1. State carries the full payload.** `notify-complete.sh` writes
+`TERMINATED:<ts>:<result>:<detail>`; `watch.sh`'s `build_result_from_state`
+splits result and detail, closing the fallback gap (fact 3).
 
-   **Abnormal paths write the exit record where the verdict is
-   verified.** Today `watch.sh` frees the slot mechanically (`rm -f
-   "$fifo"`) on *every* exit path, including unverified ones. The
-   state model makes this decision explicit, per exit class:
+**2. Slot accounting moves to state files.** `active_worker_count()` counts
+`worker-*.state` files whose state is not `TERMINATED`. On the normal path a slot
+frees the instant `notify-complete.sh` writes `TERMINATED` — the same moment the
+FIFO removal frees it today, preserving ADR-0012 semantics (slot free during
+review, worktree retained). `watch.sh` writes the exit record where the verdict
+is verified, per exit class:
 
-   | `watch.sh` exit | Verdict quality | State write | Slot |
-   |---|---|---|---|
-   | completion (state read) | verified | already `TERMINATED` | frees |
-   | crashed (`done`/`stopped`/`not-listed`/`missing`) | verified | `TERMINATED:<ts>:crashed:<detail>` | frees |
-   | blocked | verified | `TERMINATED:<ts>:blocked:<detail>` | frees |
-   | timeout | **unverified** | none | held |
-   | query-escalated | **unverified** | none | held |
+| `watch.sh` exit | Verdict | State write | Slot |
+|---|---|---|---|
+| completion (state read) | verified | already `TERMINATED` | frees |
+| crashed (`done`/`stopped`/`not-listed`/`missing`) | verified | `TERMINATED:<ts>:crashed:<detail>` | frees |
+| blocked | verified | `TERMINATED:<ts>:blocked:<detail>` | frees |
+| timeout | **unverified** | none | held |
+| query-escalated | **unverified** | none | held |
 
-   Holding the slot on unverified exits is a deliberate behavior change
-   from the FIFO model (which freed the slot even when "worker may
-   still be running"): on doubt, refuse to free — over-holding degrades
-   throughput; over-freeing over-spawns past `MAX_ORCH_CHILDREN`. This
-   is the same degradation posture as `orchctl gc`'s "refuse to reap on
-   doubt" (ADR-0018).
+Holding the slot on unverified exits is a deliberate change from the FIFO model
+(which freed it even when "worker may still be running"): on doubt, refuse to
+free — over-holding degrades throughput, over-freeing over-spawns past
+`MAX_ORCH_CHILDREN`. Same posture as `orchctl gc` (ADR-0018).
 
-   **Terminal records are write-once.** The `crashed` and `blocked`
-   rows race against the Worker's own `TERMINATED` write: in each
-   poll iteration `watch.sh` reads the state file *before* the
-   backend query, and the query spawns a process — a Worker that
-   completes inside that window presents a dead verdict *and* a
-   legitimate exit record. Today the race only misreports the result
-   (the crash path writes no state, so the record survives for
-   gc/recover to read); a table-literal implementation would
-   overwrite `ci-passed` with `crashed` — corrupting the record and
-   re-spawning a completed issue, the mechanism breaking its own
-   record-beats-erasure rule (found in the ninth review pass). The
-   two-source semantics already dictate the resolution: a dead
-   verdict plus a `TERMINATED` record *is* normal completion. Before
-   writing a terminal record, `watch.sh` re-reads the state file
-   and, if it is already `TERMINATED`, consumes that record as the
-   completion result instead of declaring a crash; no write ever
-   replaces an existing `TERMINATED` record. The same invariant
-   scopes `orchctl gc`'s reap write (Phase 2,
-   `crashed:detected-by-gc`) to non-`TERMINATED` entries — gc's
-   stale classes include "`TERMINATED` with no live handle"
-   (fact 9), and an unscoped write would clobber a real result in
-   the same breath as reaping it. `orchctl kill` carries the same
-   exposure from the opposite motive: an operator killing a Worker
-   that has *already* completed (state `TERMINATED:ci-passed`,
-   worktree pending review) — its unconditional `TERMINATED:killed`
-   write relabels the completion, and because `resume` addresses
-   only `TERMINATED:crashed` entries the issue is stranded
-   non-resumable with its PR detail erased. Kill's write is scoped
-   to non-`TERMINATED` entries under the same invariant; the session
-   stop it performs stays unconditional, so a kill that meets a
-   terminal record still stops the process (a no-op on an
-   already-finished session, but the session-stop a
-   `TERMINATED:blocked` record legitimately needs) and leaves the
-   record intact (found in the fifteenth review pass).
+**Invariant — terminal records are write-once.** *No write ever replaces an
+existing `TERMINATED` record.* Three writers obey it:
 
-   **The held slot must survive `orchctl gc` — but not by retaining
-   the pipe.** The pipe is the key that protects an issue's companion
-   files from gc's orphan sweep (fact 9): with `watch.sh` removing it
-   mechanically on unverified exits, a gc run would delete the held
-   state file and free the slot with no exit record. Retaining the
-   pipe on those exits looks like the symmetric fix (hold-on-doubt
-   for both tokens) but reintroduces fact 4's hazard on the most
-   natural doubt-resolution path: `watch.sh` has exited, so the pipe
-   has no reader, yet it still exists — a Worker that later completes
-   (the very "may still be running" case the hold exists for) passes
-   `notify-complete.sh`'s missing-FIFO check and blocks forever on
-   the write-open (found in the sixth review pass). Instead, the
-   orphan sweep's **protection key** changes in Phase 1, ahead of the
-   rest of gc's migration: a non-`TERMINATED` state file marks the
-   issue active regardless of pipe presence. Pipe removal on exit
-   stays exactly as today — which keeps `notify-complete.sh` on its
-   exit-0 fallback (fact 1) on these paths (fact 4's original
-   trigger, a killed Orchestrator's leftover pipe, persists until
-   Phase 3 deletes the write itself).
-   Doubt is resolved by the existing operator paths, which already
-   write the exit record: `orchctl recover`
-   (`TERMINATED … crashed:detected-by-recover`) and `orchctl kill`
-   (`TERMINATED … killed`). That requires the resolvers to *address*
-   a pipe-less held slot — `resolve_target` resolves issues by pipe
-   existence today (fact 6) — so its resolution key moves to
-   state-file existence in Phase 1. The state file is written
-   unconditionally at spawn, and no path removes a state file while
-   its pipe still exists (cleanup and spawn's failure rollback delete
-   both together; gc's orphan sweep deletes state files only for
-   issues whose pipe is already gone — fact 9), so the new key is a
-   superset of the old: nothing
-   addressable today becomes unaddressable. `orchctl gc`'s reap action likewise becomes
-   a `TERMINATED … crashed:detected-by-gc` write instead of a pipe
-   removal — an exit record beats erased history (Rule of
-   Representation).
+- **`watch.sh`** re-reads the state file before writing a `crashed`/`blocked`
+  record; if it is already `TERMINATED`, it consumes that as the completion
+  result. A dead verdict *plus* a `TERMINATED` record is normal completion — the
+  two-source semantics resolve the race that a table-literal write would lose.
+- **`orchctl gc`**'s reap write (`crashed:detected-by-gc`) is scoped to
+  non-`TERMINATED` entries — its stale classes include "`TERMINATED` with no live
+  handle," which an unscoped write would clobber while reaping.
+- **`orchctl kill`**'s `TERMINATED:killed` write is scoped to non-`TERMINATED`
+  entries — an operator killing an already-completed Worker (`TERMINATED:ci-passed`,
+  review pending) must not relabel the completion, which would strand the issue
+  non-resumable (`resume` addresses only `TERMINATED:crashed`) and erase the PR
+  detail. The session stop kill performs stays unconditional (a no-op on a
+  finished session; also the stop a `TERMINATED:blocked` record needs).
 
-   The third resolver is the Orchestrator's own timeout protocol,
-   which ends in `cleanup-worktree.sh --force` (fact 7). In the state
-   model `cleanup-worktree.sh` is the **reap**: deleting the state
-   file retires the roster entry and frees the slot, exactly as
-   `wait()` consumes a zombie's process-table entry. Reaping a
-   `TERMINATED` entry needs no further record — the exit was already
-   written and consumed. Reaping a non-`TERMINATED` entry appends the
-   exit event to the lifecycle log (`logs/worker-<issue>.log`) before
-   deletion. The condition is the **state, not the flag**: when the
-   TERM succeeds (`health-check.sh` reports the Worker dead), the
-   `--force` branch is skipped — and orchestrator.md's timeout
-   protocol specifies *only* the still-alive branch, leaving the
-   dead-Worker outcome unwired, so cleanup arrives without `--force`
-   by whatever handling follows (the escalation flow's plain
-   `cleanup-worktree.sh` is the natural route, but nothing documents
-   it). A `--force`-scoped log-append would free exactly that slot by
-   erasing history (found in the tenth review pass; the eleventh
-   corrected its premise — the dead branch is not *documented* to
-   route through escalation, it is unspecified, which argues harder
-   for keying on state; Phase 1 closes the gap by wiring the branch
-   explicitly in orchestrator.md). This requires a second
-   behavior change (fact 8): today `cleanup-worktree.sh` deletes that
-   log with the rest of cleanup, which would erase the record in the
-   same breath — Phase 1 makes cleanup **retain** the log. Its terminal
-   collector is `orchctl gc`'s orphan sweep: the record survives the
-   automated lifecycle and is erased only by an explicit operator
-   sweep. With both changes, record-beats-erasure holds on the reap
-   path too: the process-table entry goes, the accounting stays.
+**Held slots survive gc without retaining the pipe.** Retaining the pipe on
+unverified exits would reintroduce fact 4's hazard (a reader-less pipe a later
+completion blocks on). Instead the **protection key changes**: a non-`TERMINATED`
+state file marks the issue active regardless of pipe presence, and
+`resolve_target` resolves by state-file existence — so the doubt resolvers can
+address pipe-less held slots. The state key is a superset of the pipe key (a
+state file is written unconditionally at spawn, and no path removes one while its
+pipe exists), so nothing addressable today becomes unaddressable. Doubt is
+resolved by the operator paths that already write the exit record: `orchctl
+recover`, `orchctl kill`, and `orchctl gc` (whose reap write replaces the pipe
+removal).
 
-   One table row is asymmetric by design: `blocked` records a session
-   that is still *alive* (stalled on a permission dialog) as
-   `TERMINATED` — terminal **by policy**, because nobody approves a
-   dialog in a headless run (ADR-0016). Until cleanup stops the
-   session (`cleanup-worktree.sh` kills the Worker via the backend),
-   the exit record deliberately leads the process table, and Decision
-   4's zombie predicate cannot flag the state (it is its inverse).
-   The pairing is therefore normative: a `blocked` exit record is
-   always followed by session stop in the same handling step. No such
-   handling step exists today — `watch.sh` has surfaced `blocked` as a
-   distinct result since ADR-0016, but `agents/orchestrator.md` routes
-   only timeout, CI failure, and Reviewer failure — so Phase 1 wires
-   it alongside the timeout branch (found in the fourteenth review
-   pass: a pairing declared normative with no documented home is the
-   same gap class as the timeout protocol's unwired dead branch).
-3. **Polling splits by cost.** `watch.sh` polls the state file every
-   `CEKERNEL_STATE_POLL_INTERVAL` (default 5s, local fs, negligible) and
-   queries the backend verdict every `CEKERNEL_POLL_INTERVAL` (default
-   30s, unchanged — `agents --json` spawns a process). Completion
-   latency: sub-second → ≤5s.
-4. **Roster enumeration moves to state files.** All pipe-iteration
-   consumers (fact 6) — `orchctl ls`/`gc`, `process-status.sh`,
-   `health-check.sh` — switch to enumerating `worker-*.state` files
-   via one shared helper in `worker-state.sh` (Rule of Modularity:
-   one enumeration primitive, four consumers; `orchctl ps` already
-   enumerates handle files and does not migrate).
-   The helper takes the IPC directory as an argument (defaulting to
-   the session's own): `process-status.sh` and `health-check.sh` are
-   session-scoped, while `orchctl ls` and `gc` sweep every session
-   directory under the IPC base.
-   Enumeration semantics: the helper lists all state files with their
-   states; consumers filter to non-`TERMINATED` entries. That
-   reproduces today's pipe semantics (a pipe exists only while a
-   Worker is active), so `worker-*.state` files persisting after
-   `TERMINATED` do not leak completed Workers into `orchctl ls`.
-   (`resolve_target`'s key migrates earlier, in Phase 1 — Decision 2;
-   it is a point lookup, not an enumeration, and the doubt resolvers
-   depend on it. Its key is bare file existence, not non-`TERMINATED`
-   state — `resume` must address `TERMINATED:crashed` entries — so a
-   lingering exit record can widen the ambiguous-target candidate
-   list; `--session` disambiguates, as today.)
-   For three consumers only the discovery key changes, and
-   `orchctl inspect` swaps the pipe-existence gate on its elapsed
-   column for the same key. `health-check.sh` is a redesign, not a
-   key swap: its zombie
-   predicate is FIFO-defined (fact 6) and is redefined on the state
-   model as **non-`TERMINATED` state + dead backend verdict** — which
-   is exactly Decision 2's held slot, so a zombie flag now points at
-   the same doubt that `orchctl recover` resolves.
-5. **Deletions.** `mkfifo` leaves `spawn.sh`; the FIFO branch leaves
-   `watch.sh`; the FIFO write leaves `notify-complete.sh`; pipe
-   iteration (and `inspect`'s pipe-gated elapsed) leaves `orchctl`,
-   `process-status.sh`, and `health-check.sh`; the pipe removal (and
-   its "slots do not leak"
-   rationale) leaves `cleanup-worktree.sh`; the writer-hang hazard
-   ceases to exist.
-   `spawn.sh`'s stdout contract ("Output: FIFO path (stdout last
-   line)", echoed by the `spawn-worker.sh` wrapper header) goes with
-   Phase 3 — nothing captures the path today (`watch.sh` takes issue
-   numbers), so the last-line output is simply dropped, not replaced.
-   `README.md`'s OS-concept table re-maps two rows and drops one:
-   completion = process table + exit record (`agents --json` + state
-   file), not pipes; semaphore = non-`TERMINATED` state count, not
-   FIFO count; the "IPC pipe" row is removed outright — after
-   retirement cekernel contains no named pipe for the row to describe
-   (the "Trigger: Event-driven (FIFO, …)" line and the
-   directory-tree comments on `spawn.sh`/`watch.sh` update likewise).
-   `agents/orchestrator.md`'s FIFO-premised prose (the
-   completion-mechanism description and "Worker FIFO events buffer
-   during the block") updates with Phases 3–4, and
-   `skills/references/postmortem-patterns.md`'s "FIFO corruption or
-   missing" detection pattern is pruned with them (along with the
-   neighboring IPC-directory pattern's "FIFO-related errors" clause)
-   — a post-mortem pattern for a retired mechanism only misdirects
-   diagnosis. The same sweep covers prose and comments that describe
-   the FIFO without implementing it (found in the eleventh review
-   pass): CLAUDE.md's platform-constraints line ("independent
-   processes with FIFO IPC") and its `assert_fifo_exists` listing,
-   the matching FIFO-IPC mentions in
-   `docs/claude-code-constraints.md`, and the FIFO-describing
-   comments in `worker-state.sh` and `worker-priority.sh` ("live
-   alongside FIFOs"), `spawn-orchestrator.sh` (no FIFO needed for
-   the Orchestrator), and `agents/reviewer.md` ("no FIFO, no state
-   files") — earlier passes labeled all four with the first phrase;
-   only two carry it (corrected in the fourteenth pass).
-   `docs/internals.md` joins the sweep (found in the twelfth pass —
-   the largest single omission): its `## IPC: Named Pipe` section is
-   removed outright, its concurrency-limit section re-keys on
-   state-file counting ("counts active FIFOs" → non-`TERMINATED`
-   state count), its directory-tree FIFO comments update, and its
-   sample `process-status.sh` output loses the `fifo` field with
-   Phase 2's enumeration migration. The
-   FIFO-coupled test surface migrates with each phase rather than at
-   the end (ADR-0017: tests assert the behavior each phase ships):
-   the concurrency-guard, watch-FIFO-logging, health-check,
-   process-status, notify-complete, cleanup-worktree, and orchctl
-   suites follow the scripts they test (the cleanup-worktree suite
-   spans three files — `cleanup-worktree.bats`,
-   `test-cleanup-session.sh`, `test-cleanup-pane.sh` — all
-   `mkfifo`-fixtured). Those named suites are not
-   the whole surface (found in the twelfth pass): seven further
-   legacy files build their fixtures with `mkfifo` —
-   `test-rollback.sh`, `test-timeout.sh`, `test-logging.sh`,
-   `test-spawn-max-processes.sh`, `test-watch.sh` (orchestrator),
-   `test-json-output.sh`, `test-session-isolation.sh` (shared) —
-   and each migrates with the phase that retires the behavior it
-   fixtures. `test-watch-state-fallback.sh` is coupled the opposite
-   way (the thirteenth pass corrected the twelfth, which had listed
-   it among the `mkfifo` fixtures): it constructs the FIFO's
-   *absence* to exercise the fallback path, and migrates with
-   Phase 4, which makes that fallback the only path. The
-   legacy-file framing itself hid one more coupling (found in the
-   thirteenth pass — classification hiding substance, the same
-   pattern as fact 6): `tests/shared/load-env.bats` builds a
-   `mkfifo` Worker fixture for its orchestrator-integration tests,
-   two of which assert pipe-based discovery — `process-status.sh`
-   lists the fixture Worker; `health-check.sh` does not report it
-   completed — and break when Phase 2 migrates enumeration, so the
-   fixture moves to a state-file write with Phase 2. The
-   `assert_fifo_exists`
-   helper (`tests/helpers/assertions.bash`, `tests/helpers.sh`) is
-   deleted with Phase 4 — after retirement there is no pipe left to
-   assert on.
+**The reaper reaps.** `cleanup-worktree.sh` is the reap step — deleting the state
+file retires the roster entry and frees the slot, as `wait()` consumes a zombie.
+Reaping a `TERMINATED` entry needs no record; reaping a non-`TERMINATED` entry
+appends the exit event to the lifecycle log before deletion. The condition is the
+**state, not `--force`**: the timeout protocol's Worker-dead branch is unspecified
+and reaches cleanup unflagged. Two changes follow — cleanup must **retain** the
+log (today it deletes it, fact 8) so the record survives to gc's orphan sweep,
+and orchestrator.md must wire the unspecified branch (Worker dead after TERM →
+plain `cleanup-worktree.sh`).
 
-Phasing (each phase lands and reverts separately; the order below is
-load-bearing, not editorial):
+**One row is asymmetric by design.** `blocked` records a still-*alive* session
+(stalled on a permission dialog) as `TERMINATED` — terminal **by policy** (nobody
+approves a dialog headless). The exit record leads the process table until
+cleanup stops the session, so the pairing is normative: a `blocked` record is
+always followed by session stop in the same handling step. orchestrator.md routes
+only timeout/CI/Reviewer failure today, so this handler is added alongside the
+timeout branch.
 
-- **Phase 1** = state detail + `watch.sh` terminal-state writes + slot
-  migration (plus the `envs/README.md` catalog entries for
-  `CEKERNEL_STATE_POLL_INTERVAL` and the currently uncataloged
-  `CEKERNEL_POLL_INTERVAL`). These land **together**: once
-  counting is state-based, a crashed Worker whose exit record nobody
-  writes leaks its slot — the terminal-state writes are the
-  slot-release mechanism, not an optimization. Phase 1 also carries
-  the orphan-sweep protection-key change (Decision 2, fact 9: a
-  non-`TERMINATED` state file marks the issue active, pulled ahead
-  of the rest of gc's migration), the `resolve_target` key change
-  (Decision 2, fact 6: `recover`/`kill` must be able to address the
-  pipe-less held slots Phase 1 creates), and both reaper changes
-  (Decision 2, fact 8): log-before-delete whenever cleanup deletes a
-  non-`TERMINATED` state — with or without `--force`; the timeout
-  protocol leaves its TERM-succeeded path unwired, so cleanup can
-  arrive unflagged — and log
-  retention (the
-  `rm -f logs/worker-<issue>.log` leaves `cleanup-worktree.sh`).
-  Phase 1 also wires that unspecified branch in orchestrator.md's
-  timeout protocol (Worker dead after TERM → plain
-  `cleanup-worktree.sh`), so the reap path it depends on is
-  documented, not inferred. The same wiring pass adds the `blocked`
-  result handler orchestrator.md lacks today (Decision 2's normative
-  pairing: exit record → `cleanup-worktree.sh` stops the session in
-  the same handling step).
-  Phase 1 also scopes `orchctl kill`'s unconditional
-  `TERMINATED:killed` write to non-`TERMINATED` entries (Decision 2's
-  write-once invariant) — the one remaining terminal writer that can
-  clobber a completion — so its guard lands with the invariant's
-  behavior tests.
-  Slot release via state-file deletion itself needs no change.
-- **Phase 2** = roster enumeration migration (Decision 4), including
-  `orchctl gc`'s reap change (pipe removal → `TERMINATED` write, on
-  non-`TERMINATED` entries only — Decision 2's write-once
-  invariant). Independent of Phase 1, with a bounded interim
-  exposure — after Phase 1 and before Phase 2, gc still *classifies*
-  by pipe, but the orphan sweep already keys on state (Phase 1):
-  - *Live Worker, held slot* (the case the hold exists for): safe.
-    The non-`TERMINATED` state file protects the entry from the
-    orphan sweep regardless of pipe presence.
-  - *Verifiably dead Worker, non-`TERMINATED` state* (a crash no
-    running `watch.sh` observes): gc reaps the stale pipe but the
-    sweep spares the state file, so the slot stays held — the
-    conservative direction (over-hold, never over-spawn) — until
-    `orchctl recover` writes the exit record (addressable despite
-    the missing pipe: Phase 1 re-keyed `resolve_target` on the
-    state file), or Phase 2's reap change lets gc write it
-    (`crashed:detected-by-gc`) itself.
-  Must precede Phase 3 (after which no pipes exist to iterate).
-- **Phase 3** = `notify-complete.sh` and `spawn.sh` drop FIFO
-  creation/write. Requires Phase 1 (once `mkfifo` is gone, a
-  pipe-counting guard reads zero and over-spawns without bound) and
-  Phase 2 (pipe-iterating tooling would see no Workers). Safe while
-  the read path still exists: `watch.sh` already degrades to state
-  polling when the pipe is absent (fact 1's `FIFO_MISSING` fallback).
-  Dropping the write means deleting the FIFO-missing early return
-  with it: the lifecycle-log append and the issue-lock release run
-  unconditionally — a deliberate behavior change on today's fallback
-  path, which skips the lock release (fact 1).
-- **Phase 4** = `watch.sh` drops the FIFO read path, by now dead code.
+**3. Polling splits by cost.** `watch.sh` polls the state file every
+`CEKERNEL_STATE_POLL_INTERVAL` (5s, local fs) and queries the backend every
+`CEKERNEL_POLL_INTERVAL` (30s, unchanged — `agents --json` spawns a process).
+Completion latency: sub-second → ≤5s.
 
-**The write side retires before the read side — never the reverse.**
-If the read path went first, `spawn.sh` would still create pipes that
-no reader ever opens, and every Worker's `notify-complete.sh` would
-block forever on write-open — promoting fact 4's hazard from
-"Orchestrator killed" to every normal completion. Phases 3 and 4 may
-land as one PR; they must not land in the reverse order.
+**4. Roster enumeration moves to state files.** The pipe-iteration consumers
+(fact 6) — `orchctl ls`/`gc`, `process-status.sh`, `health-check.sh` — enumerate
+`worker-*.state` via one shared helper in `worker-state.sh`, filtering to
+non-`TERMINATED` (reproducing "a pipe exists only while a Worker is active").
+`orchctl ps` already enumerates handle files and does not migrate.
+`health-check.sh` is a redesign, not a key swap: its zombie predicate becomes
+**non-`TERMINATED` state + dead backend verdict** — exactly Decision 2's held
+slot, so a zombie flag now points at the doubt `orchctl recover` resolves.
 
-**Explicitly deferred: hook-based push.** A Worker `SessionEnd`/`Stop`
-hook writing the terminal state would restore event-driven semantics (the
-`SIGCHLD` analog; hooks verified to fire under `-p` and real installs,
-#604). It is not part of this decision: a 5s poll meets the need, and
-adding mechanism ahead of a measured latency problem violates parsimony.
-Revisit if review-loop throughput ever makes 5s material.
+**5. Deletions.** `mkfifo` (`spawn.sh`), the FIFO branch (`watch.sh`), the FIFO
+write (`notify-complete.sh`), pipe iteration (`orchctl`, `process-status.sh`,
+`health-check.sh`), pipe removal (`cleanup-worktree.sh`), and the writer-hang
+hazard all go. Prose and comments describing the FIFO update in the same sweep:
+`README.md`'s OS-concept table (completion = process table + exit record;
+semaphore = non-`TERMINATED` count; the "IPC pipe" row removed),
+`docs/internals.md`'s `## IPC: Named Pipe` section and concurrency-limit wording,
+`agents/orchestrator.md`, `skills/references/postmortem-patterns.md`'s FIFO
+detection patterns, `docs/claude-code-constraints.md`, `CLAUDE.md`, and the FIFO
+comments in `worker-state.sh` / `worker-priority.sh` / `spawn-orchestrator.sh` /
+`agents/reviewer.md`. The FIFO-coupled test surface — every `mkfifo`-fixtured
+suite, the `assert_fifo_exists` helper, and `test-watch-state-fallback.sh` (which
+fixtures the FIFO's *absence*) — migrates with the phase that retires the
+behavior it fixtures (ADR-0017: tests assert the behavior each phase ships).
 
-### UNIX Philosophy Alignment
+### Phasing
 
-> Rule of Parsimony: "Write a big program only when it is clear by
-> demonstration that nothing else will do."
+Order is load-bearing: **the write side retires before the read side, never the
+reverse.** A read-first order would leave `spawn.sh` creating pipes no reader
+opens, promoting fact 4's hazard to every normal completion.
 
-Three detection sources where two suffice is mechanism beyond
-demonstrated need. The FIFO's unique contributions — push latency and
-slot tokening — are respectively negligible (fact 5) and misplaced
-(fact 2). This is also the standing **platform-absorption** discipline:
-what the platform's kernel now provides, cekernel stops hand-building.
+| Phase | Contents | Depends on |
+|---|---|---|
+| **1** | state detail (1) + `watch.sh` terminal writes + slot migration (2); orphan-sweep protection key + `resolve_target` key (facts 6, 9); reaper log-retain + log-before-delete (facts 7, 8); wire orchestrator.md timeout-dead branch + `blocked` handler; `kill` write-once guard; env catalog for `CEKERNEL_STATE_POLL_INTERVAL` / `CEKERNEL_POLL_INTERVAL` | — |
+| **2** | roster enumeration (4) + `gc` reap change (pipe removal → `TERMINATED` write, non-`TERMINATED` only) | must precede 3 |
+| **3** | drop FIFO create/write (`spawn.sh`, `notify-complete.sh`); delete the FIFO-missing early return so lock release + log append run unconditionally (closes fact 1) | 1, 2 |
+| **4** | drop FIFO read path (`watch.sh`), now dead code | 3 |
 
-> Rule of Repair: "When you must fail, fail noisily and as soon as
-> possible."
+Phase 1's terminal-state writes are the slot-release mechanism, not an
+optimization: once counting is state-based, a crashed Worker whose exit record
+nobody writes leaks its slot. Phases 3–4 may land as one PR. Between Phase 1 and
+2, gc still classifies by pipe but the orphan sweep already keys on state — a
+verifiably-dead Worker with a non-`TERMINATED` state holds its slot (over-hold,
+never over-spawn) until `recover` or Phase 2's gc writes the exit record.
 
-The writer-hang hazard (fact 4) is the opposite: a silent, indefinite
-stall in the Worker's last script — holding the issue lock with it —
-triggered precisely when things have already gone wrong (Orchestrator
-killed). Retirement removes the hazard class rather than wrapping it in
-timeouts.
+**Deferred: hook-based push.** A Worker `SessionEnd`/`Stop` hook writing terminal
+state would restore event-driven semantics (the `SIGCHLD` analog; hooks fire
+under `-p`, #604). Not part of this decision: a 5s poll meets the need, and
+adding mechanism ahead of a measured latency problem violates parsimony. Revisit
+if review-loop throughput makes 5s material.
 
-> Rule of Representation: "Fold knowledge into data so program logic can
-> be stupid and robust."
+## UNIX Philosophy Alignment
 
-The completion payload moves fully into the state record (fact 3's gap
-closes). One durable, inspectable file replaces an ephemeral in-flight
-message; `watch.sh`'s logic gets dumber — read a file, compare a field.
+- **Parsimony** — three sources where two suffice. The FIFO's unique
+  contributions are negligible (fact 5) and misplaced (fact 2).
+- **Repair** — the writer-hang (fact 4) is a silent, indefinite stall holding the
+  issue lock, triggered exactly when things have already gone wrong. Retirement
+  removes the hazard class rather than wrapping it in timeouts.
+- **Representation** — the payload moves into the durable state record;
+  `watch.sh`'s logic gets dumber: read a file, compare a field.
+- **Least Surprise** — completion-via-pipe *looks* idiomatic but isn't. Parents
+  reap through kernel accounting, and nothing in an OS limits process count by
+  counting pipes. Two-source = process table + exit status.
 
-> Rule of Least Surprise: "In interface design, always do the least
-> surprising thing."
+## Platform Constraints
 
-To a UNIX-literate reader, completion-via-pipe *looks* idiomatic but is
-not — parents reap children through kernel accounting (`wait()`), and
-nothing in an OS limits process count by counting pipes. The two-source
-model matches the reader's OS intuition: process table + exit status.
-
-### Platform Constraints
-
-- `claude agents --json` remains behind the ADR-0018 contract
-  (`claude-bg.sh` is the sole owner); this decision adds no new platform
-  surface and changes no verdict semantics. The `watch.sh` degradation
-  policy for `query-failed`/`unknown-value` is untouched.
-- **Staleness (Evolving)**: if the platform ships native completion
-  events for background sessions (plausible; cf. agent-teams research
-  #200), the polling half of this design is the next absorption
-  candidate. That is expected, not a defect — record and revisit.
+- `claude agents --json` stays behind the ADR-0018 contract (`claude-bg.sh` sole
+  owner); this adds no platform surface and changes no verdict semantics.
+- **Staleness (Evolving)**: if the platform ships native completion events for
+  background sessions (cf. #200), the polling half is the next absorption
+  candidate. Expected, not a defect.
 
 ## Alternatives Considered
 
-### Alternative: Keep the triple-path as is
-
-Status quo. Rejected: it retains a verified hazard (fact 4), a
-misdocumented hidden coupling (fact 2 — the "notification channel" is
-actually the concurrency token), and duplicated payload with a lossy
-fallback (fact 3). The operational evidence is that the fallback path
-works; the FIFO adds risk, not capability.
-
-### Alternative: Keep the FIFO as an optional fast path
-
-Make it configuration. Rejected on Rule of Simplicity: two permanent code
-paths for one event, doubled test surface, and the optionality already
-exists implicitly — which is how the hidden coupling went unnoticed.
-Optional mechanisms rot.
-
-### Alternative: Replace the FIFO with hook push now
-
-Skip polling; have Worker lifecycle hooks push terminal state. Rejected
-for this cycle on Rule of Optimization ("prototype before polishing"):
-it adds a mechanism before a measured need, and couples completion
-detection to hook delivery — a surface whose non-interactive behavior we
-have only just finished characterizing (#604). Deferred, not refused.
+- **Keep the triple-path.** Rejected: retains a verified hazard (fact 4), a
+  misdocumented hidden coupling (fact 2), and a lossy fallback (fact 3). The FIFO
+  adds risk, not capability.
+- **Keep the FIFO as an optional fast path.** Rejected on Simplicity: two
+  permanent code paths for one event, doubled test surface — and the optionality
+  already exists implicitly, which is how the coupling went unnoticed. Optional
+  mechanisms rot.
+- **Replace with hook push now.** Rejected for this cycle on Optimization
+  ("prototype before polishing"): adds mechanism before a measured need and
+  couples completion to hook delivery, a surface only just characterized (#604).
+  Deferred, not refused.
 
 ## Consequences
 
-### Positive
+**Positive**
 
-- One mechanism deleted end-to-end: `mkfifo`, the blocking-read loop, the
-  FIFO write, and the writer-hang hazard class.
-- Slot accounting becomes explicit and inspectable (state files) instead
-  of incidental (pipe existence), and every slot release leaves a durable
-  record — a state-file exit record, or the lifecycle log on the reap
-  path (retained by cleanup, collected only by an explicit `orchctl gc`)
-  — so `orchctl list` and the records tell the same story.
-- Process tooling (`orchctl`, `process-status.sh`) enumerates one
-  durable artifact instead of a pipe that doubles as a roster key.
-- The fallback path stops being second-class: payload parity closes the
-  detail gap; there is only one path to test.
-- `watch.sh` loses its most intricate branch (fd 3 lifecycle,
-  `exec 3<>`/`3>&-` bookkeeping).
+- One mechanism deleted end-to-end, including the writer-hang hazard class.
+- Slot accounting becomes explicit and inspectable; every slot release leaves a
+  durable record (a state exit record, or the retained lifecycle log on the reap
+  path).
+- Tooling enumerates one durable artifact instead of a pipe doubling as a roster
+  key.
+- The fallback stops being second-class: payload parity, one path to test.
+- `watch.sh` loses its most intricate branch (fd 3 lifecycle).
 
-### Negative
+**Negative**
 
-- Completion detection latency: sub-second → ≤5s (accepted: <1% of
-  Worker lifecycle).
-- Migration risk in slot accounting — the guard is load-bearing for
-  scheduler correctness; Phase 1 must land with behavior tests
-  (ADR-0017: assert effects, never text), including the write-once
-  race: a `TERMINATED` record written moments before a dead backend
-  verdict must survive `watch.sh`'s exit handling and be reported as
-  the completion result.
-- Unverified exits (timeout, query-escalated) now **hold** their slot
-  until `orchctl recover`/`kill` writes the exit record or the timeout
-  protocol reaps via `cleanup-worktree.sh --force`, where the FIFO
-  model freed it mechanically. Chosen deliberately (fail-safe against
-  over-spawn), but a stalled Orchestrator that never resolves doubt now
-  costs a slot instead of silently over-committing — surface it, don't
-  hide it (Rule of Repair).
-- Loses the event-driven wakeup pattern; if a future consumer needs
-  sub-second reaction, it must build on hooks (deferred option), not
-  pipes.
-- Between a `blocked` exit record and the cleanup that stops the
-  session, the state file (`TERMINATED`) and the process table
-  (alive) intentionally disagree. Tooling that cross-checks the two
-  must treat the exit record as authoritative for scheduling and the
-  process table as authoritative for cleanup.
+- Latency sub-second → ≤5s (<1% of lifecycle).
+- Slot accounting is load-bearing for scheduler correctness; Phase 1 must land
+  with behavior tests (ADR-0017: assert effects, never text), including the
+  write-once race.
+- Unverified exits now hold their slot until a resolver writes the exit record,
+  where the FIFO model freed it mechanically — fail-safe against over-spawn, but
+  a stalled Orchestrator now costs a slot instead of silently over-committing.
+- Loses the event-driven wakeup; a future sub-second consumer must build on hooks,
+  not pipes.
+- Between a `blocked` record and cleanup, the state file (`TERMINATED`) and
+  process table (alive) intentionally disagree — treat the exit record as
+  authoritative for scheduling, the process table for cleanup.
 
-### Trade-offs
+**Trade-offs**
 
-Push vs. poll: `select()`-style blocking is elegant, but elegance in a
-mechanism whose latency budget is 1000× the poll interval is ornament.
-The OS analogy is preserved at the level that matters — kernel accounting
-for liveness, exit records for semantics — and consciously re-drawn where
-it was cosmetic (the pipe). The analogy serves the design; the design
-does not serve the analogy.
+Push vs. poll: `select()`-style blocking is elegant, but elegance in a mechanism
+whose latency budget is 1000× the poll interval is ornament. The OS analogy is
+kept where it matters (kernel accounting for liveness, exit records for
+semantics) and consciously re-drawn where it was cosmetic (the pipe). The analogy
+serves the design, not the reverse.
