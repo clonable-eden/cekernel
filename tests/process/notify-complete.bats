@@ -96,7 +96,32 @@ run_lock_case() {
   local state_json
   state_json=$(worker_state_read 50)
   assert_eq "state is TERMINATED" "TERMINATED" "$(echo "$state_json" | jq -r '.state')"
-  assert_eq "detail is merged" "merged" "$(echo "$state_json" | jq -r '.detail')"
+  assert_eq "detail carries result:detail" "merged:99" "$(echo "$state_json" | jq -r '.detail')"
+}
+
+# ── ADR-0020 Phase 1a: state payload carries result AND detail ──
+
+@test "state payload includes result and detail separated by colon" {
+  start_fifo_reader 80
+  bash "$NOTIFY_SCRIPT" 80 ci-passed 42 2>/dev/null
+  wait "$READER_PID" 2>/dev/null || true
+
+  local state_json
+  state_json=$(worker_state_read 80)
+  assert_eq "state is TERMINATED" "TERMINATED" "$(echo "$state_json" | jq -r '.state')"
+  assert_eq "detail carries result:detail" "ci-passed:42" "$(echo "$state_json" | jq -r '.detail')"
+}
+
+@test "state payload with empty detail writes result only" {
+  start_fifo_reader 81
+  bash "$NOTIFY_SCRIPT" 81 cancelled 2>/dev/null
+  wait "$READER_PID" 2>/dev/null || true
+
+  local state_json
+  state_json=$(worker_state_read 81)
+  assert_eq "state is TERMINATED" "TERMINATED" "$(echo "$state_json" | jq -r '.state')"
+  # Empty detail: result is still the first field, no trailing colon content
+  assert_eq "detail carries result with empty suffix" "cancelled:" "$(echo "$state_json" | jq -r '.detail')"
 }
 
 @test "missing FIFO: FIFO_MISSING event is logged" {
