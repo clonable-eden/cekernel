@@ -33,10 +33,11 @@ the `1.9.x` line (see **Migration** below). Requires a recent Claude Code
 - **Worker lifecycle Stop hook (ADR-0019)**: a plugin `Stop` hook keeps a Worker
   session alive until `notify-complete.sh` records `TERMINATED`, closing the
   "Worker dies before its completion notification" gap. Live-verified to fire
-  in local self-hosting and in the spawn-time `--plugin-dir` plugin path (the
-  route cekernel itself uses to spawn sessions). Verification via an actual
-  `/plugin install` distribution is still open — tracked in
-  [#604](https://github.com/clonable-eden/cekernel/issues/604).
+  in local self-hosting, via spawn-time `--plugin-dir` (the route cekernel
+  itself uses to spawn sessions), **and from a real marketplace
+  `/plugin install`** — hooks auto-discovered from `hooks/hooks.json`, on
+  macOS and a Linux devcontainer
+  ([#604](https://github.com/clonable-eden/cekernel/issues/604)).
 - **/workflows boundary (ADR-0015)**: state that survives the session belongs to
   cekernel; in-session fan-out belongs to `/workflows` — documented usage guide.
 - **Conditional `--bare` (ADR-0016 Amendment 1)**: bare mode is now selected by
