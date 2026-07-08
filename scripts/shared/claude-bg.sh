@@ -97,8 +97,11 @@
 #       calling — the daemon's inherited environment is unspecified.
 #
 #   claude_bg_stop <token>
-#     — Stop the session via `claude stop`. Never fails; empty token is a
-#       no-op (reap semantics: done sessions linger until stopped).
+#     — Stop the session via `claude stop`. The token (full UUID or short
+#       ID) is truncated to 8 chars — `claude stop` only accepts the
+#       short job ID (#621). Never fails (reap semantics: returns 0 even
+#       when `claude stop` errors); stop failure emits a stderr warning
+#       (Rule of Repair). Empty token is a no-op.
 #
 #   claude_bg_wait_terminal <token> <interval> <timeout>
 #     — Poll `agents --json --all` until the verdict is terminal for
