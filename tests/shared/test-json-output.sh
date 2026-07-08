@@ -75,9 +75,9 @@ fi
 rm -f "$RESULT_FILE" "$FIFO"
 
 # ── Test 3: health-check.sh — Zombie worker JSON output is valid ──
-# Create FIFO without pane file (will be detected as zombie)
-FIFO="${CEKERNEL_IPC_DIR}/worker-903"
-mkfifo "$FIFO"
+# ADR-0020 Phase 2: health-check requires a non-TERMINATED state file.
+source "${CEKERNEL_DIR}/scripts/shared/worker-state.sh"
+worker_state_write 903 RUNNING "phase1:implement"
 # git worktree won't be found, so it falls back to "No worktree found"
 RESULT=$(bash "${CEKERNEL_DIR}/scripts/orchestrator/health-check.sh" 903 2>/dev/null || true)
 if echo "$RESULT" | head -1 | jq . >/dev/null 2>&1; then
@@ -88,11 +88,10 @@ else
   echo "    output: $RESULT"
   ((TESTS_FAILED++)) || true
 fi
-rm -f "$FIFO"
 
 # ── Test 4: process-status.sh — JSON Lines output is valid ──
-FIFO="${CEKERNEL_IPC_DIR}/worker-904"
-mkfifo "$FIFO"
+# ADR-0020 Phase 2: process-status enumerates by state file (not FIFO).
+worker_state_write 904 RUNNING "phase1:implement"
 RESULT=$(bash "${CEKERNEL_DIR}/scripts/orchestrator/process-status.sh" 2>/dev/null)
 if [[ -n "$RESULT" ]]; then
   if echo "$RESULT" | head -1 | jq . >/dev/null 2>&1; then
@@ -107,7 +106,6 @@ else
   echo "  FAIL: process-status produced no output"
   ((TESTS_FAILED++)) || true
 fi
-rm -f "$FIFO"
 
 # ── Cleanup ──
 unset -f wezterm 2>/dev/null || true
