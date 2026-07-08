@@ -4,7 +4,7 @@
 # Usage: spawn.sh --agent <type> [--resume] [--priority <priority>] [--repo <owner/repo>] [--fallback-model <model>] <issue-number> [base-branch]
 #   type:     Process type (e.g., worker)
 #   priority: critical|high|normal|low or numeric 0-19 (default: normal)
-# Output: FIFO path (stdout last line)
+# Output: FIFO path (stdout last line; ADR-0020 Phase 3 will remove this)
 # Options:
 #   --agent           Process type to spawn (required)
 #   --resume          Resume a suspended process (reuse existing worktree)
