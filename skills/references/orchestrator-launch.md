@@ -50,6 +50,7 @@ Run the following in a **single** Bash tool call — it generates `CEKERNEL_SESS
 
 ```bash
 source "${CEKERNEL_SCRIPTS}/shared/load-env.sh"
+unset CEKERNEL_SESSION_ID          # Orchestrator launch = new session boundary (#622)
 source "${CEKERNEL_SCRIPTS}/shared/session-id.sh"
 mkdir -p "$CEKERNEL_IPC_DIR"
 
