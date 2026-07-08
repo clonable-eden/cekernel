@@ -137,3 +137,32 @@ teardown() {
   assert_match "default priority 10" '"priority":10' "$line41"
   assert_match "default priority name normal" '"priority_name":"normal"' "$line41"
 }
+
+# ── ADR-0020 Phase 2: state-based enumeration ──
+
+@test "enumerates by state file, not FIFO (ADR-0020 Phase 2)" {
+  # Worker with state file but NO FIFO should appear
+  worker_state_write 70 RUNNING "phase1:implement"
+  run bash "$STATUS_SCRIPT"
+  assert_match "worker without FIFO listed" '"issue":70' "$output"
+  assert_match "state shown" '"state":"RUNNING"' "$output"
+}
+
+@test "excludes TERMINATED workers (ADR-0020 Phase 2)" {
+  worker_state_write 71 RUNNING "phase1:implement"
+  worker_state_write 72 TERMINATED "ci-passed:55"
+  run bash "$STATUS_SCRIPT"
+  local line_count
+  line_count=$(echo "$output" | grep -c '"issue"' || true)
+  assert_eq "only non-TERMINATED listed" "1" "$line_count"
+  assert_match "active worker listed" '"issue":71' "$output"
+}
+
+@test "output does not contain fifo field (ADR-0020 Phase 2)" {
+  worker_state_write 73 RUNNING "phase1:implement"
+  run bash "$STATUS_SCRIPT"
+  if [[ "$output" == *'"fifo"'* ]]; then
+    echo "FAIL: output should not contain fifo field" >&2
+    return 1
+  fi
+}

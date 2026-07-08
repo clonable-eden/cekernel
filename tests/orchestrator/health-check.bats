@@ -87,3 +87,44 @@ _active_worker() {
   assert_eq "exit 0 (inconclusive is not unhealthy)" "0" "$status"
   assert_match "status unknown" '"status":"unknown"' "$output"
 }
+
+# ── ADR-0020 Phase 2: state-based zombie detection ──
+
+# Active worker fixture WITHOUT FIFO: state + handle only
+_active_worker_no_fifo() {
+  local issue="$1"
+  echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-${issue}.worker"
+  worker_state_write "$issue" RUNNING "phase1:implement"
+}
+
+@test "health-check discovers workers by state file, not FIFO (ADR-0020 Phase 2)" {
+  # Worker with state but NO FIFO — should be discoverable
+  _active_worker_no_fifo 95
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$TOKEN" background /tmp/wt 1700000000000 busy)]"
+
+  run bash "$HEALTH_SCRIPT"
+  assert_match "worker found without FIFO" '"issue":95' "$output"
+  assert_match "status healthy" '"status":"healthy"' "$output"
+}
+
+@test "health-check zombie = non-TERMINATED + dead verdict (ADR-0020 Phase 2)" {
+  # Worker with non-TERMINATED state + dead backend → zombie
+  _active_worker_no_fifo 96
+
+  run bash "$HEALTH_SCRIPT"
+  assert_eq "exit 1 (zombie)" "1" "$status"
+  assert_match "status zombie" '"status":"zombie"' "$output"
+}
+
+@test "health-check skips TERMINATED workers (ADR-0020 Phase 2)" {
+  worker_state_write 97 TERMINATED "ci-passed:55"
+  echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-97.worker"
+
+  run bash "$HEALTH_SCRIPT"
+  # TERMINATED workers should not be inspected at all
+  if [[ "$output" == *'"issue":97'* ]]; then
+    echo "FAIL: TERMINATED worker should not be inspected" >&2
+    return 1
+  fi
+}
