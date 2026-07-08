@@ -20,7 +20,7 @@ Workers by iterating pipes (fact 6) and the reaper that removes them
 (fact 7).
 
 Investigation (#586, 2026-07-08) established five facts; architecture
-review of this ADR (PR #610, 2026-07-08, three passes) added two more:
+review of this ADR (PR #610, 2026-07-08, four passes) added three more:
 
 1. **Degradation is already implemented.** `notify-complete.sh` writes the
    state file *first* and exits 0 when the FIFO is absent; `watch.sh`
@@ -62,6 +62,13 @@ review of this ADR (PR #610, 2026-07-08, three passes) added two more:
    `cleanup-worktree.sh --force`, orchestrator.md). Any slot-accounting
    migration must give the reaper explicit semantics, or the timeout
    path frees slots by erasing history.
+8. **The reap step erases the lifecycle log today.**
+   `cleanup-worktree.sh` deletes `logs/worker-<issue>.log` along with
+   the other IPC files, and `orchctl gc`'s orphan sweep removes logs
+   for issues with no active pipe. Any record-beats-erasure claim on
+   the reap path must change log retention explicitly — it cannot be
+   assumed (a claim of exactly this kind survived three review passes
+   of this ADR because it was coherent in-document and false in-repo).
 
 The deeper context is the project's standing: the platform is absorbing
 agent-infrastructure concerns release by release, and cekernel is a
@@ -129,9 +136,14 @@ distinct axes**: the state file is the semantic record (what happened);
    `TERMINATED` entry needs no further record — the exit was already
    written and consumed. Reaping a non-`TERMINATED` entry (`--force`
    on a hung Worker) appends the exit event to the lifecycle log
-   (`logs/worker-<issue>.log`, which cleanup retains) before deletion,
-   so record-beats-erasure holds here too: the process-table entry
-   goes, the accounting stays.
+   (`logs/worker-<issue>.log`) before deletion. This requires a second
+   behavior change (fact 8): today `cleanup-worktree.sh` deletes that
+   log with the rest of cleanup, which would erase the record in the
+   same breath — Phase 1 makes cleanup **retain** the log. Its terminal
+   collector is `orchctl gc`'s orphan sweep: the record survives the
+   automated lifecycle and is erased only by an explicit operator
+   sweep. With both changes, record-beats-erasure holds on the reap
+   path too: the process-table entry goes, the accounting stays.
 
    One table row is asymmetric by design: `blocked` records a session
    that is still *alive* (stalled on a permission dialog) as
@@ -172,21 +184,27 @@ distinct axes**: the state file is the semantic record (what happened);
    `health-check.sh`; the pipe removal (and its "slots do not leak"
    rationale) leaves `cleanup-worktree.sh`; the writer-hang hazard
    ceases to exist.
-   `README.md`'s OS-concept table re-maps IPC: completion = process
-   table + exit record (`agents --json` + state file), not pipes.
+   `README.md`'s OS-concept table re-maps two rows: completion =
+   process table + exit record (`agents --json` + state file), not
+   pipes; semaphore = non-`TERMINATED` state count, not FIFO count.
+   `agents/orchestrator.md`'s FIFO-premised prose (the
+   completion-mechanism description and "Worker FIFO events buffer
+   during the block") updates with Phases 3–4.
 
 Phasing (each phase lands and reverts separately; the order below is
 load-bearing, not editorial):
 
 - **Phase 1** = state detail + `watch.sh` terminal-state writes + slot
-  migration (plus the `envs/README.md` catalog entry for
-  `CEKERNEL_STATE_POLL_INTERVAL`). These land **together**: once
+  migration (plus the `envs/README.md` catalog entries for
+  `CEKERNEL_STATE_POLL_INTERVAL` and the currently uncataloged
+  `CEKERNEL_POLL_INTERVAL`). These land **together**: once
   counting is state-based, a crashed Worker whose exit record nobody
   writes leaks its slot — the terminal-state writes are the
   slot-release mechanism, not an optimization. Phase 1 also carries
-  the reaper's log-before-delete for `--force` on a non-`TERMINATED`
-  state (Decision 2); slot release via state-file deletion itself
-  needs no `cleanup-worktree.sh` change.
+  both reaper changes (Decision 2, fact 8): log-before-delete for
+  `--force` on a non-`TERMINATED` state, and log retention (the
+  `rm -f logs/worker-<issue>.log` leaves `cleanup-worktree.sh`).
+  Slot release via state-file deletion itself needs no change.
 - **Phase 2** = roster enumeration migration (Decision 4), including
   `orchctl gc`'s reap change (pipe removal → `TERMINATED` write,
   Decision 2). Independent of Phase 1, with one interim caveat: after
@@ -296,7 +314,8 @@ have only just finished characterizing (#604). Deferred, not refused.
 - Slot accounting becomes explicit and inspectable (state files) instead
   of incidental (pipe existence), and every slot release leaves a durable
   record — a state-file exit record, or the lifecycle log on the reap
-  path — so `orchctl list` and the records tell the same story.
+  path (retained by cleanup, collected only by an explicit `orchctl gc`)
+  — so `orchctl list` and the records tell the same story.
 - Process tooling (`orchctl`, `process-status.sh`) enumerates one
   durable artifact instead of a pipe that doubles as a roster key.
 - The fallback path stops being second-class: payload parity closes the
