@@ -217,7 +217,17 @@ source issue-lock.sh && issue_lock_release "$(git rev-parse --show-toplevel)" <i
 
 ## Error Handling
 
-- **Worker unresponsive or timeout** (`watch.sh` returns `timeout`): `send-signal.sh <issue> TERM` → `sleep ${CEKERNEL_TERM_GRACE_PERIOD:-120}` → `health-check.sh <issue>` → if still alive, `cleanup-worktree.sh --force <issue>`
+- **Worker unresponsive or timeout** (`watch.sh` returns `timeout`): `send-signal.sh <issue> TERM` → `sleep ${CEKERNEL_TERM_GRACE_PERIOD:-120}` → `health-check.sh <issue>`:
+  - Worker still alive → `cleanup-worktree.sh --force <issue>` (kills the session)
+  - Worker dead (TERM succeeded but no FIFO notification) → `cleanup-worktree.sh <issue>` (plain cleanup; the reaper writes the exit record for non-TERMINATED state — ADR-0020 Phase 1)
+- **Worker blocked** (`watch.sh` returns `blocked`): the Worker session is stalled on a permission dialog that nobody can approve headless. `watch.sh` has already written the terminal record (`TERMINATED:blocked`). Stop the session and clean up:
+
+```bash
+# blocked handler: session stop + cleanup (ADR-0020 Phase 1)
+cleanup-worktree.sh <issue>
+source desktop-notify.sh && desktop_notify "cekernel" "Issue #<issue> blocked (permission dialog)" ""
+source issue-lock.sh && issue_lock_release "$(git rev-parse --show-toplevel)" <issue>
+```
 - **Zombie / hang diagnosis**: `health-check.sh [issue]`; lifecycle logs live in `${CEKERNEL_IPC_DIR}/logs/` (`watch-logs.sh [issue]`) — a long-silent log suggests a hang
 - **CI failure**: the Worker retries up to `CEKERNEL_CI_MAX_RETRIES`, then reports `failed` — escalate to human
 - **Reviewer failure** (API outage, Agent tool error, `failed`, unrecognized line): treat as escalation (above)

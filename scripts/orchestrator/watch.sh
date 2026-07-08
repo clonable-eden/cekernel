@@ -5,14 +5,15 @@
 #
 # Environment:
 #   CEKERNEL_WORKER_TIMEOUT — Process timeout in seconds (default: 3600)
-#   CEKERNEL_POLL_INTERVAL  — State file poll interval in seconds (default: 30)
+#   CEKERNEL_STATE_POLL_INTERVAL — State file poll interval in seconds (default: 5)
+#   CEKERNEL_POLL_INTERVAL  — Backend verdict poll interval in seconds (default: 30)
 #   CEKERNEL_WATCH_QUERY_RETRY_MAX — Consecutive unverifiable polls
 #     (query-failed / unknown-value) tolerated before escalating an
 #     "error" result (default: 3; ADR-0018 degradation policy)
 #
 # Monitors each process via triple-path detection:
 #   1. FIFO (primary, sub-second latency)
-#   2. State file polling (fallback, up to POLL_INTERVAL latency)
+#   2. State file polling (fallback, up to STATE_POLL_INTERVAL latency)
 #   3. Process crash detection (backend verdict, ADR-0018);
 #      blocked sessions (permission-dialog stall) are surfaced as a
 #      distinct "blocked" result (ADR-0016)
@@ -32,6 +33,7 @@ FIFO_DIR="$CEKERNEL_IPC_DIR"
 RESULT_DIR=$(mktemp -d)
 PIDS=()
 TIMEOUT="${CEKERNEL_WORKER_TIMEOUT:-3600}"
+STATE_POLL_INTERVAL="${CEKERNEL_STATE_POLL_INTERVAL:-5}"
 POLL_INTERVAL="${CEKERNEL_POLL_INTERVAL:-30}"
 QUERY_RETRY_MAX="${CEKERNEL_WATCH_QUERY_RETRY_MAX:-3}"
 
@@ -63,22 +65,27 @@ watch_one() {
   local elapsed=0
   local query_failures=0
 
-  log_event "$issue" "FIFO_WATCH_START" "issue=#${issue} timeout=${TIMEOUT} poll_interval=${POLL_INTERVAL}"
+  log_event "$issue" "FIFO_WATCH_START" "issue=#${issue} timeout=${TIMEOUT} state_poll=${STATE_POLL_INTERVAL} backend_poll=${POLL_INTERVAL}"
 
   # If FIFO exists, open it. If not, fall through to state-only polling.
   if [[ -p "$fifo" ]]; then
     exec 3<>"$fifo"
-    echo "Watching issue #${issue} (timeout: ${TIMEOUT}s, poll: ${POLL_INTERVAL}s)..." >&2
+    echo "Watching issue #${issue} (timeout: ${TIMEOUT}s, state_poll: ${STATE_POLL_INTERVAL}s, backend_poll: ${POLL_INTERVAL}s)..." >&2
   else
     has_fifo=0
     echo "Warning: FIFO not found for issue #${issue}. Falling back to state file polling." >&2
     log_event "$issue" "FIFO_MISSING" "issue=#${issue} path=${fifo}"
   fi
 
+  # ADR-0020 Phase 1: polling split — state at STATE_POLL_INTERVAL (5s),
+  # backend verdict at POLL_INTERVAL (30s). Track when the next backend
+  # check is due.
+  local next_backend_check=$POLL_INTERVAL
+
   while [[ $elapsed -lt $TIMEOUT ]]; do
     # Clamp wait time to remaining budget
     local remaining=$((TIMEOUT - elapsed))
-    local wait_time=$POLL_INTERVAL
+    local wait_time=$STATE_POLL_INTERVAL
     [[ $remaining -lt $wait_time ]] && wait_time=$remaining
 
     # Primary: FIFO read (only if FIFO was available)
@@ -94,7 +101,9 @@ watch_one() {
       sleep "$wait_time"
     fi
 
-    # Fallback: check state file
+    elapsed=$((elapsed + wait_time))
+
+    # Fallback: check state file (every STATE_POLL_INTERVAL)
     local state_json
     state_json=$(worker_state_read "$issue")
     local state
@@ -107,6 +116,12 @@ watch_one() {
       rm -f "$fifo"
       break
     fi
+
+    # Backend verdict check: only at POLL_INTERVAL cadence
+    if [[ $elapsed -lt $next_backend_check ]]; then
+      continue
+    fi
+    next_backend_check=$((elapsed + POLL_INTERVAL))
 
     # Crash/blocked detection: only when a handle file is present (without
     # it, we can't verify the worker). The backend reports the ADR-0018
@@ -133,6 +148,20 @@ watch_one() {
             ;;
           blocked)
             query_failures=0
+            # ADR-0020 Phase 1: write-once — re-read state before writing.
+            # If already TERMINATED, the Worker completed just before the
+            # backend reported blocked; consume the existing record.
+            state_json=$(worker_state_read "$issue")
+            state=$(echo "$state_json" | jq -r '.state')
+            if [[ "$state" == "TERMINATED" ]]; then
+              result=$(build_result_from_state "$state_json")
+              log_event "$issue" "STATE_FALLBACK" "issue=#${issue} state=TERMINATED (write-once, before blocked write)"
+              [[ $has_fifo -eq 1 ]] && exec 3>&-
+              rm -f "$fifo"
+              break
+            fi
+            # ADR-0020: write TERMINATED for blocked (terminal by policy)
+            worker_state_write "$issue" TERMINATED "blocked:Worker session is waiting on a permission dialog"
             result="{\"issue\":${issue},\"result\":\"blocked\",\"detail\":\"Worker session is waiting on a permission dialog\"}"
             echo "Error: issue #${issue} Worker session is blocked (permission dialog)." >&2
             log_event "$issue" "WORKER_BLOCKED" "issue=#${issue} state=${state}"
@@ -142,6 +171,7 @@ watch_one() {
             ;;
           query-failed|unknown-value)
             # Unverifiable — retry, escalate when persistent.
+            # ADR-0020: no TERMINATED write (slot held on doubt)
             query_failures=$((query_failures + 1))
             if [[ "$query_failures" -ge "$QUERY_RETRY_MAX" ]]; then
               result="{\"issue\":${issue},\"result\":\"error\",\"detail\":\"agents query unverifiable (${wstatus}) for ${query_failures} consecutive polls — worker may still be running, do not clean up on this result alone\"}"
@@ -164,6 +194,21 @@ watch_one() {
         worker_dead=1
       fi
       if [[ "$worker_dead" -eq 1 ]]; then
+        # ADR-0020 Phase 1: write-once — re-read state before writing.
+        # If already TERMINATED, the Worker completed just before the
+        # backend reported dead; consume the existing record instead of
+        # overwriting with crashed.
+        state_json=$(worker_state_read "$issue")
+        state=$(echo "$state_json" | jq -r '.state')
+        if [[ "$state" == "TERMINATED" ]]; then
+          result=$(build_result_from_state "$state_json")
+          log_event "$issue" "STATE_FALLBACK" "issue=#${issue} state=TERMINATED (write-once, before crashed write)"
+          [[ $has_fifo -eq 1 ]] && exec 3>&-
+          rm -f "$fifo"
+          break
+        fi
+        # ADR-0020: write TERMINATED for crashed exit
+        worker_state_write "$issue" TERMINATED "crashed:${worker_detail}"
         result="{\"issue\":${issue},\"result\":\"crashed\",\"detail\":\"${worker_detail}\"}"
         echo "Error: issue #${issue} Worker process crashed (state: ${state})." >&2
         log_event "$issue" "WORKER_CRASH" "issue=#${issue} state=${state}"
@@ -172,11 +217,10 @@ watch_one() {
         break
       fi
     fi
-
-    elapsed=$((elapsed + wait_time))
   done
 
   # Timeout: neither FIFO nor state file indicated completion
+  # ADR-0020: no TERMINATED write for timeout (slot held — on doubt, refuse to free)
   if [[ -z "$result" ]]; then
     [[ $has_fifo -eq 1 ]] && exec 3>&-
     rm -f "$fifo"

@@ -87,9 +87,12 @@ resolve_target() {
   fi
 
   # If --session given, use it directly
+  # ADR-0020 Phase 1: resolve by state file existence (not FIFO).
+  # A state file is written unconditionally at spawn; this makes
+  # pipe-less held slots addressable by recover/kill.
   if [[ -n "$session_filter" ]]; then
     local ipc_dir="${IPC_BASE}/${session_filter}"
-    if [[ -p "${ipc_dir}/worker-${issue}" ]]; then
+    if [[ -f "${ipc_dir}/worker-${issue}.state" ]]; then
       RESOLVED_SESSION="$session_filter"
       RESOLVED_ISSUE="$issue"
       return 0
@@ -118,7 +121,7 @@ resolve_target() {
         [[ "$sid_repo" == "$repo_prefix" ]] || continue
       fi
 
-      if [[ -p "${session_dir}worker-${issue}" ]]; then
+      if [[ -f "${session_dir}worker-${issue}.state" ]]; then
         matches+=("${sid}:${issue}")
       fi
     done
@@ -624,8 +627,17 @@ cmd_kill() {
     rm -f "$pane_file"
   done
 
-  # Mark as terminated
-  worker_state_write "$RESOLVED_ISSUE" TERMINATED "killed"
+  # ADR-0020 Phase 1: write-once guard — do not overwrite an existing
+  # TERMINATED record. An operator killing an already-completed Worker
+  # (TERMINATED:ci-passed, review pending) must not relabel the completion,
+  # which would strand the issue non-resumable and erase the PR detail.
+  # The session stop above stays unconditional (a no-op on a finished session).
+  local kill_state_json kill_current_state
+  kill_state_json=$(worker_state_read "$RESOLVED_ISSUE")
+  kill_current_state=$(echo "$kill_state_json" | jq -r '.state')
+  if [[ "$kill_current_state" != "TERMINATED" ]]; then
+    worker_state_write "$RESOLVED_ISSUE" TERMINATED "killed"
+  fi
   echo "Worker #${RESOLVED_ISSUE} killed." >&2
 }
 
@@ -819,10 +831,11 @@ cmd_gc() {
     return 0
   }
 
-  # ── 1. Collect active issues (FIFOs across all sessions) ──
+  # ── 1. Collect active issues (FIFOs + non-TERMINATED state across all sessions) ──
   # Build a set of active issue numbers per session for orphan detection.
-  # FIFOs are checked for staleness: if the process is dead or state is
-  # TERMINATED, the FIFO is removed and not added to active_issues.
+  # ADR-0020 Phase 1: non-TERMINATED state files mark the issue active
+  # (held slot), regardless of FIFO existence.
+  # FIFOs are still checked for staleness (Phase 3 will remove FIFO create).
   # Uses a temp file instead of declare -A for bash 3.2 compatibility.
   local active_issues_file
   active_issues_file=$(mktemp /tmp/cekernel-gc-active.XXXXXX)
@@ -830,6 +843,23 @@ cmd_gc() {
   if [[ -d "$IPC_BASE" ]]; then
     for session_dir in "$IPC_BASE"/*/; do
       [[ -d "$session_dir" ]] || continue
+
+      # ADR-0020: scan state files for non-TERMINATED (held slot protection)
+      for state_file in "$session_dir"worker-*.state; do
+        [[ -f "$state_file" ]] || continue
+        local sf_name sf_issue sf_state
+        sf_name=$(basename "$state_file")
+        sf_issue="${sf_name#worker-}"
+        sf_issue="${sf_issue%.state}"
+        sf_state="UNKNOWN"
+        local sf_line
+        sf_line=$(cat "$state_file")
+        sf_state="${sf_line%%:*}"
+        if [[ "$sf_state" != "TERMINATED" ]]; then
+          echo "${session_dir}:${sf_issue}" >> "$active_issues_file"
+        fi
+      done
+
       for fifo in "$session_dir"worker-*; do
         [[ -p "$fifo" ]] || continue
         local fname
@@ -848,7 +878,10 @@ cmd_gc() {
           fi
           cleaned=$((cleaned + 1))
         else
-          echo "${session_dir}:${issue}" >> "$active_issues_file"
+          # Add to active_issues if not already present (from state file scan)
+          if ! grep -qxF "${session_dir}:${issue}" "$active_issues_file" 2>/dev/null; then
+            echo "${session_dir}:${issue}" >> "$active_issues_file"
+          fi
         fi
       done
     done

@@ -74,6 +74,23 @@ else
   fi
 fi
 
+# ADR-0020 Phase 1: reaper semantics — if state is non-TERMINATED,
+# append the exit event to the lifecycle log before deleting the state
+# file (so the record survives to gc's orphan sweep).
+# TERMINATED entries need no exit record (the Worker already wrote it).
+_REAP_STATE="TERMINATED"
+_REAP_STATE_FILE="${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.state"
+if [[ -f "$_REAP_STATE_FILE" ]]; then
+  _REAP_LINE=$(cat "$_REAP_STATE_FILE")
+  _REAP_STATE="${_REAP_LINE%%:*}"
+fi
+if [[ "$_REAP_STATE" != "TERMINATED" ]]; then
+  _REAP_LOG="${CEKERNEL_IPC_DIR}/logs/worker-${ISSUE_NUMBER}.log"
+  if [[ -d "${CEKERNEL_IPC_DIR}/logs" ]]; then
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] REAP_EXIT issue=#${ISSUE_NUMBER} state=${_REAP_STATE}" >> "$_REAP_LOG"
+  fi
+fi
+
 # FIFO cleanup (session-scoped)
 rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}"
 # State file cleanup
@@ -94,9 +111,10 @@ rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.priority"
 # Payload file cleanup (wezterm backend: avoids send-text 1024-byte limit)
 rm -f "${CEKERNEL_IPC_DIR}/payload-${ISSUE_NUMBER}.b64"
 
-# Log file cleanup
-rm -f "${CEKERNEL_IPC_DIR}/logs/worker-${ISSUE_NUMBER}.log"
-# Remove empty logs directory
+# ADR-0020 Phase 1: lifecycle log is RETAINED (no longer deleted).
+# The record survives to gc's orphan sweep and post-mortem analysis.
+# gc removes orphan logs whose Worker is no longer active.
+# Remove empty logs directory only (safe: won't remove if log files remain)
 rmdir "${CEKERNEL_IPC_DIR}/logs" 2>/dev/null || true
 
 # Remove empty session directory

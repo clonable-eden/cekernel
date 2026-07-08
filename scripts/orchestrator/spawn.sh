@@ -71,7 +71,19 @@ AGENT_NAME="${!AGENT_VAR:-$AGENT_TYPE}"
 MAX_ORCH_CHILDREN="${CEKERNEL_MAX_ORCH_CHILDREN:-5}"
 
 active_worker_count() {
-  find "$CEKERNEL_IPC_DIR" -maxdepth 1 -name 'worker-*' -type p 2>/dev/null | wc -l | tr -d ' '
+  # ADR-0020 Phase 1: count non-TERMINATED state files (not pipes).
+  # A Worker holds a slot while its state is not TERMINATED.
+  local count=0
+  for sf in "$CEKERNEL_IPC_DIR"/worker-*.state; do
+    [[ -f "$sf" ]] || continue
+    local line
+    line=$(cat "$sf")
+    local state="${line%%:*}"
+    if [[ "$state" != "TERMINATED" ]]; then
+      count=$((count + 1))
+    fi
+  done
+  echo "$count"
 }
 
 mkdir -p "$CEKERNEL_IPC_DIR"
