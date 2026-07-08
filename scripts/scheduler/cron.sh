@@ -10,7 +10,7 @@
 #
 # --label and --prompt:
 #   --label <label>   Shorthand: generates prompt "/dispatch --env headless --label <label>"
-#   --prompt <prompt> Arbitrary prompt string passed to claude -p
+#   --prompt <prompt> Arbitrary prompt string passed to the claude --bg session
 #   If both given, --prompt takes precedence. At least one is required.
 #
 # Exit codes:
@@ -38,7 +38,7 @@ Commands:
 
 Options for register:
   --label <label>   Shorthand: prompt = "/dispatch --env headless --label <label>"
-  --prompt <prompt> Arbitrary prompt string passed to claude -p
+  --prompt <prompt> Arbitrary prompt string passed to the claude --bg session
   At least one of --label or --prompt is required. --prompt takes precedence.
 USAGE
   return 1

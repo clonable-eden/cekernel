@@ -30,6 +30,7 @@ source "${SCRIPT_DIR}/../shared/load-env.sh"
 source "${SCRIPT_DIR}/../shared/worker-state.sh"
 source "${SCRIPT_DIR}/../shared/worker-priority.sh"
 source "${SCRIPT_DIR}/../shared/checkpoint-file.sh"
+source "${SCRIPT_DIR}/../shared/claude-bg.sh"
 
 CEKERNEL_VAR_DIR="${CEKERNEL_VAR_DIR:-$HOME/.local/var/cekernel}"
 IPC_BASE="${CEKERNEL_IPC_BASE:-${CEKERNEL_VAR_DIR}/ipc}"
@@ -144,6 +145,18 @@ set_ipc_context() {
   export CEKERNEL_IPC_DIR="${IPC_BASE}/${RESOLVED_SESSION}"
 }
 
+# ── Helper: format elapsed seconds as h/m/s ──
+format_elapsed() {
+  local elapsed="$1"
+  if [[ $elapsed -ge 3600 ]]; then
+    echo "$((elapsed / 3600))h$((elapsed % 3600 / 60))m"
+  elif [[ $elapsed -ge 60 ]]; then
+    echo "$((elapsed / 60))m"
+  else
+    echo "${elapsed}s"
+  fi
+}
+
 # ── Helper: compute elapsed time from .spawned file ──
 compute_elapsed() {
   local fifo="$1"
@@ -164,16 +177,7 @@ compute_elapsed() {
   spawned_at=$(cat "${ipc_dir}/${process_type}-${issue}.spawned" 2>/dev/null || true)
   spawned_at="${spawned_at:-$(date +%s)}"
 
-  local now elapsed
-  now=$(date +%s)
-  elapsed=$((now - spawned_at))
-  if [[ $elapsed -ge 3600 ]]; then
-    echo "$((elapsed / 3600))h$((elapsed % 3600 / 60))m"
-  elif [[ $elapsed -ge 60 ]]; then
-    echo "$((elapsed / 60))m"
-  else
-    echo "${elapsed}s"
-  fi
+  format_elapsed "$(($(date +%s) - spawned_at))"
 }
 
 # ── Helper: detect backend from metadata file (with heuristic fallback) ──
@@ -290,7 +294,18 @@ cmd_ls() {
   fi
 }
 
-# ── ps: Show orchestrator process trees ──
+# ── ps: agents --json view layer (ADR-0016 Phase 4) ──
+# `claude agents --json` is fetched ONCE per invocation (the body is an
+# OPAQUE snapshot — only claude-bg.sh predicates parse it, ADR-0018);
+# every registered token (orchestrator.claude-session-id,
+# handle-{issue}.{type}) is resolved against that single snapshot. The
+# ADR-0018 verdict tokens print as-is so `blocked` (permission-dialog
+# stall) is surfaced distinctly; an absent token shows as `not-listed`,
+# schema drift as `unknown-value` — a view reports honestly, it does not
+# interpret. Worker/Reviewer rows join the cekernel-specific columns —
+# issue, phase (state-file detail), priority — per the ADR-0015 boundary:
+# the view adds only what `claude agents` cannot know. Sessions without an
+# orchestrator token (interactive orchestrators) still list their workers.
 cmd_ps() {
   local session_filter=""
 
@@ -309,6 +324,10 @@ cmd_ps() {
     return 0
   fi
 
+  # Single fetch — the whole command is a view over this one response
+  local agents_json
+  agents_json=$(claude_bg_agents_json) || agents_json="[]"
+
   for session_dir in "$IPC_BASE"/*/; do
     [[ -d "$session_dir" ]] || continue
     local sid
@@ -319,211 +338,62 @@ cmd_ps() {
       continue
     fi
 
-    local pid_file="${session_dir}orchestrator.pid"
-    [[ -f "$pid_file" ]] || continue
+    # ── Orchestrator row ──
+    local sid_file="${session_dir}orchestrator.claude-session-id"
+    if [[ -f "$sid_file" ]]; then
+      local token
+      token=$(tr -d '[:space:]' < "$sid_file")
+      if [[ -n "$token" ]]; then
+        # Compute elapsed from orchestrator.spawned
+        local elapsed=""
+        local spawned_file="${session_dir}orchestrator.spawned"
+        if [[ -f "$spawned_file" ]]; then
+          local spawned_at
+          spawned_at=$(tr -d '[:space:]' < "$spawned_file")
+          spawned_at="${spawned_at:-$(date +%s)}"
+          elapsed=$(format_elapsed "$(($(date +%s) - spawned_at))")
+        fi
 
-    local orch_pid
-    orch_pid=$(tr -d '[:space:]' < "$pid_file")
-    [[ -n "$orch_pid" ]] || continue
+        local state
+        state=$(claude_bg_token_verdict_from_json "$agents_json" "$token") || true
 
-    # Compute elapsed from orchestrator.spawned
-    local elapsed=""
-    local spawned_file="${session_dir}orchestrator.spawned"
-    if [[ -f "$spawned_file" ]]; then
-      local spawned_at now elapsed_sec
-      spawned_at=$(tr -d '[:space:]' < "$spawned_file")
-      spawned_at="${spawned_at:-$(date +%s)}"
-      now=$(date +%s)
-      elapsed_sec=$((now - spawned_at))
-      if [[ $elapsed_sec -ge 3600 ]]; then
-        elapsed="$((elapsed_sec / 3600))h$((elapsed_sec % 3600 / 60))m"
-      elif [[ $elapsed_sec -ge 60 ]]; then
-        elapsed="$((elapsed_sec / 60))m"
-      else
-        elapsed="${elapsed_sec}s"
+        found=$((found + 1))
+        echo "orchestrator  claude=${token}  session=${sid}  elapsed=${elapsed}  ${state}"
       fi
     fi
 
-    # Check if the process is alive
-    local status
-    if kill -0 "$orch_pid" 2>/dev/null; then
-      status="running"
-    else
-      status="not-running"
-    fi
+    # ── Managed rows (Worker/Reviewer sessions) ──
+    for handle_file in "${session_dir}"handle-*.*; do
+      [[ -f "$handle_file" ]] || continue
+      local fname issue_type issue mtype
+      fname=$(basename "$handle_file")
+      issue_type="${fname#handle-}"
+      issue="${issue_type%%.*}"
+      mtype="${issue_type#*.}"
+      [[ "$issue" =~ ^[0-9]+$ ]] || continue
 
-    found=$((found + 1))
+      local mtoken
+      mtoken=$(tr -d '[:space:]' < "$handle_file")
+      [[ -n "$mtoken" ]] || continue
 
-    # Print orchestrator header line
-    echo "orchestrator  PID=${orch_pid}  session=${sid}  elapsed=${elapsed}  ${status}"
+      local mstate
+      mstate=$(claude_bg_token_verdict_from_json "$agents_json" "$mtoken") || true
 
-    # If running, list child processes and managed processes
-    if [[ "$status" == "running" ]]; then
-      # Collect all descendant PIDs to avoid duplicating managed processes
-      local child_pids_file
-      child_pids_file=$(mktemp /tmp/cekernel-ps-children.XXXXXX)
-      _ps_collect_descendants "$orch_pid" "$child_pids_file"
+      # Join cekernel-specific columns from state/priority files.
+      # CEKERNEL_IPC_DIR is scoped to each command substitution (subshell)
+      # — a read-only view must not mutate the global session context.
+      local phase priority
+      phase=$(CEKERNEL_IPC_DIR="$session_dir" worker_state_read "$issue" | jq -r '.detail')
+      priority=$(CEKERNEL_IPC_DIR="$session_dir" worker_priority_read "$issue" | jq -r '.priority')
 
-      # Count managed processes to adjust tree connectors
-      local has_managed=0
-      _ps_has_managed "$session_dir" "$child_pids_file" && has_managed=1
-
-      _ps_print_children "$orch_pid" "  " "$has_managed"
-      _ps_print_managed "$session_dir" "$child_pids_file" "  "
-
-      rm -f "$child_pids_file"
-    fi
+      found=$((found + 1))
+      echo "  ${mtype}  #${issue}  claude=${mtoken}  phase=${phase}  priority=${priority}  ${mstate}"
+    done
   done
 
   if [[ "$found" -eq 0 ]]; then
     echo "no orchestrators."
   fi
-}
-
-# ── Helper: recursively print child processes ──
-# Args: parent_pid indent [has_more_after]
-#   has_more_after: if "1", the last child uses ├── instead of └── (managed entries follow)
-_ps_print_children() {
-  local parent_pid="$1" indent="$2" has_more_after="${3:-0}"
-
-  local children
-  children=$(pgrep -P "$parent_pid" 2>/dev/null || true)
-  [[ -n "$children" ]] || return 0
-
-  # Collect children into an array for last-child detection
-  local child_pids=()
-  while IFS= read -r cpid; do
-    [[ -n "$cpid" ]] && child_pids+=("$cpid")
-  done <<< "$children"
-
-  local total=${#child_pids[@]}
-  local idx=0
-
-  for cpid in "${child_pids[@]}"; do
-    idx=$((idx + 1))
-    local connector="├──"
-    local child_indent="${indent}│   "
-    local is_last=0
-    if [[ "$idx" -eq "$total" ]]; then
-      is_last=1
-    fi
-
-    # Use └── only if truly the last entry (no managed processes follow)
-    if [[ "$is_last" -eq 1 && "$has_more_after" -eq 0 ]]; then
-      connector="└──"
-      child_indent="${indent}    "
-    fi
-
-    # Get process command
-    local cmd
-    cmd=$(ps -o command= -p "$cpid" 2>/dev/null || echo "(unknown)")
-
-    # Get process state
-    local pstate
-    pstate=$(ps -o state= -p "$cpid" 2>/dev/null || echo "?")
-    # Trim to first character for brevity
-    pstate="${pstate:0:1}"
-
-    echo "${indent}${connector} ${cmd}  PID=${cpid}  ${pstate}"
-
-    # Recurse for grandchildren (no managed processes at deeper levels)
-    _ps_print_children "$cpid" "$child_indent"
-  done
-}
-
-# ── Helper: collect all descendant PIDs recursively into a file ──
-_ps_collect_descendants() {
-  local parent_pid="$1" outfile="$2"
-
-  local children
-  children=$(pgrep -P "$parent_pid" 2>/dev/null || true)
-  [[ -n "$children" ]] || return 0
-
-  while IFS= read -r cpid; do
-    [[ -n "$cpid" ]] || continue
-    echo "$cpid" >> "$outfile"
-    _ps_collect_descendants "$cpid" "$outfile"
-  done <<< "$children"
-}
-
-# ── Helper: check if any managed processes exist (for tree connector logic) ──
-_ps_has_managed() {
-  local session_dir="$1" child_pids_file="$2"
-
-  for handle_file in "${session_dir}"handle-*.*; do
-    [[ -f "$handle_file" ]] || continue
-    local pid
-    pid=$(tr -d '[:space:]' < "$handle_file")
-    [[ -n "$pid" ]] || continue
-    kill -0 "$pid" 2>/dev/null || continue
-    if ! grep -qxF "$pid" "$child_pids_file" 2>/dev/null; then
-      return 0
-    fi
-  done
-  return 1
-}
-
-# ── Helper: print managed processes from handle files ──
-# Reads handle-{issue}.{type} files from the session IPC directory.
-# Skips processes that are already shown as children (dedup via child_pids_file).
-# Skips dead processes (PID not alive).
-_ps_print_managed() {
-  local session_dir="$1" child_pids_file="$2" indent="$3"
-
-  # Collect managed entries: issue, type, pid
-  local managed_entries=()
-  for handle_file in "${session_dir}"handle-*.*; do
-    [[ -f "$handle_file" ]] || continue
-    local fname
-    fname=$(basename "$handle_file")
-    # Parse handle-{issue}.{type}
-    local issue_type="${fname#handle-}"
-    local issue="${issue_type%%.*}"
-    local type="${issue_type#*.}"
-
-    local pid
-    pid=$(tr -d '[:space:]' < "$handle_file")
-    [[ -n "$pid" ]] || continue
-
-    # Skip if PID is not alive
-    kill -0 "$pid" 2>/dev/null || continue
-
-    # Skip if already shown as a child process
-    if grep -qxF "$pid" "$child_pids_file" 2>/dev/null; then
-      continue
-    fi
-
-    managed_entries+=("${type}:${issue}:${pid}")
-  done
-
-  [[ ${#managed_entries[@]} -gt 0 ]] || return 0
-
-  local total=${#managed_entries[@]}
-  local idx=0
-
-  for entry in "${managed_entries[@]}"; do
-    idx=$((idx + 1))
-    local type="${entry%%:*}"
-    local rest="${entry#*:}"
-    local issue="${rest%%:*}"
-    local pid="${rest#*:}"
-
-    local connector="├──"
-    if [[ "$idx" -eq "$total" ]]; then
-      connector="└──"
-    fi
-
-    # Get actual PPID
-    local ppid
-    ppid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d '[:space:]' || echo "?")
-
-    # Get process state
-    local pstate
-    pstate=$(ps -o state= -p "$pid" 2>/dev/null || echo "?")
-    pstate="${pstate:0:1}"
-
-    echo "${indent}${connector} ${type} #${issue}  PID=${pid}  ${pstate}  (managed, PPID=${ppid})"
-  done
 }
 
 # ── inspect: Detailed worker view ──
@@ -635,17 +505,28 @@ cmd_recover() {
       ;;
   esac
 
-  # Check if Worker process is alive
+  # Check if Worker process is alive.
+  # Degradation policy (ADR-0018): recover writes TERMINATED/crashed — a
+  # destructive verdict — so query-failed / unknown-value must ERROR OUT
+  # instead of being coerced to dead (never declare a crash on doubt).
   local backend is_alive=0
   backend=$(detect_backend "$CEKERNEL_IPC_DIR" "$RESOLVED_ISSUE")
 
   if [[ "$backend" != "unknown" ]]; then
-    # Source backend adapter to get backend_worker_alive
+    # Source backend adapter to get backend_worker_status
     export CEKERNEL_BACKEND="$backend"
     source "${SCRIPT_DIR}/../shared/backend-adapter.sh"
-    if backend_worker_alive "$RESOLVED_ISSUE" 2>/dev/null; then
-      is_alive=1
-    fi
+    local wverdict
+    wverdict=$(backend_worker_status "$RESOLVED_ISSUE" 2>/dev/null) || true
+    case "$wverdict" in
+      alive|blocked) is_alive=1 ;;
+      query-failed|unknown-value)
+        echo "Error: cannot verify worker #${RESOLVED_ISSUE} (${wverdict})." \
+          "Refusing to mark it crashed — retry when the agents query recovers." >&2
+        return 1
+        ;;
+      *) ;;  # done | stopped | not-listed | missing — verifiably dead
+    esac
   fi
   # If backend is "unknown" (no handle, no metadata), worker is dead (is_alive stays 0)
 
@@ -707,26 +588,39 @@ cmd_kill() {
   local backend
   backend=$(detect_backend "$CEKERNEL_IPC_DIR" "$RESOLVED_ISSUE")
 
-  # Kill all handle files for this issue (Worker + Reviewer)
+  # Stop all sessions for this issue (Worker + Reviewer).
+  # v2: the handle is an opaque session token on ALL backends — the daemon
+  # owns the process, so termination delegates to claude stop
+  # (ADR-0005 Amendment 1, ADR-0016 Phase 1/5)
   for handle_file in "${CEKERNEL_IPC_DIR}"/handle-"${RESOLVED_ISSUE}".*; do
     [[ -f "$handle_file" ]] || continue
     local handle_content
     handle_content=$(tr -d '[:space:]' < "$handle_file")
+    claude_bg_stop "$handle_content"
+  done
+
+  # Terminal backends: also close the attach-only visualization pane/window
+  # recorded in pane-{issue}.{type} (ADR-0001 Amendment 1)
+  for pane_file in "${CEKERNEL_IPC_DIR}"/pane-"${RESOLVED_ISSUE}".*; do
+    [[ -f "$pane_file" ]] || continue
+    local pane_content
+    pane_content=$(tr -d '[:space:]' < "$pane_file")
 
     case "$backend" in
       tmux)
         local window_target
-        window_target=$(echo "$handle_content" | sed 's/\.[0-9]*$//')
+        window_target=$(echo "$pane_content" | sed 's/\.[0-9]*$//')
         tmux kill-window -t "$window_target" 2>/dev/null || true
         ;;
       headless)
-        kill -- -"$handle_content" 2>/dev/null || kill "$handle_content" 2>/dev/null || true
+        # No visualization layer — nothing to close
         ;;
       *)
         # wezterm or unknown — try wezterm pane kill
-        wezterm cli kill-pane --pane-id "$handle_content" 2>/dev/null || true
+        wezterm cli kill-pane --pane-id "$pane_content" 2>/dev/null || true
         ;;
     esac
+    rm -f "$pane_file"
   done
 
   # Mark as terminated
@@ -801,6 +695,21 @@ cmd_gc() {
   # Stale timeout for NEW/READY state (seconds). Default: 30 minutes.
   local stale_timeout="${CEKERNEL_GC_STALE_TIMEOUT:-1800}"
 
+  # ── Helper: lazy single `agents --json` fetch per gc run (#573) ──
+  # Returns 0 with gc_agents_json populated when the query succeeded;
+  # returns 1 when it failed (transient or no CLI) — callers must then
+  # stay conservative (assume alive, never gc on doubt).
+  local gc_agents_json="" gc_agents_fetched=0 gc_agents_ok=0
+  _gc_agents_json_once() {
+    if [[ "$gc_agents_fetched" -eq 0 ]]; then
+      gc_agents_fetched=1
+      if gc_agents_json=$(claude_bg_agents_json); then
+        gc_agents_ok=1
+      fi
+    fi
+    [[ "$gc_agents_ok" -eq 1 ]]
+  }
+
   # ── Helper: check if a FIFO is stale ──
   # Returns 0 (stale) or 1 (active).
   # A FIFO is stale when:
@@ -818,10 +727,16 @@ cmd_gc() {
       has_any_handle=1
       local handle_content
       handle_content=$(tr -d '[:space:]' < "$hf")
-      # For headless backend, handle is a PID
-      # For tmux, handle is session:window.pane — check if tmux session exists
-      # For wezterm, handle is a pane ID
-      # Simple heuristic: if handle is numeric, check kill -0; otherwise assume stale
+      # v2 (ADR-0016 Phase 5): handle is an opaque session token
+      # (UUID/short ID) on ALL backends. Legacy sessions may still hold a
+      # tmux pane target (session:window.pane), a numeric wezterm pane ID,
+      # or a headless PID.
+      # Heuristic: numeric → kill -0; tmux target → has-session; anything
+      # else is a session token resolved via the ADR-0018 verdict against
+      # a single lazy `agents --json` fetch per gc run (#573).
+      # Degradation policy (ADR-0018 — gc refuses to reap on doubt):
+      # query-failed and unknown-value both count as ALIVE; only a
+      # verifiable done/stopped/not-listed verdict marks the handle dead.
       if [[ "$handle_content" =~ ^[0-9]+$ ]]; then
         if kill -0 "$handle_content" 2>/dev/null; then
           has_live_handle=1
@@ -834,9 +749,21 @@ cmd_gc() {
           break
         fi
       else
-        # Unknown handle format — assume alive to be safe
-        has_live_handle=1
-        break
+        # Opaque session token
+        if ! _gc_agents_json_once; then
+          # Query failed — cannot verify, assume alive
+          has_live_handle=1
+          break
+        fi
+        local gc_verdict
+        gc_verdict=$(claude_bg_token_verdict_from_json "$gc_agents_json" "$handle_content") || true
+        case "$gc_verdict" in
+          done|stopped|not-listed) ;;  # verifiably dead
+          *)
+            has_live_handle=1
+            break
+            ;;
+        esac
       fi
     done
 
@@ -998,34 +925,49 @@ cmd_gc() {
     done
   }
 
-  # ── 3. Clean stale orchestrator metadata ──
-  # When the orchestrator process is dead, remove orchestrator.pid,
-  # orchestrator.spawned, and repo files from the session directory.
+  # ── 3. Clean stale orchestrator sessions (ADR-0016 Phase 2) ──
+  # Liveness is session-ID based via the ADR-0018 verdict: only a
+  # verifiable done/stopped/not-listed verdict is dead — query-failed
+  # and unknown-value stay conservative (gc refuses to reap on doubt).
+  # Dead sessions are reaped via the stop primitive (done sessions
+  # linger until explicitly stopped — ADR-0016) and their metadata files
+  # removed. Legacy orchestrator.pid files (pre-v2) are swept
+  # unconditionally.
   if [[ -d "$IPC_BASE" ]]; then
     for session_dir in "$IPC_BASE"/*/; do
       [[ -d "$session_dir" ]] || continue
-      local orch_pid_file="${session_dir}orchestrator.pid"
-      [[ -f "$orch_pid_file" ]] || continue
+      local orch_sid_file="${session_dir}orchestrator.claude-session-id"
+      local orch_legacy_pid_file="${session_dir}orchestrator.pid"
+      [[ -f "$orch_sid_file" || -f "$orch_legacy_pid_file" ]] || continue
 
-      local orch_pid
-      orch_pid=$(tr -d '[:space:]' < "$orch_pid_file")
-      [[ -n "$orch_pid" ]] || continue
-
-      # Skip if orchestrator is still alive
-      if kill -0 "$orch_pid" 2>/dev/null; then
-        continue
+      local orch_token=""
+      if [[ -f "$orch_sid_file" ]]; then
+        orch_token=$(tr -d '[:space:]' < "$orch_sid_file")
       fi
 
-      # Orchestrator is dead — clean up metadata files
+      # Skip unless the orchestrator session is verifiably dead
+      # (done/stopped/not-listed). A legacy pid file without a token is
+      # always stale under v2.
+      if [[ -n "$orch_token" ]]; then
+        local orch_verdict
+        orch_verdict=$(claude_bg_token_verdict "$orch_token" 2>/dev/null) || true
+        case "$orch_verdict" in
+          done|stopped|not-listed) ;;  # verifiably dead — reap below
+          *) continue ;;               # alive/blocked or cannot verify
+        esac
+      fi
+
+      # Orchestrator session is dead — reap it and clean up metadata
       if [[ "$dry_run" -eq 1 ]]; then
-        echo "[dry-run] would remove stale orchestrator.pid: $orch_pid_file" >&2
+        if [[ -n "$orch_token" ]]; then
+          echo "[dry-run] would stop dead orchestrator session: $orch_token" >&2
+        fi
       else
-        rm -f "$orch_pid_file"
+        claude_bg_stop "$orch_token"
       fi
-      cleaned=$((cleaned + 1))
 
-      # Also remove orchestrator.spawned and repo if present
-      for meta_file in "${session_dir}orchestrator.spawned" "${session_dir}repo"; do
+      for meta_file in "$orch_sid_file" "$orch_legacy_pid_file" \
+        "${session_dir}orchestrator.spawned" "${session_dir}repo"; do
         if [[ -f "$meta_file" ]]; then
           if [[ "$dry_run" -eq 1 ]]; then
             echo "[dry-run] would remove stale metadata: $meta_file" >&2
@@ -1045,6 +987,7 @@ cmd_gc() {
 
       _gc_clean_orphan_files "$session_dir" "worker-*.*"   "worker-"  "IPC file"
       _gc_clean_orphan_files "$session_dir" "handle-*.*"   "handle-"  "handle"
+      _gc_clean_orphan_files "$session_dir" "pane-*.*"     "pane-"    "pane"
       _gc_clean_orphan_files "$session_dir" "payload-*.b64" "payload-" "payload"
 
       # Log files live in a subdirectory
@@ -1078,24 +1021,36 @@ cmd_gc() {
   fi
 }
 
-# ── count: Count running orchestrators (internal) ──
+# ── count: Count running orchestrators (internal, ADR-0014) ──
+# Session-ID based (ADR-0016 Phase 2): a session counts on an alive or
+# blocked verdict — the vocabulary lives in claude-bg.sh, not here (Rule
+# of Separation). Single fetch per invocation (Phase 4): all tokens
+# resolve against one opaque snapshot.
+# Degradation policy (ADR-0018 — the consumer decides): unknown-value
+# counts as alive. For a concurrency guard, over-counting refuses a spawn
+# (safe); under-counting spawns a duplicate orchestrator (not safe).
 cmd_count() {
   local count=0
 
   if [[ -d "$IPC_BASE" ]]; then
+    local agents_json
+    agents_json=$(claude_bg_agents_json) || agents_json="[]"
+
     for session_dir in "$IPC_BASE"/*/; do
       [[ -d "$session_dir" ]] || continue
 
-      local pid_file="${session_dir}orchestrator.pid"
-      [[ -f "$pid_file" ]] || continue
+      local sid_file="${session_dir}orchestrator.claude-session-id"
+      [[ -f "$sid_file" ]] || continue
 
-      local orch_pid
-      orch_pid=$(tr -d '[:space:]' < "$pid_file")
-      [[ -n "$orch_pid" ]] || continue
+      local token
+      token=$(tr -d '[:space:]' < "$sid_file")
+      [[ -n "$token" ]] || continue
 
-      if kill -0 "$orch_pid" 2>/dev/null; then
-        count=$((count + 1))
-      fi
+      local verdict
+      verdict=$(claude_bg_token_verdict_from_json "$agents_json" "$token") || true
+      case "$verdict" in
+        alive|blocked|unknown-value) count=$((count + 1)) ;;
+      esac
     done
   fi
 

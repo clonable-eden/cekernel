@@ -10,6 +10,16 @@
 #   schedule_registry_update_status <id> <status> — Update last_run_status and last_run_at
 #   schedule_registry_get <id>                    — Get single entry (exit 1 if not found)
 #
+# Field semantics (ADR-0016 Phase 3):
+#   last_run_status — "success" | "error", recorded by the generated runner
+#     from the final session verdict (claude-bg.sh, ADR-0018) of the spawned
+#     background session: done → success; blocked/stopped/poll-timeout/spawn-failure →
+#     error. Fidelity note: "success" means the SESSION reached `done`
+#     (terminated) — NOT that the job inside it succeeded. Job-level
+#     outcomes stay in transcripts and desktop notifications.
+#   last_run_at — set together with last_run_status; the recording time
+#     marks the end of the runner's poll window, not the job runtime.
+#
 # Environment variables (overridable for testing):
 #   CEKERNEL_VAR_DIR — Base directory (default: $HOME/.local/var/cekernel)
 

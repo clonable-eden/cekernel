@@ -12,8 +12,8 @@ graph LR
     H[Human / Scheduler] -->|/orchestrate<br/>/dispatch| O[Orchestrator<br/>main working tree]
     O -->|spawn-worker.sh| W[Worker<br/>git worktree]
     W -->|notify ci-passed| O
-    O -->|spawn-reviewer.sh| R[Reviewer<br/>same worktree]
-    R -->|notify approved| O
+    O -->|Agent tool<br/>isolation: worktree| R[Reviewer<br/>subagent worktree]
+    R -->|return approved| O
     O -->|cleanup + notify| H
 ```
 
@@ -56,6 +56,18 @@ graph LR
 
 For details on logging, IPC, and resource governance, see [internals.md](./docs/internals.md).
 
+### cekernel vs `/workflows`
+
+Claude Code's dynamic `/workflows` also runs agents in parallel, so the two can look interchangeable. They are not — the boundary rule is: **state that must survive the session belongs to cekernel; fan-out that completes within a session belongs to `/workflows`** (in one sentence: cekernel persists, `/workflows` fans out). If your task is an issue lifecycle that spans CI waits, human review, and retries over hours or days, use cekernel; if it is a wide parallel pass that starts and finishes inside one session (e.g. a migration sweep or a multi-file analysis), use `/workflows`. See [ADR-0015](./docs/adr/0015-workflows-boundary.md) for the full analysis.
+
+| Axis | cekernel | `/workflows` |
+|------|----------|--------------|
+| Use for | Lifecycles that outlive a session (issue → PR → CI → review → merge) | Fan-out that completes within one session |
+| Survives the session | Yes — OS processes, files, git worktrees | No — a run dies with its session |
+| Time horizon | Hours–days (CI waits, human review, retries) | One session's wall-clock |
+| Identity | Issue number = PID; named branches and PRs | Anonymous agent index |
+| Trigger | Event-driven (FIFO, cron/at, human) | Single deterministic run |
+
 ## Structure
 
 ```
@@ -92,17 +104,16 @@ RELEASE_NOTES.md           # Structured release notes
 scripts/
   ctl/
     orchctl.sh             # Worker control interface (systemctl for cekernel)
-    spawn-orchestrator.sh  # Spawn Orchestrator as independent OS process
+    spawn-orchestrator.sh  # Spawn Orchestrator as a claude --bg background session
   orchestrator/
     cleanup-worktree.sh    # Remove worktree + branch + logs
     health-check.sh        # Detect zombie Workers
     send-signal.sh         # Send signal (TERM/SUSPEND) to a running Worker
     spawn.sh               # Common process spawning logic (concurrency guard, FIFO, state, backend, Type)
     spawn-worker.sh        # Spawn Worker (thin wrapper for spawn.sh --agent worker)
-    spawn-reviewer.sh      # Spawn Reviewer (wrapper for spawn.sh --agent reviewer)
     watch-logs.sh          # Real-time Worker log monitoring
     watch.sh               # Monitor process completion (FIFO + state file + crash detection)
-    process-status.sh       # List active processes (Workers and Reviewers)
+    process-status.sh       # List active Worker processes
   scheduler/
     at-backend.sh          # At backend adapter (launchd/atd)
     at-backends/
@@ -121,28 +132,29 @@ scripts/
     backend-adapter.sh     # Backend abstraction layer (wezterm/tmux/headless)
     backends/
       headless.sh          # Headless backend implementation
-      tmux.sh              # tmux backend implementation
-      wezterm.sh           # WezTerm backend implementation
+      tmux.sh              # tmux backend (attach-only visualization pane)
+      wezterm.sh           # WezTerm backend (attach-only visualization pane)
+    bg-session.sh          # Shared claude --bg session core (spawn/liveness/stop)
     checkpoint-file.sh     # Checkpoint file helpers for suspend/resume
     claude-json-helper.sh  # ~/.claude.json trust entry read/write helper
+    claude-bg.sh           # Shared claude --bg session helpers (agents --json query, capture)
     claude-session-id.sh   # Orchestrator Claude Code session ID persistence (orchestrator.claude-session-id)
     desktop-notify.sh      # OS-native notification helper
     issue-lock.sh          # Repo × issue lockfile (duplicate Worker prevention)
     load-env.sh            # Environment profile loader (multi-layer search)
     resolve-repo-root.sh   # Resolve repository root from any subdirectory
-    runner.sh              # Runner script generator for terminal backends (cd, env, prompt)
     session-id.sh          # Session ID generation + IPC directory derivation
     task-file.sh           # Local task file extraction (session memory: page cache)
     transcript-locator.sh  # Transcript discovery for post-mortem analysis (ADR-0013)
     worker-priority.sh     # Worker priority (nice value) management
     worker-state.sh        # Worker process state management
   process/
-    check-signal.sh        # Check for pending signal (Worker/Reviewer-side)
+    check-signal.sh        # Check for pending signal (Worker-side)
     clear-resume-marker.sh # Clear resume marker after successful resume
     create-checkpoint.sh   # Create checkpoint file for suspend/resume
     notify-complete.sh     # Process → Orchestrator completion notification
     phase-transition.sh    # Atomic phase boundary: signal check + state write
-    worker-state-write.sh  # Write Worker state from Worker/Reviewer side
+    worker-state-write.sh  # Write Worker state from Worker side
 skills/
   at/
     SKILL.md               # /at skill — one-shot schedule management
@@ -167,12 +179,15 @@ skills/
   unix-architect/
     SKILL.md               # /unix-architect skill — ADR authoring and review
 tests/
-  ctl/test-*.sh            # Control script tests (orchctl, spawn-orchestrator)
-  helpers.sh               # Assertion helpers
+  ctl/*.bats               # Control script tests (orchctl, spawn-orchestrator)
+  helpers.sh               # Assertion helpers (legacy harness)
+  helpers/
+    assertions.bash        # Assertion helpers (bats lane)
   orchestrator/test-*.sh   # Orchestrator script tests
-  run-tests.sh             # Test runner
+  run-tests.sh             # Dual-lane test runner (legacy test-*.sh + *.bats)
   scheduler/test-*.sh      # Scheduler script tests
   shared/test-*.sh         # Shared helper tests
+  shared/*.bats            # bats-core tests (ADR-0017 migration)
   process/test-*.sh        # Process script tests
 ```
 
@@ -187,6 +202,7 @@ tests/
 | [WezTerm](https://wezfurlong.org/wezterm/) | Worker window launch/management (wezterm backend) | No* |
 | [tmux](https://github.com/tmux/tmux) | Worker pane management (tmux backend) | No* |
 | git | Worktree creation/management | Yes |
+| [bats-core](https://bats-core.readthedocs.io/) | Test framework (development only) — `brew install bats-core`; CI pins v1.13.0 | No (dev) |
 
 \* One backend is required: headless (default), WezTerm, or tmux. Set `CEKERNEL_BACKEND` env var to select. Headless requires no terminal.
 
@@ -217,12 +233,25 @@ cekernel is primarily designed for **monorepo** structures. While it may work wi
 | crontab | Linux/WSL | Untested — unit tests pass, but no live execution verification yet |
 | atd | Linux/WSL | Untested — unit tests pass, but no live execution verification yet |
 
-**Cross-repository issues:** If you manage issues in a separate meta-repository, pass the full path or URL to `/orchestrate`:
+**Cross-repository issues:** If you manage issues in a separate meta-repository, run `/orchestrate` from the **implementation repository** (worktrees, branches, and PRs are created there) and pass the full path or URL of the issue:
 
 ```bash
-/cekernel:orchestrate /org/repo/issues/123
+/cekernel:orchestrate /org/planning/issues/123
 # or
-/cekernel:orchestrate https://github.com/org/repo/issues/123
+/cekernel:orchestrate https://github.com/org/planning/issues/123
+```
+
+The issue repository is extracted from the reference and propagated via `spawn-worker.sh --repo org/planning`, so the Worker reads and comments on the correct issue while implementing in the current repository.
+
+If you use `--permission-mode auto`, declare the meta-repository as a trusted external dependency so the auto-mode classifier does not block `gh` writes targeting it:
+
+```jsonc
+// .claude/settings.local.json
+{
+  "autoMode": {
+    "environment": "Trust this working repo and the meta-repo at org/planning. gh commands targeting either repo are expected operations."
+  }
+}
 ```
 
 > **Note**: Cross-repository issue resolution has not been extensively tested. Please [open an issue](https://github.com/clonable-eden/cekernel/issues/new) if you encounter any problems.

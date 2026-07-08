@@ -9,15 +9,27 @@
 # Environment:
 #   CEKERNEL_BACKEND — Backend to use (default: headless)
 #
-# External API (5 functions, provided by backends):
+# External API (6 functions, provided by backends — ADR-0005 Amendment 1,
+# ADR-0016 Phase 5):
 #   backend_available       — Check if backend is usable
 #   backend_spawn_worker    — Start a Worker process (issue, type, worktree, prompt, agent-name)
-#   backend_get_pid         — Get Worker process PID (issue)
-#   backend_worker_alive    — Check if Worker is alive (issue)
-#   backend_kill_worker     — Terminate a Worker (issue)
+#   backend_get_handle      — Get the opaque worker token (issue): the
+#                             `claude --bg` session token on all backends
+#   backend_worker_alive    — Check if Worker is alive (issue): exit 0 on
+#                             an alive/blocked verdict (ADR-0018)
+#   backend_worker_status   — Echo the ADR-0018 verdict vocabulary
+#                             (alive|blocked|done|stopped|not-listed|
+#                             query-failed|unknown-value|missing)
+#   backend_kill_worker     — Terminate a Worker (issue): session stop +
+#                             visualization cleanup on terminal backends
+#
+# All backends spawn through the shared --bg session core (bg-session.sh).
+# Terminal backends (wezterm/tmux) add an attach-only visualization pane
+# (`claude attach <token>`); pane close = detach, never worker death
+# (ADR-0001 Amendment 1).
 #
 # Handle files are managed internally by each backend.
-# Callers pass only the issue number — never raw pane IDs or PIDs.
+# Callers pass only the issue number — never raw pane IDs or session tokens.
 
 # Resolve the directory where this script lives
 _BACKEND_ADAPTER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"

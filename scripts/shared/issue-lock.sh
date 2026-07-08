@@ -22,6 +22,7 @@ if [[ ! -f "${_ISSUE_LOCK_DIR}/load-env.sh" && -n "${CEKERNEL_SCRIPTS:-}" ]]; th
   _ISSUE_LOCK_DIR="${CEKERNEL_SCRIPTS}/shared"
 fi
 source "${_ISSUE_LOCK_DIR}/load-env.sh"
+source "${_ISSUE_LOCK_DIR}/claude-bg.sh"
 
 CEKERNEL_VAR_DIR="${CEKERNEL_VAR_DIR:-$HOME/.local/var/cekernel}"
 
@@ -32,6 +33,40 @@ issue_lock_repo_hash() {
   else
     echo -n "$repo_path" | shasum -a 256 | cut -c1-12
   fi
+}
+
+# _issue_lock_holder_alive <holder>
+# exit 0 when the lock holder is alive, exit 1 when it is verifiably dead.
+# Numeric holders are PIDs (kill -0). Non-numeric holders are opaque
+# session tokens (ADR-0005 Amendment 1) resolved via the claude-bg.sh
+# verdict predicate (ADR-0018 — this module never parses agents --json).
+#
+# Degradation policy (ADR-0018 — the consumer decides): query-failed and
+# unknown-value both count as ALIVE. Never steal a lock on doubt —
+# duplicate Workers are worse than a lock held until explicit release,
+# and schema drift (unknown-value) is not evidence of death.
+_issue_lock_holder_alive() {
+  local holder="$1"
+
+  # Empty holder = corrupt/partial write (pid files are always written
+  # with content). Guard it here: an empty token would fall into the
+  # session path below where a prefix match on "" matches EVERY session
+  # (#573).
+  if [[ -z "$holder" ]]; then
+    return 1
+  fi
+
+  if [[ "$holder" =~ ^[0-9]+$ ]]; then
+    kill -0 "$holder" 2>/dev/null
+    return $?
+  fi
+
+  local verdict
+  verdict=$(claude_bg_token_verdict "$holder" 2>/dev/null) || true
+  case "$verdict" in
+    alive|blocked|query-failed|unknown-value) return 0 ;;
+    *) return 1 ;;  # done | stopped | not-listed — verifiably dead
+  esac
 }
 
 issue_lock_acquire() {
@@ -54,7 +89,7 @@ issue_lock_acquire() {
   if [[ -f "$pid_file" ]]; then
     local holder_pid
     holder_pid=$(cat "$pid_file")
-    if ! kill -0 "$holder_pid" 2>/dev/null; then
+    if ! _issue_lock_holder_alive "$holder_pid"; then
       # Holder is dead — remove stale lock and retry
       rm -f "$pid_file"
       rmdir "$lock_dir" 2>/dev/null || true
@@ -112,7 +147,7 @@ issue_lock_check() {
     if [[ -f "$pid_file" ]]; then
       local holder_pid
       holder_pid=$(cat "$pid_file")
-      if kill -0 "$holder_pid" 2>/dev/null; then
+      if _issue_lock_holder_alive "$holder_pid"; then
         return 0  # locked
       fi
       # Holder is dead — stale lock

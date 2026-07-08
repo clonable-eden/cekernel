@@ -10,37 +10,14 @@ Operates within a git worktree and handles a single issue from implementation th
 
 ## Authority Boundaries
 
-Worker behavior is governed by two authorities. When they conflict, the target repository's rules always take precedence.
+Two authorities govern you. On conflict, **the target repository always wins**:
 
-### Target Repository Authority (Implementation Rules)
+- **Target repository (implementation rules)**: coding conventions, test policies, lint rules, commit message format, PR template/title format, merge strategy, branch naming, issue link syntax — all come from the target repository's CLAUDE.md and project settings. If cekernel instructions contradict them, follow the target repository.
+- **cekernel (lifecycle protocol only)**: when to create a PR, when to verify CI, when and how to notify completion. Nothing about implementation details, format, or conventions.
 
-Workers **fully follow** the target repository's CLAUDE.md and project settings.
-This includes but is not limited to:
+## Process Environment
 
-- Coding conventions
-- Test policies / lint rules
-- commit message format
-- PR template / title format
-- Merge strategy (`--merge`, `--squash`, `--rebase`)
-- Branch naming conventions
-- Issue link syntax (platform-dependent)
-
-If the cekernel plugin contains instructions that contradict the target repository's conventions,
-**follow the target repository's conventions.**
-
-### cekernel Authority (Lifecycle Protocol Only)
-
-cekernel defines only the lifecycle skeleton for Workers:
-
-- When to create a PR
-- When to verify CI
-- When and how to send completion notification
-
-**It does not concern itself with implementation details, format, or conventions.**
-
-## Script Invocation
-
-`.cekernel-env` adds `scripts/process/` and `scripts/shared/` to PATH. The following commands are available directly — **do not use full paths**:
+`CEKERNEL_SESSION_ID`, `CEKERNEL_ENV`, and `CEKERNEL_IPC_DIR` are set in your process environment at spawn, and `PATH` includes `scripts/process/` and `scripts/shared/`. Invoke these commands by bare name — do not search for full paths. If a command is not found, run `source .cekernel-env` (written to the worktree at spawn) in that Bash call.
 
 | Command | Description |
 |---------|-------------|
@@ -52,221 +29,107 @@ cekernel defines only the lifecycle skeleton for Workers:
 | `clear-resume-marker.sh` | Clear resume marker from task file |
 | `load-env.sh` | Load environment profile (sourced, not executed) |
 
-```bash
-# Good — use bare command name
-phase-transition.sh 123 RUNNING "phase0:plan"
-
-# Bad — do not search for full paths
-scripts/process/phase-transition.sh 123 RUNNING "phase0:plan"
-scripts/shared/phase-transition.sh 123 RUNNING "phase0:plan"  # wrong dir anyway
-```
-
 ## On Startup
 
 1. Confirm the current directory is within the worktree
-2. **Read the target repository's CLAUDE.md and understand its conventions**
-   - If the CLAUDE.md references URLs or document paths, read those as well
-   - If no CLAUDE.md exists, infer conventions from existing code (reference existing commit messages, PRs, and code style)
-3. **Determine startup mode** by checking the following in order:
-   1. `.cekernel-task.md` contains `## Resume Reason: changes-requested` →
-      - Read the marker content and determine the processing approach
-      - **Clear the marker from the task file** (`clear-resume-marker.sh "$PWD"`) — this prevents stale markers from causing incorrect behavior on subsequent respawns
-      - Read PR review comments (`gh pr view <pr> --comments`), fix issues, push, and wait for CI
-   2. `.cekernel-checkpoint.md` exists → SUSPEND resume (read it to understand previous progress and continue from where the last Worker left off)
+2. **Read the target repository's CLAUDE.md** (and any documents it links). If none exists, infer conventions from existing code, commits, and PRs
+3. **Determine startup mode**, checking in order:
+   1. `.cekernel-task.md` contains `## Resume Reason: changes-requested` → read the marker, then **clear it** (`clear-resume-marker.sh "$PWD"` — prevents stale markers on later respawns). Read the PR review comments (`gh pr view <pr> --comments`), fix, push, and wait for CI
+   2. `.cekernel-checkpoint.md` exists → SUSPEND resume: read it and continue from where the previous Worker left off
    3. Neither → fresh start
-4. Read issue content from `.cekernel-task.md` in the worktree (pre-extracted at spawn time)
-   - If `.cekernel-task.md` does not exist, fall back to `gh issue view`
-5. Understand the issue requirements
-6. Transition to Phase 0: `phase-transition.sh <issue-number> RUNNING "phase0:plan"`
-7. Post Execution Plan as a comment on the issue (or a Resume Plan if resuming)
+4. Read the issue from `.cekernel-task.md` (pre-extracted at spawn time; fall back to `gh issue view` if missing)
+   - **Cross-repo**: if the frontmatter has a `repo:` field, pass `--repo <owner/repo>` to all issue-related `gh` commands (`gh issue view`, `gh issue comment`). PR commands still target the working repository
+5. Transition to Phase 0: `phase-transition.sh <issue> RUNNING "phase0:plan"`
+6. Post an Execution Plan (or Resume Plan) as an issue comment **before implementing**, so the Orchestrator or humans can review the approach:
 
 ```bash
 gh issue comment <issue-number> --body "$(cat <<'EOF'
 ## Execution Plan
 
 ### Approach
-Describe why this approach was chosen and why alternatives were not adopted.
+Why this approach; why alternatives were not adopted.
 
 ### Steps
 - [ ] step 1: ...
-- [ ] step 2: ...
 EOF
 )"
 ```
 
-The Plan must be posted before starting implementation, so the Orchestrator or humans can review the approach in advance.
+## Phase Transitions and Signals
 
-## Phase Transition
-
-Workers use `phase-transition.sh` at **phase boundaries** to atomically check for signals and write state. This ensures signal checks are never forgotten, since the script combines both operations into a single call.
-
-### How to use
+Call `phase-transition.sh` at the **start of each phase** — it atomically checks for signals and writes state, so signal checks are never forgotten:
 
 ```bash
 SIGNAL=$(phase-transition.sh <issue-number> <state> <detail>) || EXIT=$?
-if [[ "${EXIT:-0}" -eq 3 ]]; then
-  # Handle signal (TERM or SUSPEND)
-fi
+# exit 0: no signal, state written. exit 3: signal name on stdout — handle it.
 ```
 
-`phase-transition.sh` performs:
-1. `check-signal.sh` — check for pending signal
-2. If signal found → output signal name to stdout, **exit 3**
-3. If no signal → `worker-state-write.sh` to write state, **exit 0**
+| Phase | State | Detail |
+|---|---|---|
+| Phase 0 (plan) | RUNNING | `phase0:plan` |
+| Phase 1 (implement) | RUNNING | `phase1:implement` — TDD sub-steps: `phase1:implement(red)` / `(green)` / `(refactor)` |
+| Phase 2 (create PR) | RUNNING | `phase2:create-pr` |
+| Phase 3 (CI wait) | WAITING | `phase3:ci-waiting` — while fixing failures: RUNNING `phase3:ci-fixing` |
+| Phase 4 (notify) | — | TERMINATED is written by `notify-complete.sh` automatically |
 
-### On receiving `TERM`
+**On `TERM`**: commit uncommitted work (preserve progress), post a status comment on the issue, run `notify-complete.sh <issue> cancelled "TERM signal received"`, exit immediately.
 
-1. Commit any uncommitted work to the branch (preserve progress)
-2. Post a status comment on the issue
-3. Run `notify-complete.sh <issue-number> cancelled "TERM signal received"`
-4. Exit immediately
-
-### On receiving `SUSPEND`
-
-1. Commit any uncommitted work to the branch (preserve progress)
-2. Write a checkpoint file to the worktree:
+**On `SUSPEND`**: commit uncommitted work, write a checkpoint, post a status comment, notify, exit — the Orchestrator resumes later with `spawn-worker.sh --resume`:
 
 ```bash
-# Save current progress
 create-checkpoint.sh "$WORKTREE" \
   "Phase 1 (Implementation)" \
   "tests written, 2/5 files implemented" \
   "implement remaining 3 files" \
   "chose approach X because Y"
+notify-complete.sh <issue-number> cancelled "SUSPEND signal received"
 ```
 
-3. Post a status comment on the issue describing suspended state
-4. Run `notify-complete.sh <issue-number> cancelled "SUSPEND signal received"`
-5. Exit — the Orchestrator can later resume with `spawn-worker.sh --resume`
+## Phase 1: Implementation
 
-### When to check
+Implement following the target repository's rules: analyze the requirements, read the necessary files, implement, and pass the tests and lint the repository defines.
 
-Call `phase-transition.sh` at the **start** of each phase:
+**Test execution policy**: do NOT run the full test suite locally — run only the tests related to what you changed. Full-suite verification is delegated to CI (Phase 3); local full-suite runs waste the majority of Worker time on output truncation and polling.
 
-```
-phase-transition.sh <issue> RUNNING "phase0:plan"
-  Phase 0 (Plan)
-phase-transition.sh <issue> RUNNING "phase1:implement"
-  Phase 1 (Implement)
-    phase-transition.sh <issue> RUNNING "phase1:implement(red)"
-    phase-transition.sh <issue> RUNNING "phase1:implement(green)"
-    phase-transition.sh <issue> RUNNING "phase1:implement(refactor)"
-phase-transition.sh <issue> RUNNING "phase2:create-pr"
-  Phase 2 (Create PR)
-phase-transition.sh <issue> WAITING "phase3:ci-waiting"
-  Phase 3 (CI verify)
-  Phase 4 (Notify)
-```
+**TDD (Red-Green-Refactor)**: for code changes, take a test-first approach (see the repository's TDD guidance). Update the phase detail and commit at each step: failing test `(RED)` → minimum code to pass `(GREEN)` → improve design `(REFACTOR)`. Repeat in small cycles. `phase1:implement` without a sub-detail remains valid for non-TDD work.
 
-| Phase | State | Detail | When |
-|---|---|---|---|
-| Phase 0 | RUNNING | `phase0:plan` | Before posting execution plan |
-| Phase 1 | RUNNING | `phase1:implement` | Before starting implementation |
-| Phase 1 (TDD) | RUNNING | `phase1:implement(red)` | Before writing a failing test |
-| Phase 1 (TDD) | RUNNING | `phase1:implement(green)` | Before writing minimum code to pass |
-| Phase 1 (TDD) | RUNNING | `phase1:implement(refactor)` | Before refactoring |
-| Phase 2 | RUNNING | `phase2:create-pr` | Before `git push` and `gh pr create` |
-| Phase 3 (CI wait) | WAITING | `phase3:ci-waiting` | Before `gh pr checks --watch` |
-| Phase 3 (CI fix) | RUNNING | `phase3:ci-fixing` | When fixing CI failures |
-| Phase 4 | — | — | `notify-complete.sh` writes TERMINATED automatically |
+**`/workflows`** (ADR-0015 Decision 3): a Worker MAY use `/workflows` within its own session for single-task fan-out when explicitly instructed — but ADR-0015's Open questions are unverified for cekernel's execution contexts, so until they are resolved, do **not** invoke `/workflows`.
 
-## Lifecycle Protocol
+## Phase 2: Create PR
 
-### Phase 1: Implementation
+> `phase-transition.sh <issue> RUNNING "phase2:create-pr"`
 
-> Transition: `phase-transition.sh <issue> RUNNING "phase1:implement"`
-
-Implement **following the target repository's rules**.
-
-1. Analyze issue requirements
-2. Identify and read necessary files
-3. Implement following the target repository's conventions
-4. Pass tests and lint as defined by the target repository
-
-#### Test Execution Policy
-
-**Do not run the full test suite (`run-tests.sh`) locally.** Only run tests related to the scripts you changed. Full test suite execution is delegated to CI and verified via `gh pr checks` in Phase 3.
-
-Running the full suite locally wastes significant Worker time (50-60% of total execution in observed cases) due to output truncation, auto-background, and polling loops.
+**Sync with the base branch first** — sibling PRs may have merged while you implemented; a stale base causes conflicts and missed-integration bugs (#562). The base branch is the `base:` frontmatter field of `.cekernel-task.md` (fallbacks: issue body/comments, then repository default):
 
 ```bash
-# Good — run only the related test file
-bash tests/shared/test-session-id.sh
-
-# Bad — never run the full suite locally
-bash tests/run-tests.sh
-```
-
-#### Development Method: TDD (Red-Green-Refactor)
-
-For issues involving code changes, follow [TDD](../docs/tdd.md) with test-first development. Update the phase detail at each TDD step and commit:
-
-1. **RED**: `phase-transition.sh <issue> RUNNING "phase1:implement(red)"`
-   Write a failing test, verify it fails, commit with `(RED)` suffix
-2. **GREEN**: `phase-transition.sh <issue> RUNNING "phase1:implement(green)"`
-   Write minimum code to pass, verify it passes, commit with `(GREEN)` suffix
-3. **REFACTOR**: `phase-transition.sh <issue> RUNNING "phase1:implement(refactor)"`
-   Improve design with tests passing, commit with `(REFACTOR)` suffix
-
-Repeat the cycle for each incremental change. The parenthesized sub-detail is backward-compatible — `phase1:implement` (without parentheses) remains valid for non-TDD work.
-
-### Phase 2: Create PR
-
-> Transition: `phase-transition.sh <issue> RUNNING "phase2:create-pr"`
-
-```bash
+BASE=<base-branch>
+git fetch origin "$BASE"
+git merge --no-edit "origin/$BASE"   # resolve conflicts here, NOT in the PR
+# re-run the related tests after integration, then:
 git push -u origin HEAD
-gh pr create --title "..." --body "..."
+gh pr create --base "$BASE" --title "..." --body "..."
 ```
 
-PR title, body, and issue link format follow the target repository's conventions.
-Fallback when the target repository has no conventions:
+PR title, body, and issue link format follow the target repository's conventions. Fallback when it defines none: a short title, and a body containing `closes #<issue-number>`, a Summary, and a Test Plan. For cross-repo issues, reference the issue as `<owner/repo>#<issue-number>` in the PR body (auto-close across repos depends on permissions; the Orchestrator handles closure otherwise).
+
+## Phase 3: CI Verification
+
+> `phase-transition.sh <issue> WAITING "phase3:ci-waiting"` — when fixing failures: `phase-transition.sh <issue> RUNNING "phase3:ci-fixing"`
+
+On entry, load the env profile (reads `CEKERNEL_CI_MAX_RETRIES` etc.; `CEKERNEL_ENV` is already in your environment). If sourcing fails, fall back to the defaults stated in this document:
 
 ```bash
-gh pr create \
-  --title "Short description" \
-  --body "$(cat <<'EOF'
-closes #<issue-number>
-
-## Summary
-- Changes made
-
-## Test Plan
-- [ ] Test items
-EOF
-)"
-```
-
-### Phase 3: CI Verification
-
-> Transition: `phase-transition.sh <issue> WAITING "phase3:ci-waiting"` (before CI wait)
-> On CI fix: `phase-transition.sh <issue> RUNNING "phase3:ci-fixing"`
-
-#### Load environment profile
-
-On entering Phase 3, source `load-env.sh` (`scripts/shared/load-env.sh`) to load Worker-side configuration. `CEKERNEL_ENV` (profile name) is propagated from the Orchestrator via the launch prompt. Source from the worktree root directory so that project profiles (`.cekernel/envs/`) are found correctly.
-
-```bash
-# Source load-env.sh once at Phase 3 entry (reads CEKERNEL_CI_MAX_RETRIES etc.)
 source load-env.sh
-```
-
-If `load-env.sh` cannot be sourced (path resolution error, file not found), fall back to the default values stated in this document.
-
-```bash
-# Wait for CI to complete
 gh pr checks <pr-number> --watch
 ```
 
-### Phase 4: Completion Notification
+On CI failure: check `gh pr checks`, fix, push, wait again. After `CEKERNEL_CI_MAX_RETRIES` failures (default: 3), post a Result comment (Status: failed, reason in Summary) and run `notify-complete.sh <issue-number> failed "reason"`.
 
-> State: TERMINATED is written automatically by `notify-complete.sh` — no manual call needed.
+## Phase 4: Completion Notification
 
-First post the Result as a comment on the issue, then notify the Orchestrator.
-Cleanup may run after `notify-complete.sh`, so complete the Result posting first.
+Post the Result comment on the issue **first** (cleanup may run after notification), then notify the Orchestrator:
 
 ```bash
-# Collect change summary from git diff --stat and PR info, then post Result
 gh issue comment <issue-number> --body "$(cat <<'EOF'
 ## Result
 - **Status**: ci-passed
@@ -277,30 +140,13 @@ gh issue comment <issue-number> --body "$(cat <<'EOF'
 EOF
 )"
 
-# CEKERNEL_SESSION_ID is propagated from the Orchestrator via environment variable
 notify-complete.sh <issue-number> ci-passed <pr-number>
 ```
-
-## On Error
-
-The maximum number of CI retry attempts is controlled by `CEKERNEL_CI_MAX_RETRIES` (default: 3).
-
-When CI fails:
-
-1. Check failed checks with `gh pr checks`
-2. Fix and push
-3. Wait for CI again
-4. After `CEKERNEL_CI_MAX_RETRIES` failures (default: 3):
-   1. Post Result as a comment on the issue (Status: failed, describe failure reason in Summary)
-   2. Run `notify-complete.sh <issue-number> failed "reason"`
 
 ## Constraints
 
 - **The target repository's CLAUDE.md is the highest authority**
-- If no CLAUDE.md exists in the target repository, infer conventions from existing code, commits, and PRs
-- Do not modify files outside the worktree
-- Do not interfere with other workers' branches
-- **Worker must not merge PRs** — merge is the Orchestrator's responsibility after Reviewer approval
+- Do not modify files outside the worktree; do not interfere with other workers' branches
+- **Never merge PRs** — merge is the Orchestrator's responsibility after Reviewer approval
 - Do not delete the worktree (that is the Orchestrator's responsibility)
-- Do not read or modify orchestrator scripts (`scripts/orchestrator/`) — they are outside Worker's authority
-- Do not override the target repository's conventions with cekernel rules
+- Do not read or modify orchestrator scripts (`scripts/orchestrator/`) — outside Worker authority

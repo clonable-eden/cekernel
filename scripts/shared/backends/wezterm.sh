@@ -1,14 +1,26 @@
 #!/usr/bin/env bash
-# backends/wezterm.sh — WezTerm backend (ADR-0005 API)
+# backends/wezterm.sh — WezTerm backend (ADR-0005 API, ADR-0016 Phase 5)
 #
-# Implements 5 external API functions using WezTerm CLI.
+# Spawn and supervision delegate to the shared `claude --bg` session core
+# (bg-session.sh) — identical to headless. WezTerm adds an attach-only
+# visualization layer: a 3-pane window whose main pane runs
+# `claude attach <session-id>` (ADR-0001 Amendment 1).
+#
+# Pane close = detach, NOT session termination: liveness maps to the
+# ADR-0018 session verdict, never pane existence. Killing the worker
+# stops the session (via the claude-bg stop primitive) and closes the
+# window.
+#
+# Handle file: ${CEKERNEL_IPC_DIR}/handle-{issue}.{type} contains the
+# opaque session token (see bg-session.sh).
+# Pane file:   ${CEKERNEL_IPC_DIR}/pane-{issue}.{type} contains the WezTerm
+# pane ID (numeric) — a visualization detail, cleaned up on kill.
+#
 # Sourced by backend-adapter.sh when CEKERNEL_BACKEND=wezterm.
-#
-# Handle file: ${CEKERNEL_IPC_DIR}/handle-{issue}.{type} contains WezTerm pane ID (numeric).
 
 # ── Dependencies ──
 _WEZTERM_BACKEND_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
-source "${_WEZTERM_BACKEND_DIR}/../runner.sh"
+source "${_WEZTERM_BACKEND_DIR}/../bg-session.sh"
 
 # ── External API ──
 
@@ -17,8 +29,8 @@ backend_available() {
 }
 
 # backend_spawn_worker <issue> <type> <worktree> <prompt> <agent-name>
-# Spawns a Worker in a WezTerm 3-pane layout.
-# Saves pane ID to handle file internally.
+# Spawns the Worker session via the shared --bg path, then opens a WezTerm
+# 3-pane layout whose main pane attaches to the session.
 backend_spawn_worker() {
   local issue="$1"
   local type="$2"
@@ -26,22 +38,29 @@ backend_spawn_worker() {
   local prompt="$4"
   local agent_name="$5"
 
+  # Spawn the session first (Rule of Repair: no window without a session).
+  # Writes handle-{issue}.{type} and {type}-{issue}.claude-session-id.
+  bg_session_spawn "$issue" "$type" "$worktree" "$prompt" "$agent_name" || return 1
+
+  local token
+  token=$(bg_session_get_handle "$issue" "$type")
+
   # Resolve workspace (WezTerm-specific)
   local workspace=""
   workspace=$(_backend_resolve_workspace)
 
-  # Generate runner script (handles cd, env, prompt file, claude)
-  local runner
-  runner=$(write_runner_script "$issue" "$worktree" "${CEKERNEL_SESSION_ID:-}" "$agent_name" "$prompt")
+  # Pane command: attach-only viewer. Claude Code session markers are
+  # unset defensively — the mux server env may carry them when it was
+  # started from within a Claude session.
+  local attach_cmd="env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT -u CLAUDE_CODE_SESSION_ACCESS_TOKEN claude attach '${token}'"
 
   # Build JSON payload for Lua-side layout construction
-  # Only a file path is sent — no escaping concerns
   local layout_payload
   layout_payload=$(jq -n \
     --arg worktree "$worktree" \
     --arg session_id "${CEKERNEL_SESSION_ID:-}" \
     --arg issue_number "$issue" \
-    --arg command "bash '${runner}'" \
+    --arg command "$attach_cmd" \
     '{worktree: $worktree, session_id: $session_id, issue_number: $issue_number, command: $command}'
   )
 
@@ -61,111 +80,57 @@ backend_spawn_worker() {
   sleep 0.1
   wezterm cli send-text --pane-id "$pane_id" --no-paste $'\r'
 
-  # Save handle (pane ID)
-  echo "$pane_id" > "${CEKERNEL_IPC_DIR}/handle-${issue}.${type}"
+  # Save pane ID (visualization bookkeeping, separate from the handle)
+  echo "$pane_id" > "${CEKERNEL_IPC_DIR}/pane-${issue}.${type}"
 }
 
-# backend_get_pid <issue> [type]
-# Returns the PID of the foreground process in the WezTerm pane.
-# WezTerm's .pid field may return null, so falls back to tty_name-based lookup.
-backend_get_pid() {
-  local issue="$1"
-  local type="${2:-}"
+# backend_get_handle <issue> [type]
+# Returns the opaque session token (ADR-0005 Amendment 1).
+backend_get_handle() {
+  bg_session_get_handle "$@"
+}
 
-  local handle_file
-  if [[ -n "$type" ]]; then
-    handle_file="${CEKERNEL_IPC_DIR}/handle-${issue}.${type}"
-  else
-    handle_file=$(ls "${CEKERNEL_IPC_DIR}"/handle-"${issue}".* 2>/dev/null | head -1)
-  fi
-
-  if [[ -z "$handle_file" || ! -f "$handle_file" ]]; then
-    echo "Error: no handle file for issue #${issue}" >&2
-    return 1
-  fi
-
-  local pane_id
-  pane_id=$(cat "$handle_file")
-
-  local json
-  json=$(wezterm cli list --format json 2>/dev/null) || return 1
-
-  # Try .pid field first
-  local pid
-  pid=$(echo "$json" | jq -r --argjson target "$pane_id" '.[] | select(.pane_id == $target) | .pid' 2>/dev/null)
-
-  if [[ -n "$pid" && "$pid" != "null" ]]; then
-    echo "$pid"
-    return 0
-  fi
-
-  # Fallback: use tty_name to find PID via ps (#297)
-  local tty_name
-  tty_name=$(echo "$json" | jq -r --argjson target "$pane_id" '.[] | select(.pane_id == $target) | .tty_name' 2>/dev/null)
-
-  if [[ -z "$tty_name" || "$tty_name" == "null" ]]; then
-    return 1
-  fi
-
-  # Extract tty short name (e.g., /dev/ttys042 -> ttys042) and find claude process
-  ps -t "${tty_name##*/}" -o pid= -o comm= 2>/dev/null \
-    | awk '/claude/ {print $1; exit}'
+# backend_worker_status <issue> [type]
+backend_worker_status() {
+  bg_session_status "$@"
 }
 
 # backend_worker_alive <issue> [type]
-# exit 0 if alive, exit 1 if dead or no handle
-# If type is omitted, checks any handle-{issue}.* file.
+# Session-state liveness: pane close is a detach, never worker death.
 backend_worker_alive() {
-  local issue="$1"
-  local type="${2:-}"
-
-  if [[ -n "$type" ]]; then
-    local handle_file="${CEKERNEL_IPC_DIR}/handle-${issue}.${type}"
-    [[ -f "$handle_file" ]] || return 1
-    local pane_id
-    pane_id=$(cat "$handle_file")
-    _backend_pane_alive "$pane_id"
-  else
-    local found=0
-    for handle_file in "${CEKERNEL_IPC_DIR}"/handle-"${issue}".*; do
-      [[ -f "$handle_file" ]] || continue
-      found=1
-      local pane_id
-      pane_id=$(cat "$handle_file")
-      if _backend_pane_alive "$pane_id"; then
-        return 0
-      fi
-    done
-    [[ "$found" -eq 1 ]] || return 1
-    return 1
-  fi
+  bg_session_alive "$@"
 }
 
 # backend_kill_worker <issue> [type]
-# Kills all panes in the worker's window. No error if handle missing.
-# Also cleans up the payload file created by backend_spawn_worker.
-# If type is omitted, kills all handle-{issue}.* handles.
+# Stops the session(s) via the claude-bg stop primitive, closes the visualization
+# window(s), and cleans up pane/payload files. No error if handle missing.
 backend_kill_worker() {
   local issue="$1"
   local type="${2:-}"
 
-  # Clean up payload file (created by backend_spawn_worker to avoid send-text 1024-byte limit)
-  rm -f "${CEKERNEL_IPC_DIR}/payload-${issue}.b64"
+  # Stop the session(s) — the daemon owns the process
+  bg_session_stop "$issue" "$type"
 
+  # Close the visualization window(s) and clean up pane bookkeeping
+  local pane_file
   if [[ -n "$type" ]]; then
-    local handle_file="${CEKERNEL_IPC_DIR}/handle-${issue}.${type}"
-    [[ -f "$handle_file" ]] || return 0
-    local pane_id
-    pane_id=$(cat "$handle_file")
-    _backend_kill_window "$pane_id"
+    pane_file="${CEKERNEL_IPC_DIR}/pane-${issue}.${type}"
+    if [[ -f "$pane_file" ]]; then
+      _backend_kill_window "$(cat "$pane_file")"
+      rm -f "$pane_file"
+    fi
   else
-    for handle_file in "${CEKERNEL_IPC_DIR}"/handle-"${issue}".*; do
-      [[ -f "$handle_file" ]] || continue
-      local pane_id
-      pane_id=$(cat "$handle_file")
-      _backend_kill_window "$pane_id"
+    for pane_file in "${CEKERNEL_IPC_DIR}"/pane-"${issue}".*; do
+      [[ -f "$pane_file" ]] || continue
+      _backend_kill_window "$(cat "$pane_file")"
+      rm -f "$pane_file"
     done
   fi
+
+  # Clean up payload file (created by backend_spawn_worker to avoid the
+  # send-text 1024-byte limit)
+  rm -f "${CEKERNEL_IPC_DIR}/payload-${issue}.b64"
+  return 0
 }
 
 # ── Private API (internal to WezTerm backend) ──
@@ -208,41 +173,10 @@ _backend_spawn_window() {
   wezterm cli spawn "${args[@]}"
 }
 
-# _backend_run_command <pane-id> <command>
-_backend_run_command() {
-  local pane_id="$1"
-  local cmd="$2"
-  wezterm cli send-text --pane-id "$pane_id" -- "$cmd"
-  wezterm cli send-text --pane-id "$pane_id" --no-paste $'\r'
-}
-
-# _backend_split_pane <direction> <percent> <pane-id> <cwd> [command...]
-_backend_split_pane() {
-  local direction="$1"
-  local percent="$2"
-  local pane_id="$3"
-  local cwd="$4"
-  shift 4
-  local args=(
-    "--${direction}" --percent "$percent"
-    --pane-id "$pane_id"
-    --cwd "$cwd"
-  )
-  if [[ $# -gt 0 ]]; then
-    args+=(-- "$@")
-  fi
-  wezterm cli split-pane "${args[@]}"
-}
-
-# _backend_pane_alive <pane-id>
-_backend_pane_alive() {
-  local pane_id="$1"
-  wezterm cli list --format json 2>/dev/null \
-    | jq -e --argjson target "$pane_id" 'any(.[]; .pane_id == $target)' >/dev/null 2>&1
-}
-
 # _backend_kill_window <pane-id>
-# Kill all panes in the pane's window. Falls back to killing the specified pane only.
+# Kill all panes in the pane's window. Falls back to killing the specified
+# pane only. Closing panes only detaches viewers — the session itself is
+# stopped separately via bg_session_stop.
 _backend_kill_window() {
   local pane_id="$1"
   local window_panes

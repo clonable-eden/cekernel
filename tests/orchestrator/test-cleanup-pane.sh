@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # test-cleanup-pane.sh — Tests that cleanup-worktree.sh kills Workers via backend
 #
-# cleanup-worktree.sh should kill Workers even without --force.
-# WezTerm commands are mocked and kill-pane calls are recorded.
+# ADR-0016 Phase 5 semantics: the handle is an opaque session token
+# (stopped via `claude stop`); the attach pane lives in pane-{issue}.{type}
+# and its window is closed on cleanup. WezTerm and claude are mocked as
+# PATH shims; kill-pane and stop calls are recorded.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,6 +18,8 @@ echo "test: cleanup-pane"
 export CEKERNEL_SESSION_ID="test-cleanup-pane-00000001"
 source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
 source "${CEKERNEL_DIR}/scripts/shared/claude-json-helper.sh"
+
+SESSION_TOKEN="aaaa1111-2222-4333-8444-555566667777"
 
 # ── Create temporary Git repository for testing ──
 TEST_TMP=$(mktemp -d)
@@ -31,19 +35,31 @@ FAKE_CLAUDE_JSON="${TEST_TMP}/claude.json"
 export CLAUDE_JSON="$FAKE_CLAUDE_JSON"
 export LOCK_DIR="${FAKE_CLAUDE_JSON}.lock"
 
-# ── wezterm mock: record kill-pane calls ──
+# ── PATH shims: record wezterm and claude calls ──
 WEZTERM_LOG="${TEST_TMP}/wezterm-calls.log"
+CLAUDE_LOG="${TEST_TMP}/claude-calls.log"
+MOCK_BIN="${TEST_TMP}/mock-bin"
+mkdir -p "$MOCK_BIN"
+export PATH="${MOCK_BIN}:${PATH}"
 
-setup_wezterm_mock() {
-  local log_file="$1"
-  local mock_bin="${TEST_TMP}/mock-bin"
-  mkdir -p "$mock_bin"
-  cat > "${mock_bin}/wezterm" <<MOCK_SCRIPT
+cat > "${MOCK_BIN}/claude" <<MOCK_SCRIPT
 #!/usr/bin/env bash
-echo "wezterm \$*" >> "${log_file}"
+echo "claude \$*" >> "${CLAUDE_LOG}"
 MOCK_SCRIPT
-  chmod +x "${mock_bin}/wezterm"
-  export PATH="${mock_bin}:${PATH}"
+chmod +x "${MOCK_BIN}/claude"
+
+# setup_wezterm_mock [list-json-file]
+# Records all calls; `cli list --format json` replays the given file ([] default).
+setup_wezterm_mock() {
+  local json_file="${1:-}"
+  cat > "${MOCK_BIN}/wezterm" <<MOCK_SCRIPT
+#!/usr/bin/env bash
+echo "wezterm \$*" >> "${WEZTERM_LOG}"
+if [[ "\${1:-}" == "cli" && "\${2:-}" == "list" ]]; then
+  if [[ -n "${json_file}" ]]; then cat "${json_file}"; else echo "[]"; fi
+fi
+MOCK_SCRIPT
+  chmod +x "${MOCK_BIN}/wezterm"
 }
 
 setup_worktree() {
@@ -57,22 +73,32 @@ setup_worktree() {
   echo "$worktree"
 }
 
-# ── Test 1: cleanup without --force → Worker is killed ──
+# ── Test 1: cleanup without --force → session stopped, pane killed ──
 > "$WEZTERM_LOG"
-setup_wezterm_mock "$WEZTERM_LOG"
+> "$CLAUDE_LOG"
+setup_wezterm_mock
 
 ISSUE="200"
 WORKTREE=$(setup_worktree "$ISSUE" "$FAKE_REPO")
 
 mkdir -p "$CEKERNEL_IPC_DIR"
 mkfifo "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
-# Use handle-{issue} (ADR-0005 format)
-echo "42" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE}.worker"
+# Phase 5: handle = opaque session token; pane = visualization detail
+echo "$SESSION_TOKEN" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE}.worker"
+echo "42" > "${CEKERNEL_IPC_DIR}/pane-${ISSUE}.worker"
 
 cd "$FAKE_REPO"
 CEKERNEL_BACKEND=wezterm bash "${CEKERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
 
-# Verify pane was killed
+if grep -q "stop ${SESSION_TOKEN}" "$CLAUDE_LOG" 2>/dev/null; then
+  echo "  PASS: Session stopped via claude stop"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+else
+  echo "  FAIL: Session NOT stopped"
+  echo "    claude calls: $(cat "$CLAUDE_LOG" 2>/dev/null || echo '(none)')"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+
 if grep -q "kill-pane.*42" "$WEZTERM_LOG" 2>/dev/null; then
   echo "  PASS: Pane killed without --force"
   TESTS_PASSED=$((TESTS_PASSED + 1))
@@ -83,17 +109,20 @@ else
 fi
 
 assert_not_exists "Handle file removed after cleanup" "${CEKERNEL_IPC_DIR}/handle-${ISSUE}.worker"
+assert_not_exists "Pane file removed after cleanup" "${CEKERNEL_IPC_DIR}/pane-${ISSUE}.worker"
 
-# ── Test 2: cleanup with --force → Worker is killed ──
+# ── Test 2: cleanup with --force → session stopped, pane killed ──
 rm -rf "$CEKERNEL_IPC_DIR"
 > "$WEZTERM_LOG"
+> "$CLAUDE_LOG"
 
 ISSUE="201"
 WORKTREE=$(setup_worktree "$ISSUE" "$FAKE_REPO")
 
 mkdir -p "$CEKERNEL_IPC_DIR"
 mkfifo "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
-echo "99" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE}.worker"
+echo "$SESSION_TOKEN" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE}.worker"
+echo "99" > "${CEKERNEL_IPC_DIR}/pane-${ISSUE}.worker"
 
 CEKERNEL_BACKEND=wezterm bash "${CEKERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" --force "$ISSUE" 2>/dev/null
 
@@ -108,16 +137,17 @@ fi
 
 assert_not_exists "Handle file removed after --force cleanup" "${CEKERNEL_IPC_DIR}/handle-${ISSUE}.worker"
 
-# ── Test 3: No handle file → skips without error ──
+# ── Test 3: No handle/pane file → skips without error ──
 rm -rf "$CEKERNEL_IPC_DIR"
 > "$WEZTERM_LOG"
+> "$CLAUDE_LOG"
 
 ISSUE="202"
 WORKTREE=$(setup_worktree "$ISSUE" "$FAKE_REPO")
 
 mkdir -p "$CEKERNEL_IPC_DIR"
 mkfifo "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
-# Do not create handle file
+# Do not create handle or pane files
 
 CEKERNEL_BACKEND=wezterm bash "${CEKERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
 RESULT=$?
@@ -126,33 +156,17 @@ assert_eq "Cleanup succeeds without handle file" "0" "$RESULT"
 
 # wezterm kill-pane should not be called
 if grep -q "kill-pane" "$WEZTERM_LOG" 2>/dev/null; then
-  echo "  FAIL: kill-pane called despite no handle file"
+  echo "  FAIL: kill-pane called despite no pane file"
   TESTS_FAILED=$((TESTS_FAILED + 1))
 else
-  echo "  PASS: No kill-pane call when no handle file"
+  echo "  PASS: No kill-pane call when no pane file"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 fi
-
-# ── Enhanced wezterm mock: also responds to cli list --format json ──
-setup_wezterm_mock_with_list() {
-  local log_file="$1"
-  local json_file="$2"
-  local mock_bin="${TEST_TMP}/mock-bin"
-  mkdir -p "$mock_bin"
-  cat > "${mock_bin}/wezterm" <<MOCK_SCRIPT
-#!/usr/bin/env bash
-echo "wezterm \$*" >> "${log_file}"
-if [[ "\${1:-}" == "cli" && "\${2:-}" == "list" ]]; then
-  cat "${json_file}"
-fi
-MOCK_SCRIPT
-  chmod +x "${mock_bin}/wezterm"
-  export PATH="${mock_bin}:${PATH}"
-}
 
 # ── Test 4: All panes in same window are killed ──
 rm -rf "$CEKERNEL_IPC_DIR"
 > "$WEZTERM_LOG"
+> "$CLAUDE_LOG"
 
 # Mock data for wezterm cli list --format json
 PANE_LIST_JSON="${TEST_TMP}/pane-list.json"
@@ -165,45 +179,30 @@ cat > "$PANE_LIST_JSON" <<'JSONEOF'
 ]
 JSONEOF
 
-setup_wezterm_mock_with_list "$WEZTERM_LOG" "$PANE_LIST_JSON"
+setup_wezterm_mock "$PANE_LIST_JSON"
 
 ISSUE="203"
 WORKTREE=$(setup_worktree "$ISSUE" "$FAKE_REPO")
 
 mkdir -p "$CEKERNEL_IPC_DIR"
 mkfifo "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
-echo "42" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE}.worker"
+echo "$SESSION_TOKEN" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE}.worker"
+echo "42" > "${CEKERNEL_IPC_DIR}/pane-${ISSUE}.worker"
 
 cd "$FAKE_REPO"
 CEKERNEL_BACKEND=wezterm bash "${CEKERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
 
 # All panes in same window (42, 43, 44) should be killed
-if grep -q "kill-pane.*--pane-id 42" "$WEZTERM_LOG" 2>/dev/null; then
-  echo "  PASS: Main pane 42 killed"
-  TESTS_PASSED=$((TESTS_PASSED + 1))
-else
-  echo "  FAIL: Main pane 42 NOT killed"
-  echo "    wezterm calls: $(cat "$WEZTERM_LOG" 2>/dev/null || echo '(none)')"
-  TESTS_FAILED=$((TESTS_FAILED + 1))
-fi
-
-if grep -q "kill-pane.*--pane-id 43" "$WEZTERM_LOG" 2>/dev/null; then
-  echo "  PASS: Sibling pane 43 killed"
-  TESTS_PASSED=$((TESTS_PASSED + 1))
-else
-  echo "  FAIL: Sibling pane 43 NOT killed"
-  echo "    wezterm calls: $(cat "$WEZTERM_LOG" 2>/dev/null || echo '(none)')"
-  TESTS_FAILED=$((TESTS_FAILED + 1))
-fi
-
-if grep -q "kill-pane.*--pane-id 44" "$WEZTERM_LOG" 2>/dev/null; then
-  echo "  PASS: Sibling pane 44 killed"
-  TESTS_PASSED=$((TESTS_PASSED + 1))
-else
-  echo "  FAIL: Sibling pane 44 NOT killed"
-  echo "    wezterm calls: $(cat "$WEZTERM_LOG" 2>/dev/null || echo '(none)')"
-  TESTS_FAILED=$((TESTS_FAILED + 1))
-fi
+for pane in 42 43 44; do
+  if grep -q "kill-pane.*--pane-id ${pane}" "$WEZTERM_LOG" 2>/dev/null; then
+    echo "  PASS: Pane ${pane} killed"
+    TESTS_PASSED=$((TESTS_PASSED + 1))
+  else
+    echo "  FAIL: Pane ${pane} NOT killed"
+    echo "    wezterm calls: $(cat "$WEZTERM_LOG" 2>/dev/null || echo '(none)')"
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+  fi
+done
 
 # Pane 100 from different window should NOT be killed
 if grep -q "kill-pane.*--pane-id 100" "$WEZTERM_LOG" 2>/dev/null; then
@@ -217,18 +216,17 @@ fi
 # ── Test 5: cli list fails → only main pane killed (fallback) ──
 rm -rf "$CEKERNEL_IPC_DIR"
 > "$WEZTERM_LOG"
+> "$CLAUDE_LOG"
 
-# Mock that returns empty JSON for cli list
-EMPTY_JSON="${TEST_TMP}/empty-list.json"
-echo "[]" > "$EMPTY_JSON"
-setup_wezterm_mock_with_list "$WEZTERM_LOG" "$EMPTY_JSON"
+setup_wezterm_mock  # cli list replies []
 
 ISSUE="204"
 WORKTREE=$(setup_worktree "$ISSUE" "$FAKE_REPO")
 
 mkdir -p "$CEKERNEL_IPC_DIR"
 mkfifo "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
-echo "55" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE}.worker"
+echo "$SESSION_TOKEN" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE}.worker"
+echo "55" > "${CEKERNEL_IPC_DIR}/pane-${ISSUE}.worker"
 
 cd "$FAKE_REPO"
 CEKERNEL_BACKEND=wezterm bash "${CEKERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" "$ISSUE" 2>/dev/null

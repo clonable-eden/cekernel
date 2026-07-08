@@ -116,7 +116,7 @@ Patterns are organized by category. Each has:
 - **Severity**: warning
 - **Class**: 1
 - **Example**: [#340], [#335] — Neither initial Worker session wrote a checkpoint, forcing resumed Workers to reconstruct context from PR comments and git log
-- **Exclusion**: The `no checkpoint file found` message during Reviewer startup is expected behavior. Checkpoints are only written when a Worker receives a SUSPEND signal, so a Worker that completed normally will not have a checkpoint file. This message during Reviewer spawn (via `spawn-reviewer.sh --resume`) should be excluded from detection.
+- **Exclusion**: The `no checkpoint file found` message during a `--resume` spawn after `changes-requested` is expected behavior. Checkpoints are only written when a Worker receives a SUSPEND signal, so a Worker that completed normally will not have a checkpoint file. This message during a changes-requested re-spawn (via `spawn-worker.sh --resume`) should be excluded from detection.
 
 ### Reviewer not following linked documents
 - **Detect**: Reviewer reading CLAUDE.md but not following `Read` instructions for linked documents (unix-philosophy.md, tdd.md, etc.)

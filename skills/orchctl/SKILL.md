@@ -6,171 +6,48 @@ allowed-tools: Bash, Read
 
 # /orchctl
 
-Worker control interface for cekernel. Like `systemctl` / `supervisorctl`, provides commands to inspect and manage running Workers across all sessions.
-
-## Usage
+Worker control interface for cekernel — like `systemctl` / `supervisorctl`, inspects and manages running Workers across all sessions.
 
 ```
-/orchctl ls
-/orchctl ps [--session <id>]
-/orchctl inspect <target>
-/orchctl suspend <target>
-/orchctl resume <target>
-/orchctl recover <target>
-/orchctl term <target>
-/orchctl kill <target>
-/orchctl nice <target> <priority>
+/orchctl ls | ps [--session <id>] | inspect|suspend|resume|recover|term|kill <target> | nice <target> <priority>
 ```
 
 Note: In plugin mode, `/cekernel:orchctl` also works.
 
 ## Addressing: `<target>`
 
-All commands except `ls` require a `<target>` to identify the Worker.
-
 | Format | Example | Usage |
 |--------|---------|-------|
 | `<issue>` | `4` | Unique across all sessions |
-| `<repo>:<issue>` | `cekernel:4` | Filter by repo name |
-| `<issue> --session <id>` | `4 --session cekernel-7861a821` | Explicit session ID |
+| `<repo>:<issue>` | `cekernel:4` | Filter by repo name (session ID prefix) |
+| `<issue> --session <id>` | `4 --session cekernel-7861a821` | Explicit session ID (for scripting) |
 
-Rules:
-- Try `<issue>` alone first; if unique, execute
-- If multiple matches, show candidates and ask the user to disambiguate
-- `<repo>:<issue>` filters by the repo name prefix of the session ID
-- `--session` specifies the full session ID (for scripting)
+Try `<issue>` alone first; if multiple sessions match, show the candidates and ask the user to disambiguate.
 
 ## Workflow
 
-### Step 1: Detect Namespace and Determine Script Location
+### Step 1: Detect Namespace and Script Location
 
 1. Read `skills/references/namespace-detection.md` from the repository root (`$(git rev-parse --show-toplevel)/skills/references/namespace-detection.md`). If the Read fails (file not found), you are in plugin mode.
 2. Execute the detection Bash snippet from the reference file.
-3. Set the script path based on the result:
-   - If `CEKERNEL_NS=local`: `ORCHCTL="scripts/ctl/orchctl.sh"`
-   - If `CEKERNEL_NS=plugin`: `ORCHCTL="$(dirname "$(dirname "$(which spawn-worker.sh 2>/dev/null || echo "")")")/scripts/ctl/orchctl.sh"`
+3. Set the script path:
+   - `CEKERNEL_NS=local` → `ORCHCTL="scripts/ctl/orchctl.sh"`
+   - `CEKERNEL_NS=plugin` → `ORCHCTL="$(dirname "$(dirname "$(which spawn-worker.sh 2>/dev/null || echo "")")")/scripts/ctl/orchctl.sh"`
 
-### Step 2: Parse User Command and Execute
+### Step 2: Execute `bash "$ORCHCTL" <command> [args]`
 
-Run `orchctl.sh` via Bash with the user's command.
+| Command | Behavior | Present to user as |
+|---------|----------|--------------------|
+| `ls` | JSON Lines, one per Worker (`session`, `repo`, `issue`, `state`, `detail`, `priority`, `priority_name`, `elapsed`, `backend`); `no workers.` if none | Table: Session / Repo / Issue / State / Priority / Elapsed / Backend |
+| `ps [--session <id>]` | Pre-formatted tree of Orchestrator sessions and their Worker/Reviewer sessions (single `claude agents --json` fetch joined with issue/phase/priority — ADR-0016 Phase 4) | As-is |
+| `inspect <target>` | JSON: `session`, `issue`, `state`, `priority`, `elapsed`, `backend`, `worktree`, `checkpoint` | Structured summary, highlighting checkpoint data (phase, completed work, next steps, key decisions) |
+| `suspend <target>` | Sends SUSPEND (RUNNING/WAITING/READY only); Worker checkpoints and stops at the next phase boundary | Confirm action |
+| `resume <target>` | SUSPENDED (or TERMINATED with `crashed*` detail) → READY; prints the restart command | Confirm, then show the printed `spawn-worker.sh --resume` command for the user to run |
+| `recover <target>` | Marks a dead RUNNING/WAITING Worker as `TERMINATED`/`crashed:detected-by-recover`; errors if the process is alive (suggest `term`/`kill`) | Confirm transition, suggest `orchctl resume` next |
+| `term <target>` | Sends TERM — graceful exit at the next signal check | Confirm action |
+| `kill <target>` | Immediate termination + TERMINATED (when `term` is insufficient) | Confirm action |
+| `nice <target> <priority>` | Change priority: `critical` (0), `high` (5), `normal` (10), `low` (15), or numeric 0-19 (lower = higher) | Confirm action |
 
-#### ls — List all Workers
+`ps` notes: the trailing state is the raw `claude agents --json` state (`busy`, `blocked`, `done`, ...); `missing` = no longer listed. **`blocked` means stalled on a permission dialog — surface it prominently.** Sessions spawned by an interactive Orchestrator have no `orchestrator` row, but their Worker/Reviewer rows still appear.
 
-```bash
-bash "$ORCHCTL" ls
-```
-
-Output: JSON Lines (one per Worker). Fields: `session`, `repo`, `issue`, `state`, `detail`, `priority`, `priority_name`, `elapsed`, `backend`.
-
-If no workers are found, outputs `no workers.`
-
-Format the output as a readable table for the user:
-
-| Session | Repo | Issue | State | Priority | Elapsed | Backend |
-|---------|------|-------|-------|----------|---------|---------|
-
-#### ps — Show Orchestrator process trees
-
-```bash
-bash "$ORCHCTL" ps [--session <id>]
-```
-
-Shows all Orchestrator processes across all sessions with their child process trees. Unlike `ls` (which shows Workers from IPC state files), `ps` reads `orchestrator.pid` files and queries the OS process table directly.
-
-Output format:
-
-```
-orchestrator  PID=61565  session=cekernel-7069bc3d  elapsed=5m  running
-├── watch.sh 439  PID=61570  S
-├── sleep 120  PID=61575  S
-└── claude -p --agent worker  PID=61580  S
-```
-
-- `--session <id>`: Filter to a specific session
-- Shows `running` or `not-running` status based on whether the PID is alive
-- Child processes are listed as a tree with `├──` / `└──` connectors
-- If no orchestrators are found, outputs `no orchestrators.`
-
-Present the output as-is (pre-formatted tree) to the user.
-
-#### inspect — Detailed Worker view
-
-```bash
-bash "$ORCHCTL" inspect <target>
-```
-
-Output: JSON with `session`, `issue`, `state`, `priority`, `elapsed`, `backend`, `worktree`, `checkpoint`.
-
-Present the output in a human-readable format, especially the checkpoint data (current phase, completed work, next steps, key decisions).
-
-#### suspend — Suspend a Worker
-
-```bash
-bash "$ORCHCTL" suspend <target>
-```
-
-Sends a SUSPEND signal. Only works for Workers in RUNNING, WAITING, or READY state. The Worker will checkpoint its progress and stop at the next phase boundary.
-
-#### resume — Resume a suspended or crashed Worker
-
-```bash
-bash "$ORCHCTL" resume <target>
-```
-
-Works for Workers in SUSPENDED state or TERMINATED state with `crashed*` detail. Changes state to READY and outputs the command to restart:
-
-```bash
-export CEKERNEL_SESSION_ID=<session-id> && spawn-worker.sh --resume <issue>
-```
-
-After orchctl confirms the state change, run `spawn-worker.sh --resume` to actually restart the Worker process.
-
-#### recover — Mark a dead RUNNING worker as crashed
-
-```bash
-bash "$ORCHCTL" recover <target>
-```
-
-Checks if a RUNNING or WAITING Worker's process is actually dead (zombie). If the process is dead, transitions the state to `TERMINATED` with detail `crashed:detected-by-recover`. If the process is still alive, returns an error suggesting `term` or `kill` instead.
-
-Typical workflow after a Worker process crashes:
-
-```
-health-check.sh → detect zombie
-orchctl recover <issue> → RUNNING → TERMINATED/crashed
-orchctl resume <issue> → TERMINATED/crashed → READY
-spawn-worker.sh --resume <issue> → restart
-```
-
-#### term — Graceful shutdown
-
-```bash
-bash "$ORCHCTL" term <target>
-```
-
-Sends a TERM signal. The Worker will finish its current step, clean up, and exit gracefully at the next signal check.
-
-#### kill — Force kill
-
-```bash
-bash "$ORCHCTL" kill <target>
-```
-
-Immediately terminates the Worker process and marks it as TERMINATED. Use when `term` is insufficient (Worker is hung or unresponsive).
-
-#### nice — Change priority
-
-```bash
-bash "$ORCHCTL" nice <target> <priority>
-```
-
-Changes the Worker's priority. Priority values: `critical` (0), `high` (5), `normal` (10), `low` (15), or numeric `0-19` (lower = higher priority, like Unix `nice`).
-
-### Step 3: Present Results
-
-- For `ls`: Format as a table
-- For `ps`: Present the pre-formatted tree output as-is
-- For `inspect`: Format as a structured summary
-- For action commands (`suspend`, `resume`, `recover`, `term`, `kill`, `nice`): Confirm the action was taken
-- For `resume`: Also show the follow-up `spawn-worker.sh --resume` command for the user to execute
-- For `recover`: Confirm the state transition, then suggest running `orchctl resume` next
+Crash recovery sequence: `health-check.sh` (detect zombie) → `orchctl recover` → `orchctl resume` → `spawn-worker.sh --resume`.

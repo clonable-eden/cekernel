@@ -6,10 +6,12 @@
 #
 # Zombie = FIFO exists but the Worker process is dead
 # (waitpid + WNOHANG equivalent)
+# Blocked = Worker session is waiting on a permission dialog (ADR-0016;
+# headless backend only — surfaced distinctly, counts as unhealthy)
 #
 # Exit code:
 #   0 — all workers healthy (or no workers found)
-#   1 — zombie workers detected
+#   1 — unhealthy workers detected (zombie or blocked)
 #
 # Output (stdout): JSON Lines with worker status
 set -euo pipefail
@@ -39,7 +41,7 @@ if [[ ${#ISSUES[@]} -eq 0 ]]; then
   exit 0
 fi
 
-ZOMBIES=0
+UNHEALTHY=0
 
 check_worker() {
   local issue="$1"
@@ -53,19 +55,53 @@ check_worker() {
     return 0
   fi
 
-  # 1. Backend liveness check (handle file managed by backend)
-  if backend_available; then
+  # 1. Backend verdict check (handle file managed by backend, ADR-0018).
+  # Degradation policy: query-failed / unknown-value are INCONCLUSIVE —
+  # reported as "unknown" without counting the worker unhealthy (a
+  # zombie flag triggers recovery; never declare a crash on doubt).
+  local backend_conclusive=0
+  if backend_available && declare -F backend_worker_status >/dev/null 2>&1; then
+    local wstatus
+    wstatus=$(backend_worker_status "$issue" 2>/dev/null) || true
+    case "$wstatus" in
+      alive)
+        backend_conclusive=1
+        status="healthy"
+        detail="worker alive"
+        ;;
+      blocked)
+        # alive but stalled on a permission dialog — surfaced distinctly
+        # (ADR-0016 MUST)
+        backend_conclusive=1
+        status="blocked"
+        detail="session waiting on a permission dialog"
+        ;;
+      query-failed|unknown-value)
+        backend_conclusive=1
+        status="unknown"
+        detail="cannot verify session (${wstatus}) — inconclusive, not treated as zombie"
+        ;;
+      done|stopped|not-listed|missing)
+        backend_conclusive=1
+        status="zombie"
+        detail="worker dead (verdict: ${wstatus})"
+        ;;
+    esac
+  elif backend_available; then
+    # Backend without a status function: boolean liveness only
     if backend_worker_alive "$issue"; then
+      backend_conclusive=1
       status="healthy"
       detail="worker alive"
     else
+      backend_conclusive=1
       status="zombie"
       detail="worker dead"
     fi
   fi
 
-  # 2. If backend check was inconclusive, fallback to process-based detection
-  if [[ "$status" == "unknown" ]]; then
+  # 2. If no backend was available, fallback to process-based detection
+  if [[ "$backend_conclusive" -eq 0 ]]; then
     local worktree=""
     worktree=$(git worktree list --porcelain 2>/dev/null \
       | grep "issue/${issue}-" \
@@ -98,7 +134,7 @@ check_worker() {
     --arg state "$worker_state" \
     '{issue: $issue, status: $status, detail: $detail, state: $state}'
 
-  if [[ "$status" == "zombie" ]]; then
+  if [[ "$status" == "zombie" || "$status" == "blocked" ]]; then
     return 1
   fi
   return 0
@@ -106,14 +142,14 @@ check_worker() {
 
 for issue in "${ISSUES[@]}"; do
   if ! check_worker "$issue"; then
-    ZOMBIES=$((ZOMBIES + 1))
+    UNHEALTHY=$((UNHEALTHY + 1))
   fi
 done
 
 echo "---" >&2
-echo "Health check: ${#ISSUES[@]} workers, ${ZOMBIES} zombies." >&2
+echo "Health check: ${#ISSUES[@]} workers, ${UNHEALTHY} unhealthy (zombie/blocked)." >&2
 
-if [[ "$ZOMBIES" -gt 0 ]]; then
+if [[ "$UNHEALTHY" -gt 0 ]]; then
   exit 1
 fi
 

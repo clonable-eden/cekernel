@@ -8,7 +8,7 @@ Worker lifecycle events are recorded in the session-scoped log directory.
 
 ```
 $CEKERNEL_VAR_DIR/ipc/{CEKERNEL_SESSION_ID}/
-├── orchestrator.claude-session-id # Claude Code session UUID (written by /orchestrate)
+├── orchestrator.claude-session-id # Claude Code session UUID (captured by spawn-orchestrator.sh)
 ├── worker-4          # FIFO (existing)
 ├── worker-7          # FIFO (existing)
 └── logs/
@@ -43,10 +43,9 @@ Post-mortem analysis (`/postmortem` skill, [ADR-0013](./adr/0013-transcript-base
 
 ### Claude Code Session ID (`claude-session-id.sh`)
 
-The Orchestrator agent process persists its Claude Code session UUID to `${CEKERNEL_IPC_DIR}/orchestrator.claude-session-id` after startup. This bridges the gap between cekernel's `CEKERNEL_SESSION_ID` and Claude Code's internal session storage.
+`spawn-orchestrator.sh` captures the daemon-assigned Claude Code session UUID from the `claude --bg` spawn and persists it to `${CEKERNEL_IPC_DIR}/orchestrator.claude-session-id` at spawn time (ADR-0016 Phase 2 — deterministic, unlike the removed discovery heuristic that mis-attributed concurrent sessions, #571). This bridges the gap between cekernel's `CEKERNEL_SESSION_ID` and Claude Code's internal session storage, and doubles as the liveness token for `orchctl ps`/`count`/`gc`.
 
 Functions:
-- `claude_session_id_discover <project-root>` — find the current session's UUID from `~/.claude/projects/`
 - `claude_session_id_persist <uuid>` — write UUID to `${CEKERNEL_IPC_DIR}/orchestrator.claude-session-id`
 - `claude_session_id_read` — read the persisted UUID
 
@@ -149,7 +148,7 @@ Related: [#173](https://github.com/clonable-eden/cekernel/issues/173), [PR #175]
 
 ## Claude Code Environment Variable Cleanup
 
-When spawning a child `claude -p` process from within a running Claude Code session, certain environment variables must be **unset** to prevent nested-session detection failures. Claude Code sets these variables in its session environment, and if they leak into child processes, the child process will detect that it is running inside an existing session and fail to start.
+When spawning a child `claude` process (e.g. `claude --bg`) from within a running Claude Code session, certain environment variables must be **unset** to prevent nested-session detection failures. Claude Code sets these variables in its session environment, and if they leak into child processes, the child process will detect that it is running inside an existing session and fail to start.
 
 ### Variables to Unset
 
@@ -161,11 +160,11 @@ When spawning a child `claude -p` process from within a running Claude Code sess
 
 ### Usage
 
-Before executing `claude -p` in a subprocess, unset all three variables:
+Before spawning a child `claude` process, unset all three variables:
 
 ```bash
 unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ACCESS_TOKEN
-exec claude -p "$prompt"
+claude --bg --agent worker "$prompt"
 ```
 
 Or in a subshell to avoid affecting the parent:
@@ -173,13 +172,13 @@ Or in a subshell to avoid affecting the parent:
 ```bash
 (
   unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ACCESS_TOKEN
-  exec claude -p "$prompt"
+  claude --bg --agent worker "$prompt"
 )
 ```
 
 ### Where This Is Applied
 
-The headless backend (`scripts/shared/backends/headless.sh`) applies this cleanup when spawning Workers. Terminal-based backends (WezTerm, tmux) naturally get a clean environment because they create new shell sessions.
+The shared spawn core (`scripts/shared/bg-session.sh`, used by all backends since ADR-0016 Phase 5) applies this cleanup when spawning Worker sessions via `claude --bg`. Terminal-based backends (WezTerm, tmux) additionally prefix their attach-pane command with `env -u` for the same variables, in case the mux server environment carries them.
 
 Related: [#117](https://github.com/clonable-eden/cekernel/issues/117), [PR #178](https://github.com/clonable-eden/cekernel/pull/178).
 
@@ -216,7 +215,9 @@ $CEKERNEL_VAR_DIR/              # default: ~/.local/var/cekernel (user-specified
 `scripts/scheduler/wrapper.sh` generates runner scripts at `runners/<id>.sh`. Each wrapper:
 
 1. Sets `PATH` (registration-time snapshot)
-2. Executes `claude -p` with `if/else` pattern (`set -e` safe)
+2. Spawns a `claude --bg` background session via `claude_bg_spawn`, then polls
+   it to a terminal state with `claude_bg_wait_terminal` (ADR-0016 Phase 3;
+   `if/else` pattern, `set -e` safe)
 3. Updates registry status (`success` / `error`)
 4. Sends OS-native notification on failure (best-effort)
 

@@ -14,9 +14,10 @@ See [README.md](./README.md) for architecture details.
 When implementing something, always check existing patterns first.
 
 - **Feasibility check before implementation**: When adopting an approach different from existing patterns, verify technical constraints first (e.g., tool availability, API limitations, call depth restrictions). Do not start implementation without confirming feasibility.
+- **Verify feasibility in BOTH local and plugin modes**: cekernel runs both as a local checkout (self-hosting) and as a distributed plugin (`--plugin-dir`). **Local self-hosting systematically hides plugin-mode failures** — agent namespacing (`reviewer` vs `cekernel:reviewer`), hook loading (`${CLAUDE_PLUGIN_ROOT}`), env delivery, and Agent-tool subagent allowlists all differ. Any change touching agent spawn, hooks, env, or subagents MUST be feasibility-checked in a **foreign repo via `--plugin-dir`**, not local-only. Dogfood via `--plugin-dir` in a foreign repo before every release.
 - **Document deviations in ADR**: When choosing not to use an existing pattern, record the reason in an ADR. See the [ADRs](#adrs) section for how to create one.
 
-> **Background**: When designing the Reviewer, an existing spawn pattern was overlooked and a subagent-based approach was implemented instead, requiring a rework. The technical constraint (skill → agent → agent is not allowed) could have been discovered with prior investigation.
+> **Background**: When designing the Reviewer, an existing spawn pattern was overlooked and a subagent-based approach was implemented instead, requiring a rework. The `skill → agent → agent` nesting constraint **was true at the time (2026-03)** and could have been discovered with prior investigation. Nested subagents were later unlocked in claude **v2.1.172 (2026-06-10)**, so ADR-0012 Amendment 2 (2026-07) moved the Reviewer back to a subagent — a sound call, but it reused the 2026-03 `Agent(reviewer)` grant unchanged, which broke in plugin mode (#600: the grant did not permit the plugin-namespaced `cekernel:reviewer`). The durable lesson is not the constraint (now lifted) but the both-modes feasibility check above.
 
 ## Philosophy
 
@@ -28,14 +29,17 @@ cekernel's design is rooted in UNIX philosophy and TDD.
 These documents are symlinked in `.claude/rules/` for automatic loading by Claude Code.
 This ensures Worker agents read the content without requiring explicit `Read` calls.
 
-> **Note**: `.claude/rules/` symlinks do not work in git worktrees. Reviewers operating
-> in worktrees should refer to the [Review](#review) section below, which extracts the
+> **Note**: `.claude/rules/` relative symlinks resolve correctly inside full worktree
+> checkouts (verified 2026-07-06, claude v2.1.201), but automatic loading of the rules
+> is only guaranteed for the session's project directory. Reviewers operating in
+> worktrees should refer to the [Review](#review) section below, which extracts the
 > essential review criteria from these documents.
 
 ## Review
 
-Review criteria for Reviewer agents. This section exists in CLAUDE.md because
-Reviewers operate in git worktrees where `.claude/rules/` symlinks are unavailable.
+Review criteria for Reviewer agents. This section exists in CLAUDE.md so that
+Reviewers get the essential criteria directly, without depending on `.claude/rules/`
+auto-loading inside their worktree.
 The criteria below are extracted from `unix-philosophy.md`, `tdd.md`, and
 `claude-code-constraints.md`.
 
@@ -64,10 +68,18 @@ Assess whether changes follow these UNIX philosophy principles:
 
 ### Platform Constraints
 
+- **claude CLI ownership (ADR-0018)**: `scripts/shared/claude-bg.sh` is the sole
+  owner of the claude CLI surface (`claude --bg` invocation and spawn-line
+  parsing, `claude agents --json` parsing, `claude stop`). A direct claude CLI
+  parse or invocation outside `claude-bg.sh`, or a new implicit cross-boundary
+  assumption (ADR-0018 boundary ownership table), is grounds for
+  changes-requested. Consumers use the verdict predicates and keep their
+  degradation policy (what to do on `query-failed` / `unknown-value`) explicit
+  at the call site.
 - **zsh compatibility**: Scripts `source`d in Claude Code must use `${BASH_SOURCE[0]:-${(%):-%x}}` fallback.
 - **bash 3.2 compatibility**: No `declare -A` (associative arrays). Use temp files with `grep -qxF` instead.
 - **Arithmetic safety**: Use `var=$((var + 1))` instead of `((var++))` (fails under `set -e` when var=0).
-- **Subagent nesting**: Nesting depth ≥ 2 is unreliable. Prefer independent processes with FIFO IPC.
+- **Subagent nesting**: Officially supported since Claude Code v2.1.172 (fixed depth limit: 5). Subagents fit short-lived, session-bound work (e.g., Reviewer); use independent processes with FIFO IPC where cross-session persistence is required (e.g., Workers).
 - **Context window**: Workers must externalize state to files/git — do not rely on conversation history.
 
 ## Scripts
@@ -225,23 +237,62 @@ and documentation files are NOT executable scripts — do not write tests for th
 This rule takes precedence over TDD: do not write a RED test for non-executable file changes.
 TDD applies only to executable scripts.
 
-Exception: When a change adds no executable scripts (e.g., env profile or
-skill definition changes), content-based assertions on configuration files
-are acceptable as regression guards.
+There is **no exception**. Content-based assertions on markdown or
+configuration files are not acceptable even as regression guards for
+doc-only changes — this was tried in the project's earliest days and
+proved meaningless (removed 2026-07-07). Such tests pin prose, not
+behavior, and force future edits to contort documents to satisfy greps.
+(Note: runtime artifacts named `*.md` — `.cekernel-task.md`,
+`.cekernel-checkpoint.md` — are script *outputs*; asserting on them is
+normal behavior testing and is fine.)
+
+**Assert behavior, never text** (ADR-0017). Tests verify executed effects
+and recorded argv — not the text of generated scripts, and not the source
+text of scripts either. Grep-testing a generated runner for strings like
+`claude --bg`, or grepping `spawn.sh` source for `resolve_repo_root`,
+is the same anti-pattern as `.md`-grep — it breaks on mechanism or wording
+changes even when behavior is preserved.
+
+### Test Harness (dual-lane, ADR-0017 migration)
+
+The suite is migrating from the custom harness to [bats-core](https://bats-core.readthedocs.io/).
+`tests/run-tests.sh` runs **both lanes** during migration:
+
+1. **Legacy lane**: `tests/{category}/test-*.sh` files using `helpers.sh`
+2. **bats lane**: `tests/**/*.bats` files via `bats --recursive tests/`
+
+Local setup: `brew install bats-core` (macOS). CI pins bats-core `v1.13.0`
+via git checkout in `cekernel-tests.yml`.
+
+New tests should be written as `.bats` files. Naming: one `.bats` file per
+script under test, named after the script (e.g. `tests/shared/session-id.bats`
+for `scripts/shared/session-id.sh`). Do not add new legacy-harness
+`test-*.sh` files. `run-tests.sh` is deleted when the last legacy-harness
+file is gone.
+
+In `.bats` files, use `load '../helpers/assertions'` for the ported
+`assert_*` functions (`bats-assert` is not vendored).
 
 ### Test File Naming
 
 ```
 tests/
-├── run-tests.sh             # Test runner
-├── helpers.sh               # Assertion functions
+├── run-tests.sh             # Dual-lane test runner (legacy + bats)
+├── helpers.sh               # Assertion functions (legacy harness)
+├── helpers/
+│   ├── assertions.bash      # Assertion functions (bats lane)
+│   ├── mock-bin.bash        # mock_bin PATH-shim helper (bats lane)
+│   ├── mock-claude.bash     # Canonical claude shim for v2 spawn tests
+│   └── session.bash         # Per-test unique CEKERNEL_SESSION_ID
 ├── orchestrator/
 │   ├── test-concurrency-guard.sh
-│   └── test-{feature}.sh   # Orchestrator script tests
+│   ├── test-{feature}.sh   # Orchestrator script tests (legacy)
+│   └── {script-name}.bats  # bats tests, named after the script under test
 ├── process/
 │   └── test-{feature}.sh   # Process script tests
 ├── shared/
-│   ├── test-session-id.sh   # session-id.sh tests
+│   ├── test-session-id.sh   # session-id.sh tests (legacy)
+│   ├── session-id.bats      # session-id.sh tests (bats)
 │   └── test-{feature}.sh   # Shared helper tests
 └── scheduler/
     └── test-{feature}.sh   # Scheduler script tests
@@ -249,7 +300,11 @@ tests/
 
 ### Assertion Functions
 
-Use the functions provided by `helpers.sh`:
+In `.bats` files, `load '../helpers/assertions'` provides the same
+`assert_*` API (failures return 1 and fail the surrounding `@test`;
+bats tracks pass/fail counts, so `report_results` does not exist there).
+
+In legacy-harness files, use the functions provided by `helpers.sh`:
 
 ```bash
 assert_eq <label> <expected> <actual>
@@ -261,11 +316,50 @@ assert_not_exists <label> <path>
 report_results  # "Results: N passed, M failed"
 ```
 
+### Mocking
+
+**PATH shims are the only sanctioned mock style** (ADR-0017). Shell-function
+overrides are banned — they silently fail across `exec`/subshell boundaries.
+Do not add new function-override mocks.
+
+In `.bats` files, use the canonical helpers:
+
+```bash
+load '../helpers/mock-bin'      # mock_bin <cmd> <script-body>
+load '../helpers/mock-claude'   # canonical claude shim (--bg / agents --json / stop)
+```
+
+`mock-claude.bash` emulates the ADR-0016 delegated-spawn contract. Any PR
+updating the "Background Agent Sessions" section of
+`docs/claude-code-constraints.md` must update the mock in the same PR.
+
+`git` and `git worktree` stay **real** against temp repos (ADR-0017): mocking
+them would fake the exact behavior worktree tests exist to verify.
+
 ### Test Isolation
 
 Isolate commands with side effects (WezTerm, `gh`, `git worktree`) from tests, or structure them to be mockable.
 
-Use a dedicated `CEKERNEL_SESSION_ID` in tests, and clean up before and after:
+In `.bats` files, use a per-test unique `CEKERNEL_SESSION_ID` (derived from
+`BATS_TEST_NAME`, safe under parallel bats runs):
+
+```bash
+load '../helpers/session'
+
+setup() {
+  set_test_session_id   # exports a per-test unique CEKERNEL_SESSION_ID
+  source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
+  rm -rf "$CEKERNEL_IPC_DIR"
+  mkdir -p "$CEKERNEL_IPC_DIR"
+}
+
+teardown() {
+  rm -rf "$CEKERNEL_IPC_DIR"
+}
+```
+
+In legacy-harness files, use a dedicated fixed `CEKERNEL_SESSION_ID` and
+clean up before and after:
 
 ```bash
 export CEKERNEL_SESSION_ID="test-feature-00000001"
