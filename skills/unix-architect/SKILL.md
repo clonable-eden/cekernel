@@ -37,6 +37,14 @@ Identify the mode and subject. Read the referenced artifact (`gh issue view` / `
 
 Investigate the relevant codebase with `Glob`/`Grep`/`Read` (use `Task(Explore)` for broad exploration): existing patterns, conventions, constraints, and prior decisions that influence this one.
 
+When reviewing an ADR or design document, do not stop at pattern
+discovery: extract every factual claim the document makes about *current*
+behavior ("X writes Y first", "Z retains the log") and verify each
+against the code, citing file:line as evidence. A claim that is coherent
+within the document can still be false in the repository — internal-logic
+review cannot catch this class of error. Present the verification as a
+claim / verdict / evidence table in the review.
+
 ### Phase 4: Evaluate Through UNIX Principles
 
 Identify the **most relevant** principles (typically 3-5 — do NOT force-fit all 17). Assess alignment or tension with each; consider CS fundamentals (complexity, concurrency, failure modes, scalability); make trade-offs explicit — where principles conflict, acknowledge the tension and justify the choice.
@@ -82,6 +90,11 @@ Present the output in the conversation first, then ask where else to publish (mu
 3. **Conversation only**
 
 If the user requests changes, iterate and update all previously published destinations.
+
+When iterating on review feedback: text added or reworded in response to
+a review is *unreviewed* text. Before publishing the revision, re-verify
+any new factual claims it introduces (Phase 3 discipline applies to the
+delta, not just the original document).
 
 ## Guidelines
 
