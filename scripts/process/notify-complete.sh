@@ -28,7 +28,7 @@ LOG_FILE="${CEKERNEL_IPC_DIR}/logs/worker-${ISSUE_NUMBER}.log"
 # ── State: TERMINATED (Completed, cleanup pending) ──
 # State is written FIRST so the watcher's state-file fallback can detect completion
 # even if the FIFO write below fails or the FIFO is missing.
-worker_state_write "$ISSUE_NUMBER" TERMINATED "$RESULT"
+worker_state_write "$ISSUE_NUMBER" TERMINATED "${RESULT}:${DETAIL}"
 
 # ── Lifecycle event type ──
 EVENT="COMPLETE"

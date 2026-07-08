@@ -67,7 +67,7 @@ rm -f "$RESULT_FILE" "$STDERR_FILE"
 # Verify result JSON
 assert_match "Result contains issue number" '"issue":30' "$RESULT"
 assert_match "Result contains merged result" '"result":"merged"' "$RESULT"
-assert_match "Result contains fallback marker" 'detected-via-state-fallback' "$RESULT"
+assert_match "Result detail is empty for old format" '"detail":""' "$RESULT"
 
 # Verify stderr warning
 assert_match "Warning about state fallback in stderr" 'state file' "$STDERR"

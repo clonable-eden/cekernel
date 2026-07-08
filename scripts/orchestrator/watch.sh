@@ -36,10 +36,13 @@ POLL_INTERVAL="${CEKERNEL_POLL_INTERVAL:-30}"
 QUERY_RETRY_MAX="${CEKERNEL_WATCH_QUERY_RETRY_MAX:-3}"
 
 # ── Helper: build result JSON from state file (fallback path) ──
+# ADR-0020 Phase 1a: state detail carries "result:detail" (detail may contain
+# colons, so split on the first colon only). Old format (no colon) is backward
+# compatible: result = whole string, detail = "".
 build_result_from_state() {
   local state_json="$1"
   echo "$state_json" | jq -c \
-    '{issue: .issue, result: .detail, detail: "detected-via-state-fallback", timestamp: .timestamp}'
+    '{issue: .issue, result: (.detail | split(":")[0]), detail: (.detail | split(":")[1:] | join(":")), timestamp: .timestamp}'
 }
 
 # ── Helper: log to worker log file ──

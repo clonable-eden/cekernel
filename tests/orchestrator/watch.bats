@@ -167,8 +167,10 @@ teardown() {
   worker_state_write 573 TERMINATED "merged:#999"
   wait "$watch_pid"
 
-  assert_match "completion detected via state fallback" \
-    "detected-via-state-fallback" "$(cat "$out")"
+  local result_json
+  result_json=$(cat "$out")
+  assert_match "result is merged" '"result":"merged"' "$result_json"
+  assert_match "detail is #999" '"detail":"#999"' "$result_json"
 }
 
 @test "watch escalates after repeated consecutive agents query failures (ADR-0018)" {
@@ -204,8 +206,10 @@ teardown() {
   worker_state_write 594 TERMINATED "merged:#999"
   wait "$watch_pid"
 
-  assert_match "completion detected via state fallback" \
-    "detected-via-state-fallback" "$(cat "$out")"
+  local result_json
+  result_json=$(cat "$out")
+  assert_match "result is merged" '"result":"merged"' "$result_json"
+  assert_match "detail is #999" '"detail":"#999"' "$result_json"
 }
 
 @test "watch resolves the headless backend from the env profile (#182 regression)" {
@@ -229,6 +233,8 @@ teardown() {
   worker_state_write 183 TERMINATED "merged:#999"
   wait "$watch_pid"
 
-  assert_match "no false crash — state fallback wins" \
-    "detected-via-state-fallback" "$(cat "$out")"
+  local result_json
+  result_json=$(cat "$out")
+  assert_match "no false crash — result is merged" '"result":"merged"' "$result_json"
+  assert_match "detail is #999" '"detail":"#999"' "$result_json"
 }
