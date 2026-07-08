@@ -566,3 +566,59 @@ worker_state() {
   run bash "$ORCHCTL" gc
   assert_not_exists "legacy pid file swept" "${session_dir}/orchestrator.pid"
 }
+
+# ── gc: v2 lock liveness — opaque session token holders (#619 Bug 1) ──
+# v2 (ADR-0016) writes a session UUID as the lock holder. gc must delegate
+# to _issue_lock_holder_alive (which uses claude_bg_token_verdict) instead
+# of calling kill -0 directly — kill -0 always fails on non-numeric strings.
+
+@test "gc preserves lock with opaque session token holder when session is alive" {
+  mock_claude
+  local lock_dir="${CEKERNEL_VAR_DIR}/locks/testhash619/619.lock"
+  mkdir -p "$lock_dir"
+  echo "$SESSION_TOKEN" > "${lock_dir}/pid"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$SESSION_TOKEN" background /tmp/wt 1700000000000 busy)]"
+  run bash "$ORCHCTL" gc
+  assert_dir_exists "live token-holder lock preserved" "$lock_dir"
+}
+
+@test "gc removes lock with opaque session token holder when session is dead" {
+  mock_claude
+  local lock_dir="${CEKERNEL_VAR_DIR}/locks/testhash619/620.lock"
+  mkdir -p "$lock_dir"
+  echo "$SESSION_TOKEN" > "${lock_dir}/pid"
+  # empty agents queue → [] → session not listed → dead
+  run bash "$ORCHCTL" gc
+  assert_not_exists "dead token-holder lock removed" "$lock_dir"
+}
+
+@test "gc preserves lock with opaque session token when agents query fails (refuse-on-doubt)" {
+  local lock_dir="${CEKERNEL_VAR_DIR}/locks/testhash619/621.lock"
+  mkdir -p "$lock_dir"
+  echo "$SESSION_TOKEN" > "${lock_dir}/pid"
+  mock_bin claude 'exit 1'
+  run bash "$ORCHCTL" gc
+  assert_dir_exists "lock preserved on query failure" "$lock_dir"
+}
+
+# ── gc: orphan-log key mismatch (#619 Bug 2) ──
+# active_issues records "session_dir:issue" but the log orphan check was
+# passing "session_dir/logs/" as sdir, producing "session_dir/logs/:issue"
+# which never matches — making all logs appear orphan.
+
+@test "gc preserves log files of active workers" {
+  mock_claude
+  local session_dir="${IPC_BASE}/session-gc-log619"
+  mkdir -p "${session_dir}/logs"
+  # Create an active worker (FIFO + live handle)
+  mkfifo "${session_dir}/worker-622"
+  echo "RUNNING:2026-02-28T10:00:00Z:working" > "${session_dir}/worker-622.state"
+  echo "$$" > "${session_dir}/handle-622.worker"
+  # Create log files for the active worker
+  echo "log data" > "${session_dir}/logs/worker-622.log"
+  echo "stdout data" > "${session_dir}/logs/worker-622.stdout.log"
+  run bash "$ORCHCTL" gc
+  assert_file_exists "active worker log preserved" "${session_dir}/logs/worker-622.log"
+  assert_file_exists "active worker stdout log preserved" "${session_dir}/logs/worker-622.stdout.log"
+}
