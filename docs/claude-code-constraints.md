@@ -538,6 +538,27 @@ sessions under **both** local self-hosting and plugin-installed usage — the
 enabling signal is the spawn-time flag, not the parent's plugin/local namespace.
 See ADR-0019 Consequences.
 
+**Verified (2026-07-08, #604 — real marketplace install)**: hooks also work
+through the actual `/plugin install` distribution path, without any spawn-time
+flag. A local marketplace install of the v2.0.0 release content (cache copy
+under `~/.claude/plugins/cache/`) auto-discovered `hooks/hooks.json` **without
+a `hooks` key in `plugin.json`** (registered in interactive `/hooks`, fired in
+non-interactive `claude -p`), on macOS (v2.1.202) and a Linux devcontainer
+(v2.1.204). The cache copy preserved the guard script's executable bit; `jq`
+is the guard's runtime dependency (fail-open if absent). An explicit
+`plugin.json` `hooks` declaration is therefore unnecessary — and is the
+riskier option, since hook merge rules for a declared-plus-discovered default
+path are undocumented (double-registration risk).
+
+**Indicator caveat (v2.1.202+)**: `num_turns` in `--output-format json` no
+longer reflects Stop-hook continuations (it stays `1` even when the hook
+fires and the conversation continues — the 2026-07-07 experiment's
+`num_turns=13` was v2.1.201 behavior). Verify firing by the **result text**
+instead: a control run returns the prompted reply verbatim, a hook run
+returns a reply addressing the injected `additionalContext`. The documented
+cap of 8 consecutive Stop-hook continuations per turn boundary was observed
+live ("same as the previous seven times").
+
 **Implications for cekernel**:
 - cekernel-origin lifecycle hooks must ship in the plugin's `hooks/hooks.json`
   — cekernel passes `--plugin-dir <cekernel-root>` on every spawn branch
