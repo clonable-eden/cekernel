@@ -22,9 +22,13 @@ Workers by iterating pipes (fact 6) and the reaper that removes them
 (fact 7).
 
 Investigation (#586, 2026-07-08) established five facts; architecture
-review of this ADR (PR #610, 2026-07-08, eleven passes) added four
+review of this ADR (PR #610, 2026-07-08, twelve passes) added four
 more (the eleventh added no fact — it verified the document's claims
-against the repository and corrected three misstatements):
+against the repository and corrected three misstatements; the twelfth
+re-verified all claims, corrected fact 4's hang placement — widening
+the hazard to a leaked issue lock — and completed Decision 5's
+deletion inventory with `docs/internals.md` and eight legacy test
+files):
 
 1. **Degradation is already implemented.** `notify-complete.sh` writes the
    state file *first* and exits 0 when the FIFO is absent; `watch.sh`
@@ -41,7 +45,14 @@ against the repository and corrected three misstatements):
 4. **The FIFO has a verified writer-hang hazard.** A write to a pipe with
    no reader blocks forever (measured). If the Orchestrator dies leaving
    the pipe file (SIGKILL — normal exits remove it), the Worker's
-   `notify-complete.sh` hangs at its final step.
+   `notify-complete.sh` hangs at the FIFO write — the state write has
+   landed by then, but the lifecycle-log append and the issue-lock
+   release (terminal results — `merged`/`failed`/`cancelled` — release
+   the lock there) never run, so the hang also holds the issue lock
+   indefinitely and blocks any re-spawn of the issue. (The twelfth
+   review pass corrected this fact's placement: earlier passes put the
+   hang "at its final step", understating the hazard — it is a lost
+   notification *plus* a leaked lock.)
 5. **Push latency is not load-bearing.** FIFO push is sub-second; state
    polling detects within `CEKERNEL_POLL_INTERVAL` (30s). Worker
    lifecycles are minutes to hours; the relative cost of polling latency
@@ -324,12 +335,27 @@ distinct axes**: the state file is the semantic record (what happened);
    the matching FIFO-IPC mentions in
    `docs/claude-code-constraints.md`, and the "live alongside FIFOs"
    comments in `worker-state.sh`, `worker-priority.sh`,
-   `spawn-orchestrator.sh`, and `agents/reviewer.md`. The
+   `spawn-orchestrator.sh`, and `agents/reviewer.md`.
+   `docs/internals.md` joins the sweep (found in the twelfth pass —
+   the largest single omission): its `## IPC: Named Pipe` section is
+   removed outright, its concurrency-limit section re-keys on
+   state-file counting ("counts active FIFOs" → non-`TERMINATED`
+   state count), its directory-tree FIFO comments update, and its
+   sample `process-status.sh` output loses the `fifo` field with
+   Phase 2's enumeration migration. The
    FIFO-coupled test surface migrates with each phase rather than at
    the end (ADR-0017: tests assert the behavior each phase ships):
    the concurrency-guard, watch-FIFO-logging, health-check,
    process-status, notify-complete, cleanup-worktree, and orchctl
-   suites follow the scripts they test, and the `assert_fifo_exists`
+   suites follow the scripts they test. Those named suites are not
+   the whole surface (found in the twelfth pass): eight further
+   legacy files build their fixtures with `mkfifo` —
+   `test-rollback.sh`, `test-timeout.sh`, `test-logging.sh`,
+   `test-spawn-max-processes.sh`, `test-watch.sh`,
+   `test-watch-state-fallback.sh` (orchestrator),
+   `test-json-output.sh`, `test-session-isolation.sh` (shared) —
+   and each migrates with the phase that retires the behavior it
+   fixtures. The `assert_fifo_exists`
    helper (`tests/helpers/assertions.bash`, `tests/helpers.sh`) is
    deleted with Phase 4 — after retirement there is no pipe left to
    assert on.
@@ -415,9 +441,10 @@ what the platform's kernel now provides, cekernel stops hand-building.
 > possible."
 
 The writer-hang hazard (fact 4) is the opposite: a silent, indefinite
-stall at the Worker's final step, triggered precisely when things have
-already gone wrong (Orchestrator killed). Retirement removes the hazard
-class rather than wrapping it in timeouts.
+stall in the Worker's last script — holding the issue lock with it —
+triggered precisely when things have already gone wrong (Orchestrator
+killed). Retirement removes the hazard class rather than wrapping it in
+timeouts.
 
 > Rule of Representation: "Fold knowledge into data so program logic can
 > be stupid and robust."
