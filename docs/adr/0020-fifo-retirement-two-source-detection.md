@@ -20,7 +20,7 @@ Workers by iterating pipes (fact 6) and the reaper that removes them
 (fact 7).
 
 Investigation (#586, 2026-07-08) established five facts; architecture
-review of this ADR (PR #610, 2026-07-08, seven passes) added four more:
+review of this ADR (PR #610, 2026-07-08, eight passes) added four more:
 
 1. **Degradation is already implemented.** `notify-complete.sh` writes the
    state file *first* and exits 0 when the FIFO is absent; `watch.sh`
@@ -44,19 +44,24 @@ review of this ADR (PR #610, 2026-07-08, seven passes) added four more:
    is <1%, and the state read is a local-filesystem operation cheap
    enough to poll faster.
 6. **The FIFO is also the roster key for process tooling.** `orchctl`
-   `list`/`status`/`gc`, `process-status.sh`, and `health-check.sh`
-   discover Workers by iterating pipes (`for fifo in ... worker-*;
-   [[ -p ]]`). `orchctl`'s `resolve_target` goes further: **every
-   targeted command** (`recover`/`kill`/`term`/`resume`/…) resolves
-   its issue argument by pipe existence, so a pipe-less Worker is not
-   merely unlisted but *unaddressable* (found in the seventh review
-   pass). This is a second hidden coupling of the same kind as
-   fact 2 — the "notification channel" doubles as the process-table
-   entry *and* the name-resolution key. `health-check.sh` couples deepest: its zombie *definition* is
-   FIFO-based ("FIFO exists but process dead"; "no active FIFO =
-   completed"), not just its discovery loop. (Elapsed time already
-   comes from the `.spawned` file, not the pipe; enumeration and the
-   zombie predicate are what's coupled.)
+   `ls`/`gc`, `process-status.sh`, and `health-check.sh` discover
+   Workers by iterating pipes (`for fifo in ... worker-*; [[ -p ]]`);
+   `orchctl ps` is the one exception — it enumerates `handle-*.*`
+   files and never reads pipes. `orchctl`'s `resolve_target` goes
+   further: **every targeted command**
+   (`inspect`/`recover`/`kill`/`term`/`resume`/…) resolves its issue
+   argument by pipe existence, so a pipe-less Worker is not merely
+   unlisted but *unaddressable* (found in the seventh review pass;
+   command inventory corrected in the eighth). This is a second
+   hidden coupling of the same kind as fact 2 — the "notification
+   channel" doubles as the process-table entry *and* the
+   name-resolution key. `health-check.sh` couples deepest: its
+   zombie *definition* is FIFO-based ("FIFO exists but process
+   dead"; "no active FIFO = completed"), not just its discovery
+   loop. (Elapsed time is computed from the `.spawned` file, not the
+   pipe — but `inspect` gates that computation on pipe existence, so
+   a pipe-less Worker's elapsed reads blank; the gate migrates with
+   the enumeration key.)
 7. **The FIFO has a third slot-release site: the reaper.**
    `cleanup-worktree.sh` removes the pipe expressly so that
    "concurrency slots do not leak" (its header comment) and deletes
@@ -120,7 +125,12 @@ distinct axes**: the state file is the semantic record (what happened);
    worktree retained). The reject → re-spawn cycle holds with no code
    change: `spawn.sh` writes `NEW` unconditionally, including under
    `--resume`, so a re-spawned Worker re-consumes a slot exactly as a
-   fresh FIFO does today.
+   fresh FIFO does today. (`orchctl resume` moves the consumption
+   point slightly earlier: its `READY:resume-requested` write is
+   already non-`TERMINATED`, so the slot is held from resume-request
+   rather than from the spawn that follows — the over-hold direction,
+   and the entry stays addressable via the Phase 1 key if that spawn
+   never comes.)
 
    **Abnormal paths write the exit record where the verdict is
    verified.** Today `watch.sh` frees the slot mechanically (`rm -f
@@ -208,34 +218,39 @@ distinct axes**: the state file is the semantic record (what happened);
    30s, unchanged — `agents --json` spawns a process). Completion
    latency: sub-second → ≤5s.
 4. **Roster enumeration moves to state files.** All pipe-iteration
-   consumers (fact 6) — `orchctl list`/`status`/`gc`,
-   `process-status.sh`, `health-check.sh` — switch to enumerating
-   `worker-*.state` files via one shared helper in `worker-state.sh`
-   (Rule of Modularity: one enumeration primitive, five consumers).
+   consumers (fact 6) — `orchctl ls`/`gc`, `process-status.sh`,
+   `health-check.sh` — switch to enumerating `worker-*.state` files
+   via one shared helper in `worker-state.sh` (Rule of Modularity:
+   one enumeration primitive, four consumers; `orchctl ps` already
+   enumerates handle files and does not migrate).
    The helper takes the IPC directory as an argument (defaulting to
-   the session's own): four consumers are session-scoped, but
-   `orchctl gc` sweeps every session directory under the IPC base.
+   the session's own): `process-status.sh` and `health-check.sh` are
+   session-scoped, while `orchctl ls` and `gc` sweep every session
+   directory under the IPC base.
    Enumeration semantics: the helper lists all state files with their
    states; consumers filter to non-`TERMINATED` entries. That
    reproduces today's pipe semantics (a pipe exists only while a
    Worker is active), so `worker-*.state` files persisting after
-   `TERMINATED` do not leak completed Workers into `orchctl list`.
+   `TERMINATED` do not leak completed Workers into `orchctl ls`.
    (`resolve_target`'s key migrates earlier, in Phase 1 — Decision 2;
    it is a point lookup, not an enumeration, and the doubt resolvers
    depend on it. Its key is bare file existence, not non-`TERMINATED`
    state — `resume` must address `TERMINATED:crashed` entries — so a
    lingering exit record can widen the ambiguous-target candidate
    list; `--session` disambiguates, as today.)
-   For four consumers only the discovery key changes.
-   `health-check.sh` is a redesign, not a key swap: its zombie
+   For three consumers only the discovery key changes, and
+   `orchctl inspect` swaps the pipe-existence gate on its elapsed
+   column for the same key. `health-check.sh` is a redesign, not a
+   key swap: its zombie
    predicate is FIFO-defined (fact 6) and is redefined on the state
    model as **non-`TERMINATED` state + dead backend verdict** — which
    is exactly Decision 2's held slot, so a zombie flag now points at
    the same doubt that `orchctl recover` resolves.
 5. **Deletions.** `mkfifo` leaves `spawn.sh`; the FIFO branch leaves
    `watch.sh`; the FIFO write leaves `notify-complete.sh`; pipe
-   iteration leaves `orchctl`, `process-status.sh`, and
-   `health-check.sh`; the pipe removal (and its "slots do not leak"
+   iteration (and `inspect`'s pipe-gated elapsed) leaves `orchctl`,
+   `process-status.sh`, and `health-check.sh`; the pipe removal (and
+   its "slots do not leak"
    rationale) leaves `cleanup-worktree.sh`; the writer-hang hazard
    ceases to exist.
    `spawn.sh`'s stdout contract ("Output: FIFO path (stdout last
