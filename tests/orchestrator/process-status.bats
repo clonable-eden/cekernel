@@ -34,21 +34,20 @@ teardown() {
   assert_eq "empty output" "" "$output"
 }
 
-@test "one worker: one JSON line with issue, fifo path, uptime" {
-  mkfifo "${CEKERNEL_IPC_DIR}/worker-20"
+@test "one worker: one JSON line with issue and uptime" {
+  worker_state_write 20 RUNNING "working"
   run bash "$STATUS_SCRIPT"
   local line_count
   line_count=$(echo "$output" | grep -c 'issue' || true)
   assert_eq "one JSON line" "1" "$line_count"
   assert_match "output contains issue 20" '"issue":20' "$output"
-  assert_match "output contains FIFO path" "worker-20" "$output"
   assert_match "output contains uptime field" '"uptime":' "$output"
 }
 
 @test "three workers: three JSON lines" {
-  mkfifo "${CEKERNEL_IPC_DIR}/worker-20"
-  mkfifo "${CEKERNEL_IPC_DIR}/worker-21"
-  mkfifo "${CEKERNEL_IPC_DIR}/worker-22"
+  worker_state_write 20 RUNNING "working"
+  worker_state_write 21 RUNNING "working"
+  worker_state_write 22 RUNNING "working"
   run bash "$STATUS_SCRIPT"
   local line_count
   line_count=$(echo "$output" | grep -c 'issue')
@@ -62,11 +61,11 @@ teardown() {
 }
 
 @test "type field reads worker/reviewer from .type file, defaults to unknown" {
-  mkfifo "${CEKERNEL_IPC_DIR}/worker-50"
+  worker_state_write 50 RUNNING "working"
   echo "worker" > "${CEKERNEL_IPC_DIR}/worker-50.type"
-  mkfifo "${CEKERNEL_IPC_DIR}/worker-51"
+  worker_state_write 51 RUNNING "reviewing"
   echo "reviewer" > "${CEKERNEL_IPC_DIR}/worker-51.type"
-  mkfifo "${CEKERNEL_IPC_DIR}/worker-52"
+  worker_state_write 52 RUNNING "working"
 
   run bash "$STATUS_SCRIPT"
   assert_match "type worker" '"type":"worker"' "$(echo "$output" | grep '"issue":50')"
@@ -74,11 +73,10 @@ teardown() {
   assert_match "missing type file shows unknown" '"type":"unknown"' "$(echo "$output" | grep '"issue":52')"
 }
 
-@test "uptime reads from .spawned file (not FIFO stat)" {
-  mkfifo "${CEKERNEL_IPC_DIR}/worker-60"
+@test "uptime reads from .spawned file (not state file stat)" {
+  worker_state_write 60 RUNNING "working"
   echo "worker" > "${CEKERNEL_IPC_DIR}/worker-60.type"
   # Epoch 0 in .spawned forces a very large uptime (many hours).
-  # FIFO-mtime-based uptime would report seconds ("Xs") instead.
   echo "0" > "${CEKERNEL_IPC_DIR}/worker-60.spawned"
   run bash "$STATUS_SCRIPT"
   assert_match "uptime from .spawned (epoch 0 → hours)" '"uptime":"[0-9]+h' "$(echo "$output" | grep '"issue":60')"
@@ -87,34 +85,20 @@ teardown() {
 # ── State field integration (from test-process-status-state.sh) ──
 
 @test "state and state_detail read from state file" {
-  mkfifo "${CEKERNEL_IPC_DIR}/worker-30"
   worker_state_write 30 RUNNING "phase1:implement"
   run bash "$STATUS_SCRIPT"
   assert_match "state field" '"state":"RUNNING"' "$output"
   assert_match "state detail" '"state_detail":"phase1:implement"' "$output"
 }
 
-@test "missing state file shows UNKNOWN" {
-  mkfifo "${CEKERNEL_IPC_DIR}/worker-31"
-  run bash "$STATUS_SCRIPT"
-  assert_match "missing state shows UNKNOWN" '"state":"UNKNOWN"' "$(echo "$output" | grep '"issue":31')"
-}
-
-@test "TERMINATED worker with FIFO still shows state" {
-  mkfifo "${CEKERNEL_IPC_DIR}/worker-32"
-  worker_state_write 32 TERMINATED "merged"
-  run bash "$STATUS_SCRIPT"
-  assert_match "TERMINATED state shown" '"state":"TERMINATED"' "$(echo "$output" | grep '"issue":32')"
-}
-
 # ── Priority field integration (from test-process-status-priority.sh) ──
 
 @test "priority file values are shown (high/critical/low)" {
-  mkfifo "${CEKERNEL_IPC_DIR}/worker-40"
+  worker_state_write 40 RUNNING "working"
   worker_priority_write 40 high
-  mkfifo "${CEKERNEL_IPC_DIR}/worker-42"
+  worker_state_write 42 RUNNING "working"
   worker_priority_write 42 critical
-  mkfifo "${CEKERNEL_IPC_DIR}/worker-43"
+  worker_state_write 43 RUNNING "working"
   worker_priority_write 43 low
 
   run bash "$STATUS_SCRIPT"
@@ -130,7 +114,7 @@ teardown() {
 }
 
 @test "missing priority file shows default (normal/10)" {
-  mkfifo "${CEKERNEL_IPC_DIR}/worker-41"
+  worker_state_write 41 RUNNING "working"
   run bash "$STATUS_SCRIPT"
   local line41
   line41=$(echo "$output" | grep '"issue":41')

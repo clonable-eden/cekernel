@@ -169,6 +169,14 @@ compute_elapsed() {
   local issue
   issue=$(basename "$fifo" | sed 's/^worker-//')
 
+  compute_elapsed_from_issue "$ipc_dir" "$issue"
+}
+
+# ── Helper: compute elapsed time from ipc_dir + issue ──
+# ADR-0020 Phase 2: decoupled from FIFO path for state-based enumeration.
+compute_elapsed_from_issue() {
+  local ipc_dir="$1" issue="$2"
+
   # Read process type to locate the right .spawned file
   local process_type="worker"
   local type_file="${ipc_dir}/worker-${issue}.type"
@@ -242,10 +250,9 @@ cmd_ls() {
       sid_repo="${sid%-*}"
     fi
 
-    for fifo in "$session_dir"worker-*; do
-      [[ -p "$fifo" ]] || continue
-      local issue
-      issue=$(basename "$fifo" | sed 's/^worker-//')
+    # ADR-0020 Phase 2: enumerate by non-TERMINATED state files, not FIFOs.
+    local issue
+    for issue in $(worker_state_list_active "$session_dir"); do
       found=$((found + 1))
 
       # Set context for shared helpers
@@ -272,7 +279,7 @@ cmd_ls() {
 
       # Elapsed time
       local elapsed
-      elapsed=$(compute_elapsed "$fifo")
+      elapsed=$(compute_elapsed_from_issue "$session_dir" "$issue")
 
       # Backend
       local backend
@@ -430,11 +437,9 @@ cmd_inspect() {
   local priority
   priority=$(echo "$priority_json" | jq -r '.priority')
 
-  # Elapsed time
+  # Elapsed time (ADR-0020 Phase 2: uses issue-based lookup, not FIFO)
   local elapsed=""
-  if [[ -p "$fifo" ]]; then
-    elapsed=$(compute_elapsed "$fifo")
-  fi
+  elapsed=$(compute_elapsed_from_issue "$CEKERNEL_IPC_DIR" "$RESOLVED_ISSUE")
 
   # Backend
   local backend
@@ -870,11 +875,24 @@ cmd_gc() {
 
         # Check if this FIFO is stale
         if _gc_is_stale_fifo "$session_dir" "$issue" "$fifo" "$stale_timeout"; then
-          # Stale: remove FIFO and do NOT add to active_issues
+          # Stale: remove FIFO
           if [[ "$dry_run" -eq 1 ]]; then
             echo "[dry-run] would remove stale FIFO: $fifo" >&2
           else
             rm -f "$fifo"
+            # ADR-0020 Phase 2: write TERMINATED:crashed:detected-by-gc for
+            # non-TERMINATED entries (write-once: never clobber existing TERMINATED).
+            local _gc_state_file="${session_dir}worker-${issue}.state"
+            if [[ -f "$_gc_state_file" ]]; then
+              local _gc_line _gc_state
+              _gc_line=$(cat "$_gc_state_file")
+              _gc_state="${_gc_line%%:*}"
+              if [[ "$_gc_state" != "TERMINATED" ]]; then
+                local _gc_ts
+                _gc_ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+                echo "TERMINATED:${_gc_ts}:crashed:detected-by-gc" > "$_gc_state_file"
+              fi
+            fi
           fi
           cleaned=$((cleaned + 1))
         else

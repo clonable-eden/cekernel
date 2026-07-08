@@ -4,8 +4,8 @@
 # Usage: health-check.sh [issue-number...]
 #   Without issue numbers: inspect all Workers in the session
 #
-# Zombie = FIFO exists but the Worker process is dead
-# (waitpid + WNOHANG equivalent)
+# ADR-0020 Phase 2: zombie = non-TERMINATED state + dead backend verdict
+# (the held slot that orchctl recover resolves).
 # Blocked = Worker session is waiting on a permission dialog (ADR-0016;
 # headless backend only — surfaced distinctly, counts as unhealthy)
 #
@@ -22,16 +22,23 @@ source "${SCRIPT_DIR}/../shared/session-id.sh"
 source "${SCRIPT_DIR}/../shared/backend-adapter.sh"
 source "${SCRIPT_DIR}/../shared/worker-state.sh"
 
-# If issue numbers are specified, inspect only those. Otherwise inspect all FIFOs in session
+# If issue numbers are specified, inspect only those.
+# Otherwise inspect all non-TERMINATED workers in session (ADR-0020 Phase 2).
 if [[ $# -gt 0 ]]; then
-  ISSUES=("$@")
+  # Filter explicitly-specified issues: skip TERMINATED ones
+  ISSUES=()
+  for _arg_issue in "$@"; do
+    _state_json=$(worker_state_read "$_arg_issue")
+    _state=$(echo "$_state_json" | jq -r '.state')
+    if [[ "$_state" != "TERMINATED" ]]; then
+      ISSUES+=("$_arg_issue")
+    fi
+  done
 else
   ISSUES=()
   if [[ -d "$CEKERNEL_IPC_DIR" ]]; then
-    for fifo in "${CEKERNEL_IPC_DIR}"/worker-*; do
-      [[ -p "$fifo" ]] || continue
-      issue=$(basename "$fifo" | sed 's/^worker-//')
-      ISSUES+=("$issue")
+    for _active_issue in $(worker_state_list_active "$CEKERNEL_IPC_DIR"); do
+      ISSUES+=("$_active_issue")
     done
   fi
 fi
@@ -43,17 +50,12 @@ fi
 
 UNHEALTHY=0
 
+# ADR-0020 Phase 2: zombie = non-TERMINATED state + dead backend verdict.
+# Only non-TERMINATED workers are inspected (enumeration already filters).
 check_worker() {
   local issue="$1"
-  local fifo="${CEKERNEL_IPC_DIR}/worker-${issue}"
   local status="unknown"
   local detail=""
-
-  # No active FIFO means completed
-  if [[ ! -p "$fifo" ]]; then
-    echo "{\"issue\":${issue},\"status\":\"completed\",\"detail\":\"No active FIFO\"}"
-    return 0
-  fi
 
   # 1. Backend verdict check (handle file managed by backend, ADR-0018).
   # Degradation policy: query-failed / unknown-value are INCONCLUSIVE —
