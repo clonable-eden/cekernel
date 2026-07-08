@@ -6,8 +6,10 @@ Proposed
 
 ## Context
 
-Worker completion is detected through three sources (ADR-0016 records the
-triple-path): the **FIFO** (`${CEKERNEL_IPC_DIR}/worker-<issue>`, push,
+Worker completion is detected through three sources (`watch.sh`'s header
+names the triple-path; ADR-0016 keeps ADR-0007's dual completion path and
+adds liveness via `agents --json` as a separate axis — the axis structure
+this decision completes): the **FIFO** (`${CEKERNEL_IPC_DIR}/worker-<issue>`, push,
 sub-second), the **state file** (`worker-<issue>.state`, semantic record,
 poll fallback), and **`claude agents --json`** (liveness verdicts via
 `claude-bg.sh`, ADR-0018). The FIFO predates the v2 platform: under v1's
@@ -20,7 +22,7 @@ Workers by iterating pipes (fact 6) and the reaper that removes them
 (fact 7).
 
 Investigation (#586, 2026-07-08) established five facts; architecture
-review of this ADR (PR #610, 2026-07-08, nine passes) added four more:
+review of this ADR (PR #610, 2026-07-08, ten passes) added four more:
 
 1. **Degradation is already implemented.** `notify-complete.sh` writes the
    state file *first* and exits 0 when the FIFO is absent; `watch.sh`
@@ -206,8 +208,9 @@ distinct axes**: the state file is the semantic record (what happened);
    existence today (fact 6) — so its resolution key moves to
    state-file existence in Phase 1. The state file is written
    unconditionally at spawn and is never removed before the pipe
-   (cleanup deletes both together; every other path removes only the
-   pipe), so the new key is a superset of the old: nothing
+   (cleanup and spawn's failure rollback delete both together; every
+   other path removes only the pipe), so the new key is a superset
+   of the old: nothing
    addressable today becomes unaddressable. `orchctl gc`'s reap action likewise becomes
    a `TERMINATED … crashed:detected-by-gc` write instead of a pipe
    removal — an exit record beats erased history (Rule of
@@ -219,9 +222,15 @@ distinct axes**: the state file is the semantic record (what happened);
    file retires the roster entry and frees the slot, exactly as
    `wait()` consumes a zombie's process-table entry. Reaping a
    `TERMINATED` entry needs no further record — the exit was already
-   written and consumed. Reaping a non-`TERMINATED` entry (`--force`
-   on a hung Worker) appends the exit event to the lifecycle log
-   (`logs/worker-<issue>.log`) before deletion. This requires a second
+   written and consumed. Reaping a non-`TERMINATED` entry appends the
+   exit event to the lifecycle log (`logs/worker-<issue>.log`) before
+   deletion. The condition is the **state, not the flag**: the timeout
+   protocol reaches cleanup *without* `--force` when the TERM succeeds
+   (`health-check.sh` reports the Worker dead, the `--force` branch is
+   skipped, and the escalation flow's plain `cleanup-worktree.sh`
+   performs the reap) — a `--force`-scoped log-append would free
+   exactly that slot by erasing history (found in the tenth review
+   pass). This requires a second
    behavior change (fact 8): today `cleanup-worktree.sh` deletes that
    log with the rest of cleanup, which would erase the record in the
    same breath — Phase 1 makes cleanup **retain** the log. Its terminal
@@ -315,8 +324,10 @@ load-bearing, not editorial):
   of the rest of gc's migration), the `resolve_target` key change
   (Decision 2, fact 6: `recover`/`kill` must be able to address the
   pipe-less held slots Phase 1 creates), and both reaper changes
-  (Decision 2, fact 8): log-before-delete for `--force` on a
-  non-`TERMINATED` state, and log retention (the
+  (Decision 2, fact 8): log-before-delete whenever cleanup deletes a
+  non-`TERMINATED` state — with or without `--force`; the timeout
+  protocol's TERM-succeeded path reaches cleanup unflagged — and log
+  retention (the
   `rm -f logs/worker-<issue>.log` leaves `cleanup-worktree.sh`).
   Slot release via state-file deletion itself needs no change.
 - **Phase 2** = roster enumeration migration (Decision 4), including
