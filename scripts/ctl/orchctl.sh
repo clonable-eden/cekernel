@@ -27,6 +27,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../shared/load-env.sh"
+source "${SCRIPT_DIR}/../shared/issue-lock.sh"
 source "${SCRIPT_DIR}/../shared/worker-state.sh"
 source "${SCRIPT_DIR}/../shared/worker-priority.sh"
 source "${SCRIPT_DIR}/../shared/checkpoint-file.sh"
@@ -865,7 +866,10 @@ cmd_gc() {
         if [[ -f "$pid_file" ]]; then
           local holder_pid
           holder_pid=$(cat "$pid_file")
-          if ! kill -0 "$holder_pid" 2>/dev/null; then
+          # Delegate to _issue_lock_holder_alive (issue-lock.sh):
+          # numeric holders use kill -0, opaque session tokens (v2,
+          # ADR-0016) use claude_bg_token_verdict (ADR-0018).
+          if ! _issue_lock_holder_alive "$holder_pid"; then
             is_stale=1
           fi
         else
@@ -990,9 +994,11 @@ cmd_gc() {
       _gc_clean_orphan_files "$session_dir" "pane-*.*"     "pane-"    "pane"
       _gc_clean_orphan_files "$session_dir" "payload-*.b64" "payload-" "payload"
 
-      # Log files live in a subdirectory
+      # Log files live in a subdirectory.
+      # sdir must be session_dir (not session_dir/logs/) so the grep key
+      # matches active_issues entries ("session_dir:issue").  (#619 Bug 2)
       if [[ -d "${session_dir}logs" ]]; then
-        _gc_clean_orphan_files "${session_dir}logs/" "worker-*" "worker-" "log"
+        _gc_clean_orphan_files "${session_dir}" "logs/worker-*" "worker-" "log"
 
         if [[ "$dry_run" -eq 0 ]]; then
           rmdir "${session_dir}logs" 2>/dev/null || true
