@@ -20,7 +20,7 @@ Workers by iterating pipes (fact 6) and the reaper that removes them
 (fact 7).
 
 Investigation (#586, 2026-07-08) established five facts; architecture
-review of this ADR (PR #610, 2026-07-08, eight passes) added four more:
+review of this ADR (PR #610, 2026-07-08, nine passes) added four more:
 
 1. **Degradation is already implemented.** `notify-complete.sh` writes the
    state file *first* and exits 0 when the FIFO is absent; `watch.sh`
@@ -84,8 +84,12 @@ review of this ADR (PR #610, 2026-07-08, eight passes) added four more:
    refuse-on-doubt: `query-failed`/`unknown-value` count as alive;
    stale means `TERMINATED` with no live handle, a verifiably dead
    handle, or a handle-less entry that is either `NEW`/`READY` past
-   its spawn grace or in a running-family state — running without a
-   handle is abnormal by definition), removes
+   its spawn grace or in any remaining state —
+   `RUNNING`/`WAITING`/`SUSPENDED`/`UNKNOWN`: running without a
+   handle is abnormal by definition, and `SUSPENDED`, nominally a
+   legitimate dormant state, has no writer today because the suspend
+   protocol terminates via `notify-complete.sh cancelled`, leaving
+   `TERMINATED:cancelled`), removes
    stale pipes, then `_gc_clean_orphan_files` deletes **every**
    `worker-*.*` companion file — the state file included — for any
    issue with no surviving pipe. Under state-based slot accounting,
@@ -151,6 +155,29 @@ distinct axes**: the state file is the semantic record (what happened);
    throughput; over-freeing over-spawns past `MAX_ORCH_CHILDREN`. This
    is the same degradation posture as `orchctl gc`'s "refuse to reap on
    doubt" (ADR-0018).
+
+   **Terminal records are write-once.** The `crashed` and `blocked`
+   rows race against the Worker's own `TERMINATED` write: in each
+   poll iteration `watch.sh` reads the state file *before* the
+   backend query, and the query spawns a process — a Worker that
+   completes inside that window presents a dead verdict *and* a
+   legitimate exit record. Today the race only misreports the result
+   (the crash path writes no state, so the record survives for
+   gc/recover to read); a table-literal implementation would
+   overwrite `ci-passed` with `crashed` — corrupting the record and
+   re-spawning a completed issue, the mechanism breaking its own
+   record-beats-erasure rule (found in the ninth review pass). The
+   two-source semantics already dictate the resolution: a dead
+   verdict plus a `TERMINATED` record *is* normal completion. Before
+   writing a terminal record, `watch.sh` re-reads the state file
+   and, if it is already `TERMINATED`, consumes that record as the
+   completion result instead of declaring a crash; no write ever
+   replaces an existing `TERMINATED` record. The same invariant
+   scopes `orchctl gc`'s reap write (Phase 2,
+   `crashed:detected-by-gc`) to non-`TERMINATED` entries — gc's
+   stale classes include "`TERMINATED` with no live handle"
+   (fact 9), and an unscoped write would clobber a real result in
+   the same breath as reaping it.
 
    **The held slot must survive `orchctl gc` — but not by retaining
    the pipe.** The pipe is the key that protects an issue's companion
@@ -293,8 +320,9 @@ load-bearing, not editorial):
   `rm -f logs/worker-<issue>.log` leaves `cleanup-worktree.sh`).
   Slot release via state-file deletion itself needs no change.
 - **Phase 2** = roster enumeration migration (Decision 4), including
-  `orchctl gc`'s reap change (pipe removal → `TERMINATED` write,
-  Decision 2). Independent of Phase 1, with a bounded interim
+  `orchctl gc`'s reap change (pipe removal → `TERMINATED` write, on
+  non-`TERMINATED` entries only — Decision 2's write-once
+  invariant). Independent of Phase 1, with a bounded interim
   exposure — after Phase 1 and before Phase 2, gc still *classifies*
   by pipe, but the orphan sweep already keys on state (Phase 1):
   - *Live Worker, held slot* (the case the hold exists for): safe.
@@ -425,7 +453,10 @@ have only just finished characterizing (#604). Deferred, not refused.
   Worker lifecycle).
 - Migration risk in slot accounting — the guard is load-bearing for
   scheduler correctness; Phase 1 must land with behavior tests
-  (ADR-0017: assert effects, never text).
+  (ADR-0017: assert effects, never text), including the write-once
+  race: a `TERMINATED` record written moments before a dead backend
+  verdict must survive `watch.sh`'s exit handling and be reported as
+  the completion result.
 - Unverified exits (timeout, query-escalated) now **hold** their slot
   until `orchctl recover`/`kill` writes the exit record or the timeout
   protocol reaps via `cleanup-worktree.sh --force`, where the FIFO
