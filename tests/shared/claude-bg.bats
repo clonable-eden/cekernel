@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+bats_require_minimum_version 1.5.0
 # claude-bg.bats — contract tests for scripts/shared/claude-bg.sh
 #
 # ADR-0018: claude-bg.sh is the sole owner of the claude CLI surface.

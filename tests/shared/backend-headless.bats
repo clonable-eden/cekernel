@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+bats_require_minimum_version 1.5.0
 # backend-headless.bats — v2 contract tests for scripts/shared/backends/headless.sh
 #
 # ADR-0016 Phase 1: spawn delegates to `claude --bg --agent`; the handle is
