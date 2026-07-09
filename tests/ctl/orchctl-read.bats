@@ -544,6 +544,105 @@ make_handle() {
   assert_match "active worker listed" '"issue":10' "$output"
 }
 
+# ── ls: reviewer-*.state surface (#627, ADR-0021 Decision 2) ──
+
+# Helper to create a reviewer state file in a session dir.
+make_reviewer_state() {
+  local ipc_dir="$1" issue="$2" state_line="${3:-REVIEWING:2026-07-09T10:00:00Z:review:in-progress}"
+  mkdir -p "$ipc_dir"
+  echo "$state_line" > "${ipc_dir}/reviewer-${issue}.state"
+}
+
+@test "ls surfaces reviewer-*.state as type=reviewer row" {
+  make_reviewer_state "$IPC_A" 10
+  run bash "$ORCHCTL" ls
+  assert_match "contains issue 10" '"issue":10' "$output"
+  assert_match "type is reviewer" '"type":"reviewer"' "$output"
+  assert_match "state is REVIEWING" '"state":"REVIEWING"' "$output"
+}
+
+@test "ls excludes TERMINATED reviewer state" {
+  make_reviewer_state "$IPC_A" 10
+  make_reviewer_state "$IPC_A" 11 "TERMINATED:2026-07-09T10:00:00Z:approved"
+  run bash "$ORCHCTL" ls
+  local line_count
+  line_count=$(echo "$output" | grep -c '"issue"' || true)
+  assert_eq "only non-TERMINATED reviewer listed" "1" "$line_count"
+  assert_match "active reviewer listed" '"issue":10' "$output"
+}
+
+@test "ls shows both worker and reviewer rows" {
+  make_worker "$IPC_A" 10
+  make_reviewer_state "$IPC_A" 11
+  run bash "$ORCHCTL" ls
+  local line_count
+  line_count=$(echo "$output" | grep -c '"issue"' || true)
+  assert_eq "two rows (worker + reviewer)" "2" "$line_count"
+  assert_match "worker row" '"issue":10' "$output"
+  assert_match "reviewer row" '"issue":11' "$output"
+}
+
+@test "ls reviewer row has expected fields (session, repo, issue, type, state, detail)" {
+  make_reviewer_state "$IPC_A" 10 "REVIEWING:2026-07-09T10:00:00Z:review:in-progress"
+  run bash "$ORCHCTL" ls
+  local line
+  line=$(echo "$output" | grep '"issue":10')
+  assert_match "session" "$SESSION_A" "$line"
+  assert_match "type" '"type":"reviewer"' "$line"
+  assert_match "state" '"state":"REVIEWING"' "$line"
+  assert_match "detail" '"detail":"review:in-progress"' "$line"
+}
+
+# ── ps: reviewer-*.state surface (#627) ──
+
+@test "ps shows reviewer row from reviewer-*.state (no handle needed)" {
+  make_orchestrator "$IPC_A" "$ORCH_TOKEN_A"
+  make_reviewer_state "$IPC_A" 10
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$ORCH_TOKEN_A" background /repo 1700000000000 busy)]"
+  run bash "$ORCHCTL" ps
+  assert_match "reviewer row shown" "#10" "$output"
+  assert_match "row shows type reviewer" "reviewer" "$(echo "$output" | grep "#10")"
+  assert_match "row shows state" "REVIEWING" "$(echo "$output" | grep "#10")"
+}
+
+@test "ps excludes TERMINATED reviewer from reviewer-*.state" {
+  make_orchestrator "$IPC_A" "$ORCH_TOKEN_A"
+  make_reviewer_state "$IPC_A" 10 "TERMINATED:2026-07-09T10:00:00Z:approved"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$ORCH_TOKEN_A" background /repo 1700000000000 busy)]"
+  run bash "$ORCHCTL" ps
+  if [[ "$output" == *"#10"* ]]; then
+    echo "FAIL: TERMINATED reviewer should not appear in ps" >&2
+    return 1
+  fi
+}
+
+@test "ps shows both worker and reviewer rows" {
+  make_orchestrator "$IPC_A" "$ORCH_TOKEN_A"
+  make_worker "$IPC_A" 10
+  make_handle "$IPC_A" 10 worker "$WORKER_TOKEN"
+  make_reviewer_state "$IPC_A" 11
+  mock_claude_enqueue_agents "[
+    $(mock_claude_agent_record "$ORCH_TOKEN_A" background /repo 1700000000000 busy),
+    $(mock_claude_agent_record "$WORKER_TOKEN" background /repo 1700000001000 busy)
+  ]"
+  run bash "$ORCHCTL" ps
+  assert_match "worker row" "#10" "$output"
+  assert_match "reviewer row" "#11" "$output"
+}
+
+@test "ps --session filter applies to reviewer rows" {
+  make_reviewer_state "$IPC_A" 10
+  make_reviewer_state "$IPC_B" 20
+  mock_claude_enqueue_agents "[]"
+  run bash "$ORCHCTL" ps --session "$SESSION_A"
+  if [[ "$output" == *"#20"* ]]; then
+    echo "FAIL: ps --session should not show other sessions' reviewers" >&2
+    return 1
+  fi
+}
+
 # ── usage ──
 
 @test "no command prints usage and exits 1" {
