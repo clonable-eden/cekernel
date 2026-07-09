@@ -1,126 +1,72 @@
-# cekernel-v2.0.0
-
-cekernel 2.0 replaces the `claude -p` fork model with **`claude --bg` background
-agent sessions** supervised by an on-demand daemon. Spawned Workers and
-Orchestrators now survive the dispatching session's turn boundary — the failure
-that silently killed `-p` Orchestrators — and `claude agents --json` becomes the
-authoritative process roster.
-
-**This is a breaking release.** The `-p` spawn paths are removed outright; there
-is no runtime compatibility switch. Operators who need the old behavior stay on
-the `1.9.x` line (see **Migration** below). Requires a recent Claude Code
-(verified against **v2.1.202**; subagent nesting needs ≥ v2.1.172).
+# cekernel v2.1.0
 
 ## Highlights
 
-- **`claude --bg` spawn delegation (ADR-0016)**: Orchestrators, Workers, and the
-  wrapper/scheduler paths all spawn as `claude --bg` sessions; session IDs are
-  captured from the spawn line (not injected), and the daemon supervises
-  liveness. Fixes the `-p` turn-end silent-death class (#558 family).
-- **Platform interface contracts (ADR-0018)**: `scripts/shared/claude-bg.sh` is
-  the **sole owner** of the claude CLI surface. Raw platform JSON never crosses
-  the module boundary; consumers use semantic verdict predicates
-  (`alive` / `blocked` / `terminal` / `not-listed` / `query-failed` /
-  `unknown-value`). Ends the scattershot drift-patch cycle (#581 → #584 → #591 →
-  #589) by giving each boundary one guarantor.
-- **Reviewer as an Orchestrator subagent (ADR-0012 Amendment 2)**: the Reviewer
-  moved from a spawned `-p` process to an `isolation: worktree` subagent that
-  does a detached PR checkout and returns its verdict as its final line.
-- **Test suite overhaul (ADR-0017)**: migration to **bats-core**, PATH-shim
-  mocks (`mock-bin` / `mock-claude` as the executable contract spec), test-file
-  consolidation, and a hard ban on content-based assertions over markdown /
-  non-executable files ("assert behavior, never text").
-- **Worker lifecycle Stop hook (ADR-0019)**: a plugin `Stop` hook keeps a Worker
-  session alive until `notify-complete.sh` records `TERMINATED`, closing the
-  "Worker dies before its completion notification" gap. Live-verified to fire
-  in local self-hosting, via spawn-time `--plugin-dir` (the route cekernel
-  itself uses to spawn sessions), **and from a real marketplace
-  `/plugin install`** — hooks auto-discovered from `hooks/hooks.json`, on
-  macOS and a Linux devcontainer
-  ([#604](https://github.com/clonable-eden/cekernel/issues/604)).
-- **/workflows boundary (ADR-0015)**: state that survives the session belongs to
-  cekernel; in-session fan-out belongs to `/workflows` — documented usage guide.
-- **Conditional `--bare` (ADR-0016 Amendment 1)**: bare mode is now selected by
-  auth availability — OAuth/subscription operators spawn plain `--bg` (no
-  forced `ANTHROPIC_API_KEY`), API-key operators get `--bare` + explicit context.
+- **Completion detection simplified (ADR-0020)**: the completion-notification **FIFO is retired**. Slot accounting, roster enumeration, and completion payloads now live in **state files**, cutting the three completion-detection sources down to two plus separated polling. Fewer moving parts, no FIFO liveness edge cases.
+- **Reviewer subagent contract consolidated (ADR-0021)**: the Reviewer **no longer uses a platform-managed `isolation: worktree`** — it reads the Worker's existing worktree **read-only** (PR-anchored), so the `--bg` worktree leak is closed by construction. Reviewer state is now **visible in `orchctl ls`/`ps`**, and the verdict travels **out-of-band** with no approval-word leaked into the GitHub comment (the Orchestrator no longer swallows a SECURITY WARNING).
+- **bats-core migration completed (ADR-0021 test overhaul, #609)**: the legacy `test-*.sh` harness and `run-tests.sh` are **fully removed**; CI runs **`bats --recursive tests/`** exclusively.
+- **v2 regression fixes**: `gc` now respects v2 opaque session tokens when reaping locks/logs (#619), `claude stop` receives the short session id (#626), `watch.sh` uses chunk-based sentinel exit with cumulative elapsed (#630), and `session-id.sh` reads the provisioned id from the worktree (#632).
+- **Reviewer liveness matrix updated** for claude 2.1.205: `idle/working` between turns is now correctly treated as **alive** (#638).
 
-## ⚠️ Breaking Changes
+## New Features
 
-- **`claude -p` spawn paths removed.** No `CEKERNEL_SPAWN_MODE` switch, no
-  runtime fallback. Every spawn (Orchestrator, Worker, wrapper/scheduler,
-  backends) goes through `claude --bg`.
-- **Backend contract revised (#572, #578, #585)**: headless/wezterm/tmux
-  backends spawn `--bg` then `claude attach <id>`; the registry's stored value
-  and semantics changed.
-- **Daemon-inherited session env is unspecified (ADR-0018 §3)**: no cekernel
-  code may rely on it; spawners inject `CEKERNEL_*` explicitly. Custom callers
-  that leaned on env inheritance must inject their own.
-- **Requires a recent Claude Code** (`--bg`, `agents --json`, subagent nesting,
-  `additionalContext` hooks). Older CLIs are unsupported.
+- feat: unix-architect — add code cross-check verification of factual claims to review mode (#612)
+- feat: drop `isolation: worktree` from the Reviewer — borrow the Worker's worktree read-only (#636)
+- feat: surface reviewer state in `orchctl ls`/`ps` (#637)
 
-## Migration
+## Bug Fixes
 
-- **Update Claude Code** to a current release (verified against v2.1.202).
-- **Update the plugin** (`/plugin update cekernel`) — no config migration is
-  required for the common OAuth/subscription setup; spawns default to plain
-  `--bg`.
-- **API-key / headless operators**: `--bare` still applies when
-  `ANTHROPIC_API_KEY` or `CEKERNEL_CLAUDE_SETTINGS` (with `apiKeyHelper`) is
-  present; scheduled `wrapper.sh` paths still hard-require it (fail noisily
-  rather than expire silently).
-- **Staying on 1.x**: if you depend on `-p` spawning, pin to `cekernel-v1.9.x`.
-  The 1.x line is the supported legacy mode; 2.0 does not run alongside it.
+- fix: `gc` lock/log reap respects v2 opaque session tokens (#620, closes #619)
+- fix: unset `CEKERNEL_SESSION_ID` in Step D to force new session scope (#625)
+- fix: `claude_bg_stop` passed a full UUID to `claude stop`, so stops always failed (#626)
+- fix: `session-id.sh` reads the provisioned id from `.cekernel-env` in the worktree (#632)
+- fix: `watch.sh` chunk-based sentinel exit and cumulative elapsed (#633, closes #630)
+- fix: prevent Reviewer approval-word leakage and Orchestrator SECURITY WARNING bypass (#639, closes #628)
+- fix: add `idle/working → alive` to the liveness matrix (#640, closes #638)
 
-## Known Issues
+## Documentation
 
-- **Reviewer worktrees are not auto-cleaned under `--bg`**
-  ([#602](https://github.com/clonable-eden/cekernel/issues/602)): when the
-  Orchestrator runs non-interactively (`claude --bg`, the default in 2.0), the
-  platform's worktree auto-cleanup and `.git/info/exclude` auto-ignore do
-  **not** fire on Reviewer (`isolation: worktree`) subagent completion.
-  Leftover `.claude/worktrees/agent-*` accumulate on disk and show as
-  untracked `?? .claude/worktrees/` in `git status`. **Workaround**:
-  periodically run `git worktree prune` / `git worktree remove`. Left
-  intentionally visible (not gitignored) as a cleanup signal. The root fix —
-  moving the Reviewer onto a cekernel-managed worktree — is tracked in #602
-  and scheduled post-2.0.
+- docs: ADR-0020 — retire the completion-detection FIFO (3 sources → 2 sources + separated polling) (#610)
+- docs: #595 — layer 2 is the auto-mode classifier (mechanism confirmed) (#617)
+- docs: ADR-0021 — Reviewer subagent contract (#634)
+- docs: ADR-0021 Decision 1 — mechanism to principle (reuse Worker worktree) (#635)
 
-## Architecture Decisions
+## Other Changes
 
-This release lands five ADRs: **0015** (/workflows boundary), **0016** (`--bg`
-spawn delegation, + Amendment 1 conditional `--bare`), **0017** (test-suite
-overhaul), **0018** (platform interface contracts), **0019** (Worker lifecycle
-Stop hook). ADR-0012 gains Amendments 2–5 (Reviewer subagent, KEEP_WORKTREE,
-permission portability, namespace-agnostic Reviewer grant — the #600 fix).
+- refactor: ADR-0020 Phase 1a — consolidate completion payload into state files (#618)
+- refactor: ADR-0020 Phase 1 — state-file-based slot accounting + reaper/resolver/orchestrator wiring (#623)
+- refactor: ADR-0020 Phase 2 — state-based roster enumeration + gc reap write (#624)
+- refactor: ADR-0020 Phase 3+4 — remove FIFO creation/write/read paths + document sweep (#631)
+- test: bats migration A群 — reconcile 16 duplicate tests against bats coverage, delete legacy (#645, #609)
+- test: bats migration B群 (orchestrator) — migrate/delete 8 unported tests (#647, #642)
+- test: bats migration B群 (process+shared) — migrate/delete 11 unported tests (#648, #643)
+- test: bats migration finalize — delete `run-tests.sh`, switch CI to bats-only (#649, #609)
+- chore(deps): update dorny/paths-filter digest to 7b450ff (#542)
 
 ## What's Changed
 
-* feat: add CEKERNEL_KEEP_WORKTREE to preserve worktree after Reviewer approval by @clonable-eden in #559
-* test: bats-core ハーネス bootstrap + CI dual-lane by @clonable-eden in #560
-* feat: Reviewer を Orchestrator subagent 化(ADR-0012 Amendment 2 実装) by @clonable-eden in #561
-* feat: default all spawn paths to --bare explicit context (ADR-0016 Phase 0) by @clonable-eden in #563
-* test: mock-bin / mock-claude 共通モックヘルパー (ADR-0017) by @clonable-eden in #564
-* feat: spawn.sh に --fallback-model パススルー追加 by @clonable-eden in #565
-* feat: spawn.sh の cross-repo Issue サポート (--repo フラグ) by @clonable-eden in #566
-* fix: propagate spawn.sh base branch to Worker via task file frontmatter by @clonable-eden in #567
-* test: 統合バッチ1 — zsh-compat / load-env / issue-lock を .bats に統合 by @clonable-eden in #568
-* test: 統合バッチ3 — scheduler マトリクス 9→5 に統合 (ADR-0017) by @clonable-eden in #569
-* test: 統合バッチ2 — notify-complete / process-status / orchctl を .bats に統合 by @clonable-eden in #570
-* feat: headless backend を claude --bg 化 + session-ID 捕捉 + backend 契約改訂 (ADR-0016 Phase 1) by @clonable-eden in #572
-* docs: ADR-0015 follow-ups — README 使い分けガイド + agent 定義への注記 by @clonable-eden in #575
-* fix: --bare を auth 可用性による条件付きに(ADR-0016 Amendment 1) by @clonable-eden in #576
-* feat: Phase 5 — wezterm/tmux backend を claude attach UX に再構築 by @clonable-eden in #578
-* feat: Phase 2 — spawn-orchestrator.sh を claude --bg 化 by @clonable-eden in #580
-* feat: Phase 4 — orchctl ps を claude agents --json の view 層に by @clonable-eden in #582
-* feat: Worker lifecycle Stop hook guard via additionalContext (ADR-0019) by @clonable-eden in #583
-* fix: prefer status over state when reading claude agents --json liveness by @clonable-eden in #584
-* feat: Phase 3 — wrapper.sh を claude --bg 化 + registry 意味論変更 by @clonable-eden in #585
-* refactor: agents/skills markdown のスリム化 — 指示のみに縮退、env 儀式の撤去 by @clonable-eden in #590
-* fix: PR #572 レビューの非ブロッキング指摘 5 件のフォローアップ by @clonable-eden in #592
-* feat: ADR-0018 実装 — claude CLI 契約層の確立(#591/#589 を契約内で修正) by @clonable-eden in #596
-* feat: Worker spawn 前の粗い permission preflight(ADR-0012 Amendment 4 層1) by @clonable-eden in #597
-* fix: Reviewer subagent grant を plugin モード対応に(namespace-agnostic) by @clonable-eden in #601
-* docs: --bg での worktree cleanup 発火ギャップを記録 (#602) by @clonable-eden in #603
-* docs: 2.0 --bg 移行で残った claude -p 記述の更新漏れを修正 by @clonable-eden in #605
+* docs: ADR-0020 — 完了検知 FIFO の退役(3ソース → 2ソース + 分離ポーリング) by @clonable-eden in #610
+* feat: unix-architect — review モードに事実主張のコード突き合わせ検証を追加 by @clonable-eden in #612
+* docs: #595 — 層2は auto モード classifier(機序確定) by @clonable-eden in #617
+* refactor: ADR-0020 Phase 1a — 完了 payload を state ファイルに集約 by @clonable-eden in #618
+* fix: gc lock/log reap respects v2 opaque session tokens (#619) by @clonable-eden in #620
+* refactor: ADR-0020 Phase 1 — 状態ファイルベースの slot 会計 + reaper/resolver/orchestrator 配線 by @clonable-eden in #623
+* refactor: ADR-0020 Phase 2 — state-based roster enumeration + gc reap write by @clonable-eden in #624
+* fix: unset CEKERNEL_SESSION_ID in Step D to force new session scope by @clonable-eden in #625
+* fix: claude_bg_stop がフル UUID を claude stop に渡し停止が常に失敗する問題を修正 by @clonable-eden in #626
+* refactor: ADR-0020 Phase 3+4 — remove FIFO creation, write, read paths + document sweep by @clonable-eden in #631
+* fix: session-id.sh reads provisioned ID from .cekernel-env in worktree by @clonable-eden in #632
+* fix: watch.sh chunk-based sentinel exit and cumulative elapsed (#630) by @clonable-eden in #633
+* docs: ADR-0021 — Reviewer subagent contract by @clonable-eden in #634
+* docs: ADR-0021 Decision 1 — mechanism to principle (reuse Worker worktree) by @clonable-eden in #635
+* feat: drop isolation: worktree from Reviewer — borrow Worker's worktree read-only by @clonable-eden in #636
+* feat: surface reviewer state in orchctl ls/ps (#627) by @clonable-eden in #637
+* fix: prevent Reviewer approval-word leakage and Orchestrator SECURITY WARNING bypass (#628) by @clonable-eden in #639
+* fix: add idle/working → alive to liveness matrix (#638) by @clonable-eden in #640
+* test: bats 移行 A群 — 重複16本のカバレッジ突合→legacy削除(#609) by @clonable-eden in #645
+* test: bats 移行 B群(orchestrator)— 未対応8本を移行/削除 (#642) by @clonable-eden in #647
+* test: bats 移行 B群(process+shared)— 未対応11本を移行/削除(#643) by @clonable-eden in #648
+* test: bats 移行仕上げ — run-tests.sh 削除・CI 単独化 (#609) by @clonable-eden in #649
+* chore(deps): update dorny/paths-filter digest to 7b450ff by @app/renovate in #542
 
-**Full Changelog**: https://github.com/clonable-eden/cekernel/compare/cekernel-v1.9.0...cekernel-v2.0.0
+**Full Changelog**: https://github.com/clonable-eden/cekernel/compare/cekernel-v2.0.0...cekernel-v2.1.0
