@@ -8,7 +8,8 @@
 # of globbing. The glob remains the fallback (degraded short-ID capture,
 # pre-v2 sessions).
 #
-# Glob-path coverage lives in the legacy tests/shared/test-transcript-locator.sh.
+# Also covers orchestrator transcript discovery (subagent path,
+# .spawned reverse lookup, locate_all).
 
 load '../helpers/assertions'
 

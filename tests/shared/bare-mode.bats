@@ -7,8 +7,7 @@
 # keeps --bare; otherwise --bare is dropped (OAuth/keychain auth) with a
 # one-line stderr notice, while context injection (--plugin-dir/--add-dir)
 # is preserved.
-# Legacy coverage for --plugin-dir/--add-dir/--settings/preflight
-# lives in tests/shared/test-bare-mode.sh (pre-ADR-0017 harness).
+# Also covers bare_mode_preflight (hard gate for cron/at).
 
 load '../helpers/assertions'
 

@@ -1,10 +1,9 @@
 #!/usr/bin/env bats
 # task-file.bats — bats-core tests for scripts/shared/task-file.sh
 #
-# Covers the cross-repo `repo` argument of create_task_file (#440):
-# recorded gh argv (ADR-0017: executed effects, not generated text) and
-# the `repo:` frontmatter field. Legacy coverage for the repo-less
-# behavior lives in tests/shared/test-task-file.sh.
+# Covers the cross-repo `repo` argument of create_task_file (#440),
+# base branch propagation (#562), and task_file_clear_resume_marker.
+# Recorded gh argv (ADR-0017: executed effects, not generated text).
 
 load '../helpers/assertions'
 load '../helpers/mock-bin'
