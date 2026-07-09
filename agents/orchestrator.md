@@ -156,6 +156,19 @@ Workers fully follow the target repository's CLAUDE.md. cekernel defines only th
 
 On `ci-passed`, invoke the Reviewer before merge. It runs as an **Orchestrator subagent** without `isolation: worktree` (ADR-0021 Decision 1) — no spawn script, no `watch.sh`, and no dedicated worktree. The Reviewer reads the **Worker's existing worktree** read-only.
 
+**Write reviewer state** (ADR-0021 Decision 2) around the `Agent(reviewer)` call so `orchctl ls`/`ps` can surface the review status:
+
+```bash
+# Before invoking the Reviewer:
+reviewer-state-write.sh <issue> REVIEWING "review:in-progress"
+
+# Invoke the Reviewer (Agent tool, foreground) ...
+
+# After the verdict is returned:
+reviewer-state-write.sh <issue> TERMINATED "<verdict>"
+# verdict: approved / changes-requested / escalated
+```
+
 Invoke with the **Agent tool**, subagent type from `CEKERNEL_AGENT_REVIEWER`, in the **foreground** (reviews are short; Worker state-file events are polled after the block). The prompt must include the issue number, PR number, base branch, and **Worker worktree path**:
 
 ```

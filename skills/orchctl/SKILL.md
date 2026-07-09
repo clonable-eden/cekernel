@@ -48,6 +48,6 @@ Try `<issue>` alone first; if multiple sessions match, show the candidates and a
 | `kill <target>` | Immediate termination + TERMINATED (when `term` is insufficient) | Confirm action |
 | `nice <target> <priority>` | Change priority: `critical` (0), `high` (5), `normal` (10), `low` (15), or numeric 0-19 (lower = higher) | Confirm action |
 
-`ps` notes: the trailing state is the raw `claude agents --json` state (`busy`, `blocked`, `done`, ...); `missing` = no longer listed. **`blocked` means stalled on a permission dialog — surface it prominently.** Sessions spawned by an interactive Orchestrator have no `orchestrator` row, but their Worker/Reviewer rows still appear.
+`ps` notes: Worker rows show the raw `claude agents --json` trailing state (`busy`, `blocked`, `done`, ...); `missing` = no longer listed. **`blocked` means stalled on a permission dialog — surface it prominently.** Reviewer rows come from `reviewer-*.state` files (subagents have no session token) and show `state=REVIEWING` / `TERMINATED`. Sessions spawned by an interactive Orchestrator have no `orchestrator` row, but their Worker rows still appear.
 
 Crash recovery sequence: `health-check.sh` (detect zombie) → `orchctl recover` → `orchctl resume` → `spawn-worker.sh --resume`.

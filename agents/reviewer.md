@@ -13,7 +13,7 @@ Evaluates PRs created by Workers in a separate context window, providing an inde
 - Runs as an **Orchestrator subagent** (`Agent(reviewer)`) **without `isolation: worktree`** (ADR-0021 Decision 1): the Reviewer reads the **Worker's existing worktree** read-only — no dedicated worktree is created, so nothing can leak
 - The Worker's worktree is alive throughout the review window (cleaned up only after merge or escalation — `agents/orchestrator.md` Worktree Lifetime)
 - Short-lived: PR anchor verification → read → evaluate → submit review → return the verdict
-- Uses the operator's `gh` authentication; communicates the result via the **return contract** only — no state files
+- Uses the operator's `gh` authentication; communicates the result via the **return contract** only (the Orchestrator writes `reviewer-<issue>.state` around the call — ADR-0021 Decision 2)
 
 ## Input
 

@@ -320,7 +320,7 @@ cmd_ls() {
   fi
 }
 
-# ── ps: agents --json view layer (ADR-0016 Phase 4) ──
+# ── ps: agents --json view layer (ADR-0016 Phase 4, ADR-0021 #627) ──
 # `claude agents --json` is fetched ONCE per invocation (the body is an
 # OPAQUE snapshot — only claude-bg.sh predicates parse it, ADR-0018);
 # every registered token (orchestrator.claude-session-id,
@@ -328,10 +328,11 @@ cmd_ls() {
 # ADR-0018 verdict tokens print as-is so `blocked` (permission-dialog
 # stall) is surfaced distinctly; an absent token shows as `not-listed`,
 # schema drift as `unknown-value` — a view reports honestly, it does not
-# interpret. Worker/Reviewer rows join the cekernel-specific columns —
-# issue, phase (state-file detail), priority — per the ADR-0015 boundary:
-# the view adds only what `claude agents` cannot know. Sessions without an
-# orchestrator token (interactive orchestrators) still list their workers.
+# interpret. Worker rows (handle-based) join cekernel-specific columns —
+# issue, phase (state-file detail), priority — per the ADR-0015 boundary.
+# Reviewer rows come from reviewer-*.state files (subagents have no
+# session token — ADR-0021 Decision 2). Sessions without an orchestrator
+# token (interactive orchestrators) still list their workers.
 cmd_ps() {
   local session_filter=""
 
@@ -623,7 +624,9 @@ cmd_kill() {
   local backend
   backend=$(detect_backend "$CEKERNEL_IPC_DIR" "$RESOLVED_ISSUE")
 
-  # Stop all sessions for this issue (Worker + Reviewer).
+  # Stop all sessions for this issue (Worker handles).
+  # Reviewer runs as a foreground subagent (no handle since ADR-0021),
+  # so only Worker handles are enumerated here.
   # v2: the handle is an opaque session token on ALL backends — the daemon
   # owns the process, so termination delegates to claude stop
   # (ADR-0005 Amendment 1, ADR-0016 Phase 1/5)
