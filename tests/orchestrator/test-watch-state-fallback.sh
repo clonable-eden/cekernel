@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-watch-state-fallback.sh — watch.sh detects completion via state file when FIFO is absent
+# test-watch-state-fallback.sh — watch.sh detects completion via state file (primary path)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -7,7 +7,7 @@ source "${SCRIPT_DIR}/../helpers.sh"
 
 CEKERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-echo "test: watch (state file fallback — no FIFO)"
+echo "test: watch (state file — primary completion path)"
 
 export CEKERNEL_SESSION_ID="test-watch-fallback-00000001"
 source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
@@ -16,18 +16,17 @@ source "${CEKERNEL_DIR}/scripts/shared/worker-state.sh"
 ISSUE_NUMBER=30
 
 cleanup() {
-  rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}"
   rm -rf "$CEKERNEL_IPC_DIR"
 }
 trap cleanup EXIT
 
-# Setup: Create session directory but NO FIFO — only state file
+# Setup: Create session directory with pre-written TERMINATED state
 mkdir -p "$CEKERNEL_IPC_DIR/logs"
 
-# Pre-write TERMINATED state (simulates Worker that completed but FIFO was missing)
+# Pre-write TERMINATED state (simulates Worker that completed)
 worker_state_write "$ISSUE_NUMBER" TERMINATED "merged"
 
-# ── Test: watch.sh detects completion via state file fallback ──
+# ── Test: watch.sh detects completion via state file ──
 RESULT_FILE=$(mktemp)
 STDERR_FILE=$(mktemp)
 
@@ -52,7 +51,7 @@ if [[ "$WATCH_DONE" -eq 0 ]]; then
   kill "$WATCH_PID" 2>/dev/null || true
   wait "$WATCH_PID" 2>/dev/null || true
   rm -f "$RESULT_FILE" "$STDERR_FILE"
-  echo "  FAIL: watch timed out — state fallback not working"
+  echo "  FAIL: watch timed out — state detection not working"
   TESTS_FAILED=$((TESTS_FAILED + 1))
   report_results
   exit "$TESTS_FAILED"
@@ -69,7 +68,7 @@ assert_match "Result contains issue number" '"issue":30' "$RESULT"
 assert_match "Result contains merged result" '"result":"merged"' "$RESULT"
 assert_match "Result detail is empty for old format" '"detail":""' "$RESULT"
 
-# Verify stderr warning
-assert_match "Warning about state fallback in stderr" 'state file' "$STDERR"
+# Verify stderr reports completion
+assert_match "Completion detected in stderr" 'completed' "$STDERR"
 
 report_results

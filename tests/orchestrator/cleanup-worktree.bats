@@ -2,8 +2,8 @@
 # cleanup-worktree.bats — bats-core tests for scripts/orchestrator/cleanup-worktree.sh
 #
 # CEKERNEL_KEEP_WORKTREE=true preserves the worktree and local branch while
-# still cleaning up IPC resources (FIFOs are removed so concurrency slots do
-# not leak). --force always removes the worktree regardless of
+# still cleaning up IPC resources (state files are removed so concurrency
+# slots do not leak). --force always removes the worktree regardless of
 # CEKERNEL_KEEP_WORKTREE (zombie recovery must free the worktree).
 
 load '../helpers/assertions'
@@ -57,12 +57,11 @@ setup_worktree() {
   echo "$worktree"
 }
 
-# Create session-scoped IPC resources (FIFO + state file) for the issue.
+# Create session-scoped IPC resources (state file) for the issue.
 setup_ipc() {
   local issue="$1"
   mkdir -p "$CEKERNEL_IPC_DIR"
-  mkfifo "${CEKERNEL_IPC_DIR}/worker-${issue}"
-  echo "RUNNING" > "${CEKERNEL_IPC_DIR}/worker-${issue}.state"
+  echo "RUNNING:2026-07-09T00:00:00Z:phase1:implement" > "${CEKERNEL_IPC_DIR}/worker-${issue}.state"
 }
 
 @test "CEKERNEL_KEEP_WORKTREE=true preserves worktree and branch, cleans IPC" {
@@ -80,7 +79,6 @@ setup_ipc() {
   run git -C "$FAKE_REPO" rev-parse --verify --quiet "issue/${issue}-keep-test"
   assert_eq "keep=true: local branch preserved" "0" "$status"
 
-  assert_not_exists "keep=true: FIFO removed" "${CEKERNEL_IPC_DIR}/worker-${issue}"
   assert_not_exists "keep=true: state file removed" "${CEKERNEL_IPC_DIR}/worker-${issue}.state"
 }
 
@@ -136,9 +134,6 @@ setup_ipc() {
   local worktree
   worktree=$(setup_worktree "$issue")
   setup_ipc "$issue"
-
-  # Set state to RUNNING (non-TERMINATED)
-  echo "RUNNING:2026-07-09T00:00:00Z:phase1:implement" > "${CEKERNEL_IPC_DIR}/worker-${issue}.state"
 
   # Create log file
   mkdir -p "${CEKERNEL_IPC_DIR}/logs"

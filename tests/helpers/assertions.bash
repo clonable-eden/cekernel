@@ -16,7 +16,6 @@
 #   assert_eq <label> <expected> <actual>     — exact string equality
 #   assert_match <label> <regex> <actual>     — bash [[ =~ ]] regex match
 #   assert_file_exists <label> <path>         — path is a regular file
-#   assert_fifo_exists <label> <path>         — path is a FIFO
 #   assert_dir_exists <label> <path>          — path is a directory
 #   assert_not_exists <label> <path>          — path does not exist
 #   wait_for_file <path> [max_attempts]       — poll (0.1s) until file exists
@@ -49,15 +48,6 @@ assert_file_exists() {
     return 0
   fi
   echo "FAIL: ${label} — file not found: ${path}" >&2
-  return 1
-}
-
-assert_fifo_exists() {
-  local label="$1" path="$2"
-  if [[ -p "$path" ]]; then
-    return 0
-  fi
-  echo "FAIL: ${label} — FIFO not found: ${path}" >&2
   return 1
 }
 

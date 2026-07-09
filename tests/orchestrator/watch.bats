@@ -2,12 +2,12 @@
 # watch.bats — v2 contract tests for scripts/orchestrator/watch.sh
 #
 # Under --bg delegation (ADR-0016 Phase 1) watch.sh supervises headless
-# Workers via the backend status (`claude agents --json` state):
-#   - session gone / terminal state without TERMINATED → crashed
-#   - blocked (permission-dialog stall) → surfaced as a distinct result
-#   - busy → keep waiting (no false crash)
-# Replaces the PID-liveness tests test-watch-crash-detection.sh and
-# test-watch-env-backend.sh (deleted with the -p spawn path, ADR-0017 §3).
+# Workers via dual-path detection (ADR-0020 Phase 3+4):
+#   - State file polling (primary completion path)
+#   - Backend verdict (`claude agents --json` state):
+#     session gone / terminal state without TERMINATED → crashed
+#     blocked (permission-dialog stall) → surfaced as a distinct result
+#     busy → keep waiting (no false crash)
 
 load '../helpers/assertions'
 load '../helpers/session'
@@ -218,7 +218,6 @@ teardown() {
   worker_state_write 700 RUNNING "phase1:implement"
   echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-700.worker"
   # empty agents queue → [] → session missing → crashed
-  mkfifo "${CEKERNEL_IPC_DIR}/worker-700"
 
   run bash "$WATCH_SCRIPT" 700
   assert_eq "watch exits non-zero" "1" "$status"
@@ -235,7 +234,6 @@ teardown() {
   echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-701.worker"
   mock_claude_enqueue_agents \
     "[$(mock_claude_agent_record "$TOKEN" background /tmp/wt 1700000000000 blocked)]"
-  mkfifo "${CEKERNEL_IPC_DIR}/worker-701"
 
   run bash "$WATCH_SCRIPT" 701
   assert_eq "watch exits non-zero" "1" "$status"
@@ -252,7 +250,6 @@ teardown() {
   echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-702.worker"
   mock_claude_enqueue_agents \
     "[$(mock_claude_agent_record "$TOKEN" background /tmp/wt 1700000000000 busy)]"
-  mkfifo "${CEKERNEL_IPC_DIR}/worker-702"
   export CEKERNEL_WORKER_TIMEOUT=2
 
   run bash "$WATCH_SCRIPT" 702
@@ -269,7 +266,6 @@ teardown() {
   worker_state_write 703 RUNNING "phase1:implement"
   echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-703.worker"
   mock_bin claude 'exit 1'
-  mkfifo "${CEKERNEL_IPC_DIR}/worker-703"
   export CEKERNEL_WATCH_QUERY_RETRY_MAX=2
 
   run bash "$WATCH_SCRIPT" 703
@@ -287,7 +283,6 @@ teardown() {
   # Simulate: Worker writes TERMINATED just before backend reports dead
   worker_state_write 704 RUNNING "phase1:implement"
   echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-704.worker"
-  mkfifo "${CEKERNEL_IPC_DIR}/worker-704"
 
   # Start watch in background
   local out="${BATS_TEST_TMPDIR}/watch-out-704.json"
@@ -318,7 +313,6 @@ teardown() {
   echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-705.worker"
   mock_claude_enqueue_agents \
     "[$(mock_claude_agent_record "$TOKEN" background /tmp/wt 1700000000000 busy)]"
-  mkfifo "${CEKERNEL_IPC_DIR}/worker-705"
 
   # Set state poll to 1s and backend poll to 30s
   # If state poll works at 1s, completion via state should be detected quickly

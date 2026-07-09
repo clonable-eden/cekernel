@@ -17,6 +17,7 @@ echo "test: spawn-max-processes"
 # Test session
 export CEKERNEL_SESSION_ID="test-max-proc-00000001"
 source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
+source "${CEKERNEL_DIR}/scripts/shared/worker-state.sh"
 
 # ── Setup ──
 rm -rf "$CEKERNEL_IPC_DIR"
@@ -30,6 +31,21 @@ resolve_max_children() {
   else
     echo "5"
   fi
+}
+
+# ADR-0020: active_worker_count counts non-TERMINATED state files
+active_worker_count() {
+  local count=0
+  for sf in "$CEKERNEL_IPC_DIR"/worker-*.state; do
+    [[ -f "$sf" ]] || continue
+    local line
+    line=$(cat "$sf")
+    local state="${line%%:*}"
+    if [[ "$state" != "TERMINATED" ]]; then
+      count=$((count + 1))
+    fi
+  done
+  echo "$count"
 }
 
 # ── Test 1: Default is 5 when variable is not set ──
@@ -101,17 +117,13 @@ echo "worker" > "$TYPE_FILE"
 TYPE_CONTENT=$(cat "$TYPE_FILE")
 assert_eq "Type file contains agent type" "worker" "$TYPE_CONTENT"
 
-# ── Test 10: Concurrency guard uses resolved MAX_ORCH_CHILDREN ──
-# Create 5 FIFOs to match new default
-mkfifo "${CEKERNEL_IPC_DIR}/worker-10"
-mkfifo "${CEKERNEL_IPC_DIR}/worker-11"
-mkfifo "${CEKERNEL_IPC_DIR}/worker-12"
-mkfifo "${CEKERNEL_IPC_DIR}/worker-13"
-mkfifo "${CEKERNEL_IPC_DIR}/worker-14"
-
-active_worker_count() {
-  find "$CEKERNEL_IPC_DIR" -maxdepth 1 -name 'worker-*' -type p 2>/dev/null | wc -l | tr -d ' '
-}
+# ── Test 10: Concurrency guard uses state-based counting ──
+# Create 5 non-TERMINATED state files to match default limit
+worker_state_write 10 RUNNING "phase1:implement"
+worker_state_write 11 RUNNING "phase1:implement"
+worker_state_write 12 WAITING "phase3:ci-waiting"
+worker_state_write 13 RUNNING "phase2:create-pr"
+worker_state_write 14 NEW "spawning"
 
 # With default (5), 5 active should trigger guard
 MAX_CHILDREN=$(resolve_max_children "")

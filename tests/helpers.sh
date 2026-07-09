@@ -30,17 +30,6 @@ assert_file_exists() {
   fi
 }
 
-assert_fifo_exists() {
-  local label="$1" path="$2"
-  if [[ -p "$path" ]]; then
-    echo "  PASS: ${label}"
-    ((TESTS_PASSED++)) || true
-  else
-    echo "  FAIL: ${label} — FIFO not found: ${path}"
-    ((TESTS_FAILED++)) || true
-  fi
-}
-
 assert_match() {
   local label="$1" pattern="$2" actual="$3"
   if [[ "$actual" =~ $pattern ]]; then

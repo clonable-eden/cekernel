@@ -43,18 +43,7 @@ assert_match "SPAWN has issue number" "issue=#${ISSUE_NUMBER}" "$SPAWN_LINE"
 assert_match "SPAWN has branch" 'branch=' "$SPAWN_LINE"
 
 # ── Test 3: notify-complete.sh records COMPLETE in log ──
-# Set up FIFO (required by notify-complete.sh)
-FIFO="${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}"
-mkfifo "$FIFO"
-
-# Background FIFO reader (to unblock write)
-(cat "$FIFO" > /dev/null) &
-READER_PID=$!
-
-# Run notify-complete.sh
-bash "${CEKERNEL_DIR}/scripts/process/notify-complete.sh" "$ISSUE_NUMBER" merged 99
-
-wait "$READER_PID" || true
+bash "${CEKERNEL_DIR}/scripts/process/notify-complete.sh" "$ISSUE_NUMBER" merged 99 2>/dev/null
 
 COMPLETE_LINE=$(tail -1 "$LOG_FILE")
 assert_match "COMPLETE has ISO8601 timestamp" '^\[[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\]' "$COMPLETE_LINE"
@@ -65,18 +54,11 @@ assert_match "COMPLETE has detail" 'detail=99' "$COMPLETE_LINE"
 # ── Test 4: FAILED event recording ──
 ISSUE_FAIL=81
 LOG_FILE_FAIL="${LOG_DIR}/worker-${ISSUE_FAIL}.log"
-FIFO_FAIL="${CEKERNEL_IPC_DIR}/worker-${ISSUE_FAIL}"
 
-# Prepare log file and FIFO
+# Prepare log file
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] SPAWN issue=#${ISSUE_FAIL} branch=issue/${ISSUE_FAIL}-fail" >> "$LOG_FILE_FAIL"
-mkfifo "$FIFO_FAIL"
 
-(cat "$FIFO_FAIL" > /dev/null) &
-READER_PID=$!
-
-bash "${CEKERNEL_DIR}/scripts/process/notify-complete.sh" "$ISSUE_FAIL" failed "CI failed 3 times"
-
-wait "$READER_PID" || true
+bash "${CEKERNEL_DIR}/scripts/process/notify-complete.sh" "$ISSUE_FAIL" failed "CI failed 3 times" 2>/dev/null
 
 FAILED_LINE=$(tail -1 "$LOG_FILE_FAIL")
 assert_match "FAILED event recorded" 'FAILED' "$FAILED_LINE"
@@ -88,10 +70,10 @@ SAVE_CEKERNEL_SESSION_ID="$CEKERNEL_SESSION_ID"
 export CEKERNEL_SESSION_ID="nonexistent-session-00000000"
 if bash "${CEKERNEL_DIR}/scripts/orchestrator/watch-logs.sh" 2>/dev/null; then
   echo "  FAIL: watch-logs.sh should fail with no log dir"
-  ((TESTS_FAILED++)) || true
+  TESTS_FAILED=$((TESTS_FAILED + 1))
 else
   echo "  PASS: watch-logs.sh fails with no log dir"
-  ((TESTS_PASSED++)) || true
+  TESTS_PASSED=$((TESTS_PASSED + 1))
 fi
 export CEKERNEL_SESSION_ID="$SAVE_CEKERNEL_SESSION_ID"
 source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
@@ -99,10 +81,10 @@ source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
 # ── Test 5b: watch-logs.sh returns error for nonexistent issue ──
 if bash "${CEKERNEL_DIR}/scripts/orchestrator/watch-logs.sh" 999 2>/dev/null; then
   echo "  FAIL: watch-logs.sh should fail for nonexistent issue"
-  ((TESTS_FAILED++)) || true
+  TESTS_FAILED=$((TESTS_FAILED + 1))
 else
   echo "  PASS: watch-logs.sh fails for nonexistent issue"
-  ((TESTS_PASSED++)) || true
+  TESTS_PASSED=$((TESTS_PASSED + 1))
 fi
 
 # ── Test 6: Log file cleanup ──
