@@ -32,10 +32,12 @@ real under `claude --bg`:
    `.claude/worktrees/agent-*` accumulates (untracked in `git status`).
    Verified 2026-07-08.
 2. **State invisibility (#627)**: a subagent is not a background session — it
-   never appears in `claude agents --json` and writes no handle/state file.
-   `orchctl ls`/`ps` build managed rows by enumerating `handle-<issue>.<type>`
-   joined to `claude agents --json` liveness; the Reviewer has neither, so no
-   row is produced. Operators cannot see that a review is in progress.
+   never appears in `claude agents --json` and writes no handle or state file.
+   `orchctl ps` builds its managed rows from `handle-<issue>.<type>` files
+   joined to `claude agents --json` liveness; `orchctl ls`/`gc` enumerate
+   `worker-*.state`. The Reviewer writes neither a handle nor a
+   `reviewer-*.state`, so it appears in no row of either. Operators cannot see
+   that a review is in progress.
 3. **Simulated approval (#628)**: a single GitHub identity cannot `APPROVE`
    its own PR, so the Reviewer writes `APPROVE` into a `COMMENT` body to
    simulate it. This trips the auto-mode `[Self-Approval]` guard; the
