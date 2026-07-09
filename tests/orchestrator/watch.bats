@@ -373,3 +373,96 @@ teardown() {
   assert_match "no false crash — result is merged" '"result":"merged"' "$result_json"
   assert_match "detail is #999" '"detail":"#999"' "$result_json"
 }
+
+# ── #630: chunk-based sentinel exit ──
+
+@test "watch returns watching sentinel at chunk boundary (exit 0)" {
+  # When CEKERNEL_WATCH_CHUNK_TIMEOUT < CEKERNEL_WORKER_TIMEOUT, watch
+  # should exit 0 with a "watching" result at the chunk boundary — not
+  # wait until WORKER_TIMEOUT.
+  worker_state_write 630 RUNNING "phase1:implement"
+  echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-630.worker"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$TOKEN" background /tmp/wt 1700000000000 busy)]"
+
+  export CEKERNEL_WATCH_CHUNK_TIMEOUT=2
+  export CEKERNEL_WORKER_TIMEOUT=10
+  export CEKERNEL_STATE_POLL_INTERVAL=1
+
+  # Create .spawned file with a recent epoch
+  date +%s > "${CEKERNEL_IPC_DIR}/worker-630.spawned"
+
+  run bash "$WATCH_SCRIPT" 630
+  assert_eq "watch exits 0 at chunk boundary" "0" "$status"
+  assert_match "result is watching" '"result":"watching"' "$output"
+}
+
+@test "watching sentinel includes elapsed seconds from .spawned" {
+  worker_state_write 631 RUNNING "phase1:implement"
+  echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-631.worker"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$TOKEN" background /tmp/wt 1700000000000 busy)]"
+
+  export CEKERNEL_WATCH_CHUNK_TIMEOUT=2
+  export CEKERNEL_WORKER_TIMEOUT=3600
+  export CEKERNEL_STATE_POLL_INTERVAL=1
+
+  # .spawned 60 seconds ago
+  echo "$(( $(date +%s) - 60 ))" > "${CEKERNEL_IPC_DIR}/worker-631.spawned"
+
+  run bash "$WATCH_SCRIPT" 631
+  assert_eq "watch exits 0" "0" "$status"
+  assert_match "result is watching" '"result":"watching"' "$output"
+  # elapsed should be ≥60 (60s before spawn + ~2s chunk wait)
+  local elapsed
+  elapsed=$(echo "$output" | jq -r '.elapsed')
+  [[ "$elapsed" -ge 60 ]]
+}
+
+# ── #630: cumulative elapsed from .spawned ──
+
+@test "timeout is based on cumulative elapsed from .spawned, not per-invocation" {
+  # If .spawned is old enough that cumulative elapsed exceeds WORKER_TIMEOUT,
+  # watch should return timeout immediately (within one chunk).
+  worker_state_write 632 RUNNING "phase1:implement"
+  echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-632.worker"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$TOKEN" background /tmp/wt 1700000000000 busy)]"
+
+  export CEKERNEL_WORKER_TIMEOUT=10
+  export CEKERNEL_WATCH_CHUNK_TIMEOUT=5
+  export CEKERNEL_STATE_POLL_INTERVAL=1
+
+  # .spawned 15 seconds ago — already past WORKER_TIMEOUT of 10s
+  echo "$(( $(date +%s) - 15 ))" > "${CEKERNEL_IPC_DIR}/worker-632.spawned"
+
+  run bash "$WATCH_SCRIPT" 632
+  assert_eq "watch exits non-zero for timeout" "1" "$status"
+  assert_match "result is timeout" '"result":"timeout"' "$output"
+}
+
+@test "completion within chunk is still detected normally" {
+  # Chunk timeout should not interfere with normal state-file completion
+  worker_state_write 633 RUNNING "phase1:implement"
+  echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-633.worker"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$TOKEN" background /tmp/wt 1700000000000 busy)]"
+
+  export CEKERNEL_WATCH_CHUNK_TIMEOUT=10
+  export CEKERNEL_WORKER_TIMEOUT=3600
+  export CEKERNEL_STATE_POLL_INTERVAL=1
+
+  date +%s > "${CEKERNEL_IPC_DIR}/worker-633.spawned"
+
+  local out="${BATS_TEST_TMPDIR}/watch-out-633.json"
+  bash "$WATCH_SCRIPT" 633 > "$out" 2>/dev/null &
+  local watch_pid=$!
+  sleep 2
+  worker_state_write 633 TERMINATED "ci-passed:77"
+  wait "$watch_pid"
+
+  local result_json
+  result_json=$(cat "$out")
+  assert_match "result is ci-passed" '"result":"ci-passed"' "$result_json"
+  assert_match "detail is 77" '"detail":"77"' "$result_json"
+}
