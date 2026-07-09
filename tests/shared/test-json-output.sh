@@ -15,6 +15,7 @@ echo "test: json-output"
 # ── Test session ──
 export CEKERNEL_SESSION_ID="test-json-output-00000001"
 source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
+source "${CEKERNEL_DIR}/scripts/shared/worker-state.sh"
 mkdir -p "$CEKERNEL_IPC_DIR/logs"
 
 # ── wezterm mock (for health-check) ──
@@ -26,85 +27,67 @@ gh() { return 1; }
 export -f gh
 
 # ── Test 1: notify-complete.sh — DETAIL contains double quotes ──
-FIFO="${CEKERNEL_IPC_DIR}/worker-901"
-mkfifo "$FIFO"
-# Background process to read FIFO
-RESULT_FILE=$(mktemp)
-(exec 3<>"$FIFO"; read -r -t 5 result <&3; exec 3>&-; echo "$result" > "$RESULT_FILE") &
-READER_PID=$!
-sleep 0.1
-
+# ADR-0020 Phase 3: notify-complete writes state file, not FIFO.
+# Verify the state payload is well-formed.
 bash "${CEKERNEL_DIR}/scripts/process/notify-complete.sh" 901 failed 'CI failed "3 times"' 2>/dev/null
-wait "$READER_PID" 2>/dev/null || true
 
-RESULT=$(cat "$RESULT_FILE")
-# Validate as valid JSON with jq
-if echo "$RESULT" | jq . >/dev/null 2>&1; then
+STATE_JSON=$(worker_state_read 901)
+if echo "$STATE_JSON" | jq . >/dev/null 2>&1; then
   echo "  PASS: notify-complete with quotes produces valid JSON"
-  ((TESTS_PASSED++)) || true
+  TESTS_PASSED=$((TESTS_PASSED + 1))
 else
   echo "  FAIL: notify-complete with quotes produces invalid JSON"
-  echo "    output: $RESULT"
-  ((TESTS_FAILED++)) || true
+  echo "    output: $STATE_JSON"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
-# Verify value is correctly escaped
-DETAIL_VALUE=$(echo "$RESULT" | jq -r '.detail' 2>/dev/null || echo "")
-assert_eq "notify-complete detail value preserved" 'CI failed "3 times"' "$DETAIL_VALUE"
-rm -f "$RESULT_FILE" "$FIFO"
+
+# Verify detail field contains the result:detail payload
+DETAIL_VALUE=$(echo "$STATE_JSON" | jq -r '.detail' 2>/dev/null || echo "")
+assert_eq "notify-complete detail value preserved" 'failed:CI failed "3 times"' "$DETAIL_VALUE"
 
 # ── Test 2: notify-complete.sh — DETAIL contains backslash ──
-FIFO="${CEKERNEL_IPC_DIR}/worker-902"
-mkfifo "$FIFO"
-RESULT_FILE=$(mktemp)
-(exec 3<>"$FIFO"; read -r -t 5 result <&3; exec 3>&-; echo "$result" > "$RESULT_FILE") &
-READER_PID=$!
-sleep 0.1
-
 bash "${CEKERNEL_DIR}/scripts/process/notify-complete.sh" 902 failed 'path\to\file' 2>/dev/null
-wait "$READER_PID" 2>/dev/null || true
 
-RESULT=$(cat "$RESULT_FILE")
-if echo "$RESULT" | jq . >/dev/null 2>&1; then
+STATE_JSON=$(worker_state_read 902)
+if echo "$STATE_JSON" | jq . >/dev/null 2>&1; then
   echo "  PASS: notify-complete with backslash produces valid JSON"
-  ((TESTS_PASSED++)) || true
+  TESTS_PASSED=$((TESTS_PASSED + 1))
 else
   echo "  FAIL: notify-complete with backslash produces invalid JSON"
-  echo "    output: $RESULT"
-  ((TESTS_FAILED++)) || true
+  echo "    output: $STATE_JSON"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
-rm -f "$RESULT_FILE" "$FIFO"
 
 # ── Test 3: health-check.sh — Zombie worker JSON output is valid ──
 # ADR-0020 Phase 2: health-check requires a non-TERMINATED state file.
-source "${CEKERNEL_DIR}/scripts/shared/worker-state.sh"
 worker_state_write 903 RUNNING "phase1:implement"
 # git worktree won't be found, so it falls back to "No worktree found"
 RESULT=$(bash "${CEKERNEL_DIR}/scripts/orchestrator/health-check.sh" 903 2>/dev/null || true)
 if echo "$RESULT" | head -1 | jq . >/dev/null 2>&1; then
   echo "  PASS: health-check produces valid JSON"
-  ((TESTS_PASSED++)) || true
+  TESTS_PASSED=$((TESTS_PASSED + 1))
 else
   echo "  FAIL: health-check produces invalid JSON"
   echo "    output: $RESULT"
-  ((TESTS_FAILED++)) || true
+  TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
 # ── Test 4: process-status.sh — JSON Lines output is valid ──
-# ADR-0020 Phase 2: process-status enumerates by state file (not FIFO).
+# ADR-0020 Phase 2: process-status enumerates by state file.
 worker_state_write 904 RUNNING "phase1:implement"
 RESULT=$(bash "${CEKERNEL_DIR}/scripts/orchestrator/process-status.sh" 2>/dev/null)
 if [[ -n "$RESULT" ]]; then
   if echo "$RESULT" | head -1 | jq . >/dev/null 2>&1; then
     echo "  PASS: process-status produces valid JSON"
-    ((TESTS_PASSED++)) || true
+    TESTS_PASSED=$((TESTS_PASSED + 1))
   else
     echo "  FAIL: process-status produces invalid JSON"
     echo "    output: $RESULT"
-    ((TESTS_FAILED++)) || true
+    TESTS_FAILED=$((TESTS_FAILED + 1))
   fi
 else
   echo "  FAIL: process-status produced no output"
-  ((TESTS_FAILED++)) || true
+  TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
 # ── Cleanup ──

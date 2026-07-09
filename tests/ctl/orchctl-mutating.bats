@@ -43,11 +43,10 @@ teardown() {
   rm -rf "$IPC_BASE" "$CEKERNEL_VAR_DIR"
 }
 
-# Create a worker (FIFO + state + priority) in the test session.
+# Create a worker (state + priority) in the test session.
 make_worker() {
   local issue="$1" state_line="${2:-RUNNING:2026-02-28T10:00:00Z:phase1:implement}"
   mkdir -p "$IPC"
-  mkfifo "${IPC}/worker-${issue}"
   echo "$state_line" > "${IPC}/worker-${issue}.state"
   echo "10" > "${IPC}/worker-${issue}.priority"
 }
@@ -312,10 +311,9 @@ worker_state() {
   assert_not_exists "orphan signal removed" "${session_dir}/worker-50.signal"
 }
 
-@test "gc preserves files of active worker (FIFO + live handle)" {
+@test "gc preserves files of active worker (state + live handle)" {
   local session_dir="${IPC_BASE}/session-gc-03"
   mkdir -p "$session_dir"
-  mkfifo "${session_dir}/worker-51"
   echo "RUNNING:2026-02-28T10:00:00Z:working" > "${session_dir}/worker-51.state"
   echo "10" > "${session_dir}/worker-51.priority"
   echo "worker" > "${session_dir}/worker-51.type"
@@ -346,7 +344,6 @@ worker_state() {
   local empty_session="${IPC_BASE}/session-gc-empty"
   local live_session="${IPC_BASE}/session-gc-03"
   mkdir -p "$empty_session" "$live_session"
-  mkfifo "${live_session}/worker-51"
   echo "RUNNING:2026-02-28T10:00:00Z:working" > "${live_session}/worker-51.state"
   echo "$$" > "${live_session}/handle-51.worker"
   run bash "$ORCHCTL" gc
@@ -354,30 +351,26 @@ worker_state() {
   assert_dir_exists "non-empty session preserved" "$live_session"
 }
 
-# ── gc: stale FIFO cleanup (issue #303) ──
+# ── gc: stale resource cleanup ──
 
-@test "gc removes stale FIFO when TERMINATED and no handle" {
+@test "gc removes stale state file when TERMINATED and no handle" {
   local session_dir="${IPC_BASE}/session-gc-stale"
   mkdir -p "$session_dir"
-  mkfifo "${session_dir}/worker-296"
   echo "TERMINATED:2026-02-28T10:00:00Z:done" > "${session_dir}/worker-296.state"
   echo "worker" > "${session_dir}/worker-296.type"
   echo "10" > "${session_dir}/worker-296.priority"
   run bash "$ORCHCTL" gc
-  assert_not_exists "stale FIFO removed" "${session_dir}/worker-296"
   assert_not_exists "state removed" "${session_dir}/worker-296.state"
   assert_not_exists "type removed" "${session_dir}/worker-296.type"
   assert_not_exists "priority removed" "${session_dir}/worker-296.priority"
 }
 
-@test "gc removes stale FIFO when NEW + no handle + past stale timeout (reap write)" {
+@test "gc reaps NEW state + no handle + past stale timeout (reap write)" {
   local session_dir="${IPC_BASE}/session-gc-stale2"
   mkdir -p "$session_dir"
-  mkfifo "${session_dir}/worker-297"
   echo "NEW:2026-02-28T01:00:00Z:spawning" > "${session_dir}/worker-297.state"
   echo "worker" > "${session_dir}/worker-297.type"
   run env CEKERNEL_GC_STALE_TIMEOUT=0 bash "$ORCHCTL" gc
-  assert_not_exists "stale NEW FIFO removed" "${session_dir}/worker-297"
   # ADR-0020 Phase 2: gc writes TERMINATED:crashed:detected-by-gc for
   # stale non-TERMINATED entries, freeing the slot.
   assert_file_exists "state file exists" "${session_dir}/worker-297.state"
@@ -387,15 +380,13 @@ worker_state() {
   assert_match "detail is detected-by-gc" "crashed:detected-by-gc" "$state_content"
 }
 
-@test "gc removes stale FIFO with dead handle PID (reap write)" {
+@test "gc reaps RUNNING state with dead handle PID (reap write)" {
   local session_dir="${IPC_BASE}/session-gc-stale3"
   mkdir -p "$session_dir"
-  mkfifo "${session_dir}/worker-298"
   echo "RUNNING:2026-02-28T10:00:00Z:working" > "${session_dir}/worker-298.state"
   echo "worker" > "${session_dir}/worker-298.type"
   echo "99999999" > "${session_dir}/handle-298.worker"
   run bash "$ORCHCTL" gc
-  assert_not_exists "stale FIFO removed" "${session_dir}/worker-298"
   # ADR-0020 Phase 2: gc writes TERMINATED:crashed:detected-by-gc
   assert_file_exists "state file exists" "${session_dir}/worker-298.state"
   local state_content
@@ -404,15 +395,13 @@ worker_state() {
   assert_match "detail is detected-by-gc" "crashed:detected-by-gc" "$state_content"
 }
 
-@test "gc preserves FIFO with live handle" {
+@test "gc preserves state with live handle" {
   local session_dir="${IPC_BASE}/session-gc-live"
   mkdir -p "$session_dir"
-  mkfifo "${session_dir}/worker-299"
   echo "RUNNING:2026-02-28T10:00:00Z:working" > "${session_dir}/worker-299.state"
   echo "worker" > "${session_dir}/worker-299.type"
   echo "$$" > "${session_dir}/handle-299.worker"
   run bash "$ORCHCTL" gc
-  assert_fifo_exists "FIFO preserved" "${session_dir}/worker-299"
   assert_file_exists "state preserved" "${session_dir}/worker-299.state"
   assert_file_exists "handle preserved" "${session_dir}/handle-299.worker"
 }
@@ -422,17 +411,15 @@ worker_state() {
 # `claude agents --json` instead of assuming they are always alive.
 # A failed query stays conservative (assume alive — never gc on doubt).
 
-@test "gc removes stale FIFO when the token handle session is not listed (reap write)" {
+@test "gc reaps state when the token handle session is not listed (reap write)" {
   mock_claude
   local session_dir="${IPC_BASE}/session-gc-token1"
   mkdir -p "$session_dir"
-  mkfifo "${session_dir}/worker-573"
   echo "RUNNING:2026-02-28T10:00:00Z:working" > "${session_dir}/worker-573.state"
   echo "worker" > "${session_dir}/worker-573.type"
   echo "$SESSION_TOKEN" > "${session_dir}/handle-573.worker"
   # empty agents queue → [] → session not listed → dead
   run bash "$ORCHCTL" gc
-  assert_not_exists "stale FIFO removed" "${session_dir}/worker-573"
   # ADR-0020 Phase 2: gc writes TERMINATED:crashed:detected-by-gc
   assert_file_exists "state file exists" "${session_dir}/worker-573.state"
   local state_content
@@ -441,30 +428,28 @@ worker_state() {
   assert_match "detail is detected-by-gc" "crashed:detected-by-gc" "$state_content"
 }
 
-@test "gc preserves FIFO when the token handle session is busy" {
+@test "gc preserves state when the token handle session is busy" {
   mock_claude
   local session_dir="${IPC_BASE}/session-gc-token2"
   mkdir -p "$session_dir"
-  mkfifo "${session_dir}/worker-574"
   echo "RUNNING:2026-02-28T10:00:00Z:working" > "${session_dir}/worker-574.state"
   echo "$SESSION_TOKEN" > "${session_dir}/handle-574.worker"
   mock_claude_enqueue_agents \
     "[$(mock_claude_agent_record "$SESSION_TOKEN" background /tmp/wt 1700000000000 busy)]"
   run bash "$ORCHCTL" gc
-  assert_fifo_exists "FIFO preserved" "${session_dir}/worker-574"
+  assert_file_exists "state preserved" "${session_dir}/worker-574.state"
   assert_file_exists "live token handle preserved" "${session_dir}/handle-574.worker"
 }
 
-@test "gc preserves FIFO with a token handle when the agents query fails" {
+@test "gc preserves state with a token handle when the agents query fails" {
   local session_dir="${IPC_BASE}/session-gc-token3"
   mkdir -p "$session_dir"
-  mkfifo "${session_dir}/worker-575"
   echo "RUNNING:2026-02-28T10:00:00Z:working" > "${session_dir}/worker-575.state"
   echo "$SESSION_TOKEN" > "${session_dir}/handle-575.worker"
   mock_bin claude 'exit 1'
   run bash "$ORCHCTL" gc
-  assert_fifo_exists "FIFO preserved (cannot verify → assume alive)" \
-    "${session_dir}/worker-575"
+  assert_file_exists "state preserved (cannot verify → assume alive)" \
+    "${session_dir}/worker-575.state"
   assert_file_exists "token handle preserved" "${session_dir}/handle-575.worker"
 }
 
@@ -474,14 +459,13 @@ worker_state() {
   mock_claude
   local session_dir="${IPC_BASE}/session-gc-token4"
   mkdir -p "$session_dir"
-  mkfifo "${session_dir}/worker-576"
   echo "RUNNING:2026-02-28T10:00:00Z:working" > "${session_dir}/worker-576.state"
   echo "$SESSION_TOKEN" > "${session_dir}/handle-576.worker"
   mock_claude_enqueue_agents \
     "[$(mock_claude_agent_record_pair "$SESSION_TOKEN" background /tmp/wt 1700000000000 idle working)]"
   run bash "$ORCHCTL" gc
-  assert_fifo_exists "FIFO preserved (unknown-value → assume alive)" \
-    "${session_dir}/worker-576"
+  assert_file_exists "state preserved (unknown-value → assume alive)" \
+    "${session_dir}/worker-576.state"
   assert_file_exists "token handle preserved" "${session_dir}/handle-576.worker"
 }
 
@@ -490,16 +474,14 @@ worker_state() {
 @test "gc --dry-run reports stale resources without removing them" {
   local session_dir="${IPC_BASE}/session-gc-dry"
   mkdir -p "$session_dir"
-  mkfifo "${session_dir}/worker-300"
   echo "TERMINATED:2026-02-28T10:00:00Z:done" > "${session_dir}/worker-300.state"
   local lock_dry="${CEKERNEL_VAR_DIR}/locks/testhash456/60.lock"
   mkdir -p "$lock_dry"
   echo "99999999" > "${lock_dry}/pid"
 
   run bash "$ORCHCTL" gc --dry-run
-  assert_fifo_exists "stale FIFO preserved" "${session_dir}/worker-300"
+  assert_file_exists "stale state preserved" "${session_dir}/worker-300.state"
   assert_dir_exists "stale lock preserved" "$lock_dry"
-  assert_match "output mentions stale FIFO" "stale FIFO" "$output"
   assert_match "output indicates dry-run" "dry-run" "$output"
 }
 
@@ -676,8 +658,7 @@ worker_state() {
   mock_claude
   local session_dir="${IPC_BASE}/session-gc-log619"
   mkdir -p "${session_dir}/logs"
-  # Create an active worker (FIFO + live handle)
-  mkfifo "${session_dir}/worker-622"
+  # Create an active worker (state + live handle)
   echo "RUNNING:2026-02-28T10:00:00Z:working" > "${session_dir}/worker-622.state"
   echo "$$" > "${session_dir}/handle-622.worker"
   # Create log files for the active worker
@@ -694,13 +675,10 @@ worker_state() {
   mock_claude
   local session_dir="${IPC_BASE}/session-gc-reap1"
   mkdir -p "$session_dir"
-  mkfifo "${session_dir}/worker-630"
   echo "RUNNING:2026-02-28T10:00:00Z:working" > "${session_dir}/worker-630.state"
   echo "$SESSION_TOKEN" > "${session_dir}/handle-630.worker"
   # empty agents queue → session not listed → dead
   run bash "$ORCHCTL" gc
-  # The stale FIFO should be removed
-  assert_not_exists "stale FIFO removed" "${session_dir}/worker-630"
   # State should be rewritten to TERMINATED:crashed:detected-by-gc
   assert_file_exists "state file still exists" "${session_dir}/worker-630.state"
   local state_content
@@ -713,9 +691,8 @@ worker_state() {
   mock_claude
   local session_dir="${IPC_BASE}/session-gc-reap2"
   mkdir -p "$session_dir"
-  mkfifo "${session_dir}/worker-631"
   echo "TERMINATED:2026-02-28T10:00:00Z:ci-passed:55" > "${session_dir}/worker-631.state"
-  # TERMINATED + no live handle → stale FIFO removed.
+  # TERMINATED + no live handle → orphan state removed.
   # Write-once: gc must NOT write detected-by-gc over existing TERMINATED.
   # The orphan sweep may later delete the state file (separate concern).
   run bash "$ORCHCTL" gc
@@ -736,11 +713,9 @@ worker_state() {
 @test "gc reap writes crashed:detected-by-gc for dead handle PID" {
   local session_dir="${IPC_BASE}/session-gc-reap3"
   mkdir -p "$session_dir"
-  mkfifo "${session_dir}/worker-632"
   echo "RUNNING:2026-02-28T10:00:00Z:working" > "${session_dir}/worker-632.state"
   echo "99999999" > "${session_dir}/handle-632.worker"
   run bash "$ORCHCTL" gc
-  assert_not_exists "stale FIFO removed" "${session_dir}/worker-632"
   assert_file_exists "state file still exists" "${session_dir}/worker-632.state"
   local state_content
   state_content=$(cat "${session_dir}/worker-632.state")
@@ -751,11 +726,9 @@ worker_state() {
 @test "gc reap writes crashed:detected-by-gc for stale NEW past timeout" {
   local session_dir="${IPC_BASE}/session-gc-reap4"
   mkdir -p "$session_dir"
-  mkfifo "${session_dir}/worker-633"
   echo "NEW:2026-02-28T01:00:00Z:spawning" > "${session_dir}/worker-633.state"
   echo "worker" > "${session_dir}/worker-633.type"
   run env CEKERNEL_GC_STALE_TIMEOUT=0 bash "$ORCHCTL" gc
-  assert_not_exists "stale FIFO removed" "${session_dir}/worker-633"
   assert_file_exists "state file still exists" "${session_dir}/worker-633.state"
   local state_content
   state_content=$(cat "${session_dir}/worker-633.state")

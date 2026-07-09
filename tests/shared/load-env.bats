@@ -286,8 +286,6 @@ setup_orchestrator_fixture() {
   TEST_SESSION="test-loadenv-00000001"
   mkdir -p "$MOCK_USER_ENVS" "${MOCK_VAR_DIR}/ipc/${TEST_SESSION}"
   printf 'CEKERNEL_VAR_DIR=%s\n' "$MOCK_VAR_DIR" > "${MOCK_USER_ENVS}/default.env"
-  mkfifo "${MOCK_VAR_DIR}/ipc/${TEST_SESSION}/worker-99"
-  # ADR-0020 Phase 2: scripts enumerate by state file, not FIFO.
   echo "RUNNING:2026-02-28T10:00:00Z:phase1:implement" > "${MOCK_VAR_DIR}/ipc/${TEST_SESSION}/worker-99.state"
 }
 
