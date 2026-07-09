@@ -1,13 +1,11 @@
 # assertions.bash — bats-core assertion helpers (ADR-0017 Decision 1)
 #
-# Port of the legacy tests/helpers.sh assert_* functions for use inside
-# bats @test blocks. bats-assert is intentionally NOT vendored; these
-# helpers plus plain bash conditionals cover current needs.
+# bats-assert is intentionally NOT vendored; these helpers plus plain
+# bash conditionals cover current needs.
 #
-# Unlike helpers.sh, these do not count pass/fail — bats tracks results
-# per @test. On failure they print a diagnostic to stderr and return 1,
-# which fails the surrounding @test immediately (bats runs under set -e
-# semantics per test).
+# On failure they print a diagnostic to stderr and return 1, which fails
+# the surrounding @test immediately (bats runs under set -e semantics
+# per test).
 #
 # Usage (in a .bats file):
 #   load ../helpers/assertions   # relative to the .bats file
