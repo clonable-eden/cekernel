@@ -154,19 +154,20 @@ Workers fully follow the target repository's CLAUDE.md. cekernel defines only th
 
 ## Reviewer Phase
 
-On `ci-passed`, invoke the Reviewer before merge. It runs as an **Orchestrator subagent** with `isolation: worktree` (ADR-0012 Amendment 2) — no spawn script or `watch.sh`.
+On `ci-passed`, invoke the Reviewer before merge. It runs as an **Orchestrator subagent** without `isolation: worktree` (ADR-0021 Decision 1) — no spawn script, no `watch.sh`, and no dedicated worktree. The Reviewer reads the **Worker's existing worktree** read-only.
 
-Invoke with the **Agent tool**, subagent type from `CEKERNEL_AGENT_REVIEWER`, in the **foreground** (reviews are short; Worker state-file events are polled after the block). The prompt must include the issue number, PR number, and base branch:
+Invoke with the **Agent tool**, subagent type from `CEKERNEL_AGENT_REVIEWER`, in the **foreground** (reviews are short; Worker state-file events are polled after the block). The prompt must include the issue number, PR number, base branch, and **Worker worktree path**:
 
 ```
 Review PR #<pr> for issue #<issue>. The PR base branch is <base>.
-Follow your agent definition: perform a detached PR checkout, read the
-repository's CLAUDE.md and the changed files, submit the review, and end
-your response with the verdict (approved / changes-requested / failed) as
-the final output line.
+The Worker's worktree is at: <worktree-path>
+Follow your agent definition: verify the PR anchor (worktree HEAD matches
+the PR head SHA), read the repository's CLAUDE.md and the changed files,
+submit the review, and end your response with the verdict
+(approved / changes-requested / failed) as the final output line.
 ```
 
-The Reviewer's temporary worktree is auto-removed by Claude Code (detached, read-only checkout). It inherits your session's tool permissions — a permission gap stalls the review silently (`blocked`).
+The Reviewer inherits your session's tool permissions — a permission gap stalls the review silently (`blocked`). No worktree cleanup is needed: the Reviewer creates nothing.
 
 **Never review the PR yourself.** The verdict comes only from the Reviewer subagent's final output line. If the Agent tool errors (e.g. the reviewer agent type is not found), or the subagent returns no recognizable verdict, treat it as **escalation** below — do NOT run `gh pr review` / `gh api .../reviews` yourself, and do NOT send an `approved` notification. Send `approved` (and merge, if `CEKERNEL_AUTO_MERGE=true`) only when the Reviewer returned the `approved` verdict.
 
