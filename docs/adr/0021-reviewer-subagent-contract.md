@@ -72,8 +72,11 @@ call: before invoking → `REVIEWING`; on return → `TERMINATED:<verdict>`
 truth for its status — the same model ADR-0020 adopted for held slots that
 have no process-table liveness. The Reviewer's real liveness is bounded by
 the Orchestrator's foreground block; if the Orchestrator dies mid-review the
-state goes stale, which is detected via the Orchestrator's own liveness
-(existing gc / health-check paths), not the Reviewer's.
+state goes stale. Note this needs care in gc: today gc keys the worker sweep
+on the record's *own* session-token liveness, which a subagent does not have,
+so a `REVIEWING` record must instead be protected by the owning
+**Orchestrator's** liveness. That is new gc logic, not a reuse of the worker
+rule — see Open Questions.
 
 ### 3. Verdict is out-of-band; no approval word in the GitHub body (#628)
 
@@ -157,6 +160,40 @@ contract, #521 truncation fix) to solve only the worktree leak.
 Rejected: the three defects share one root (the subagent shift) and one design
 response (cekernel-owned mechanism). One contract is clearer than three more
 entries on an already-long chain (Rule of Clarity).
+
+## Open Questions
+
+Both are left for the Decision 2 implementation (#627).
+
+### Does `reviewer-<issue>.state` count against `CEKERNEL_MAX_ORCH_CHILDREN`?
+
+Introducing a Reviewer state file raises a slot-accounting question this ADR
+does not settle. The child limit counts "workers + reviewers"
+(ADR-0014; `agents/orchestrator.md:90`, `envs/README.md:13`). Reviewers did
+consume a slot in the Amendment-1 era, when `spawn-reviewer.sh` wrapped
+`spawn.sh` and passed through its child guard. As a foreground subagent the
+Reviewer no longer spawns via `spawn.sh` — it blocks the Orchestrator (no new
+Worker is spawned while it runs), yet it is still live alongside the background
+Workers of *other* issues. So whether it should occupy a concurrency slot is
+genuinely non-obvious:
+
+- **Count it**: a live child consuming resources concurrently with other
+  Workers; keeps the limit a true ceiling on concurrent children.
+- **Do not count it**: it adds no new spawn pressure (the Orchestrator is
+  blocked while it runs), so counting it needlessly shrinks effective Worker
+  capacity during every review.
+
+Resolve this explicitly, and align the slot-enumeration code with the choice.
+
+### How does gc protect a live `reviewer-<issue>.state` from being reaped?
+
+gc's worker sweep keys on the record's *own* session-token liveness plus a
+NEW/READY timeout. A Reviewer subagent has no session token, so that rule would
+reap a live `REVIEWING` record immediately. Protecting it requires new gc logic
+keyed on the owning **Orchestrator's** liveness (the Orchestrator-metadata gc
+path already reasons about Orchestrator liveness, but does not clean
+`reviewer-*.state` today). Decide the exact mechanism when wiring
+`reviewer-*.state` into gc.
 
 ## Consequences
 
