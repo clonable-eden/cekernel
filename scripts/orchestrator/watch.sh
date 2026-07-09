@@ -5,6 +5,10 @@
 #
 # Environment:
 #   CEKERNEL_WORKER_TIMEOUT — Process timeout in seconds (default: 3600)
+#   CEKERNEL_WATCH_CHUNK_TIMEOUT — Max seconds per invocation before
+#     returning a "watching" sentinel (default: 540). Must be shorter
+#     than the Bash tool's 600s hard limit to avoid SIGTERM (exit 143).
+#     The Orchestrator re-calls watch.sh on a "watching" result.
 #   CEKERNEL_STATE_POLL_INTERVAL — State file poll interval in seconds (default: 5)
 #   CEKERNEL_POLL_INTERVAL  — Backend verdict poll interval in seconds (default: 30)
 #   CEKERNEL_WATCH_QUERY_RETRY_MAX — Consecutive unverifiable polls
@@ -16,6 +20,14 @@
 #   2. Process crash detection (backend verdict, ADR-0018);
 #      blocked sessions (permission-dialog stall) are surfaced as a
 #      distinct "blocked" result (ADR-0016)
+#
+# Chunk-based foreground model (#630):
+#   The Bash tool has a 600s hard timeout. watch.sh self-limits each
+#   invocation to CEKERNEL_WATCH_CHUNK_TIMEOUT (default 540s) and
+#   returns exit 0 with a "watching" sentinel JSON. The Orchestrator
+#   re-invokes watch.sh; cumulative elapsed is computed from the
+#   Worker's .spawned timestamp (not reset per invocation).
+#
 # Outputs results to stdout as JSON Lines.
 set -euo pipefail
 
@@ -31,6 +43,7 @@ ISSUE_NUMBERS=("$@")
 RESULT_DIR=$(mktemp -d)
 PIDS=()
 TIMEOUT="${CEKERNEL_WORKER_TIMEOUT:-3600}"
+CHUNK_TIMEOUT="${CEKERNEL_WATCH_CHUNK_TIMEOUT:-540}"
 STATE_POLL_INTERVAL="${CEKERNEL_STATE_POLL_INTERVAL:-5}"
 POLL_INTERVAL="${CEKERNEL_POLL_INTERVAL:-30}"
 QUERY_RETRY_MAX="${CEKERNEL_WATCH_QUERY_RETRY_MAX:-3}"
@@ -58,27 +71,53 @@ log_event() {
 watch_one() {
   local issue="$1"
   local result=""
-  local elapsed=0
+  local chunk_elapsed=0
   local query_failures=0
 
-  log_event "$issue" "WATCH_START" "issue=#${issue} timeout=${TIMEOUT} state_poll=${STATE_POLL_INTERVAL} backend_poll=${POLL_INTERVAL}"
+  # #630: Compute cumulative elapsed from the Worker's .spawned timestamp
+  # instead of starting from 0. This survives re-invocations across Bash
+  # tool 600s boundaries. Fallback: if no .spawned file, use current time
+  # (backward compat — elapsed starts at 0).
+  local spawned_at
+  spawned_at=$(cat "${CEKERNEL_IPC_DIR}/worker-${issue}.spawned" 2>/dev/null || true)
+  spawned_at="${spawned_at:-$(date +%s)}"
 
-  echo "Watching issue #${issue} (timeout: ${TIMEOUT}s, state_poll: ${STATE_POLL_INTERVAL}s, backend_poll: ${POLL_INTERVAL}s)..." >&2
+  local cumulative_elapsed=$(( $(date +%s) - spawned_at ))
+
+  # If already past WORKER_TIMEOUT on entry, timeout immediately
+  if [[ $cumulative_elapsed -ge $TIMEOUT ]]; then
+    result="{\"issue\":${issue},\"result\":\"timeout\",\"detail\":\"No response within ${TIMEOUT}s\",\"elapsed\":${cumulative_elapsed}}"
+    echo "Issue #${issue} timed out after ${cumulative_elapsed}s (cumulative)." >&2
+    log_event "$issue" "WATCH_TIMEOUT" "issue=#${issue} timeout=${TIMEOUT}s elapsed=${cumulative_elapsed}s"
+    echo "$result" > "${RESULT_DIR}/${issue}"
+    return 1
+  fi
+
+  log_event "$issue" "WATCH_START" "issue=#${issue} timeout=${TIMEOUT} chunk=${CHUNK_TIMEOUT} cumulative_elapsed=${cumulative_elapsed} state_poll=${STATE_POLL_INTERVAL} backend_poll=${POLL_INTERVAL}"
+
+  echo "Watching issue #${issue} (timeout: ${TIMEOUT}s, chunk: ${CHUNK_TIMEOUT}s, elapsed: ${cumulative_elapsed}s, state_poll: ${STATE_POLL_INTERVAL}s, backend_poll: ${POLL_INTERVAL}s)..." >&2
 
   # ADR-0020 Phase 1: polling split — state at STATE_POLL_INTERVAL (5s),
   # backend verdict at POLL_INTERVAL (30s). Track when the next backend
   # check is due.
   local next_backend_check=$POLL_INTERVAL
 
-  while [[ $elapsed -lt $TIMEOUT ]]; do
+  # #630: The loop budget is the LESSER of:
+  #   - remaining cumulative budget (TIMEOUT - cumulative_elapsed)
+  #   - chunk budget (CHUNK_TIMEOUT)
+  local remaining_budget=$((TIMEOUT - cumulative_elapsed))
+  local loop_budget=$CHUNK_TIMEOUT
+  [[ $remaining_budget -lt $loop_budget ]] && loop_budget=$remaining_budget
+
+  while [[ $chunk_elapsed -lt $loop_budget ]]; do
     # Clamp wait time to remaining budget
-    local remaining=$((TIMEOUT - elapsed))
+    local remaining=$((loop_budget - chunk_elapsed))
     local wait_time=$STATE_POLL_INTERVAL
     [[ $remaining -lt $wait_time ]] && wait_time=$remaining
 
     sleep "$wait_time"
 
-    elapsed=$((elapsed + wait_time))
+    chunk_elapsed=$((chunk_elapsed + wait_time))
 
     # Primary: check state file (every STATE_POLL_INTERVAL)
     local state_json
@@ -93,10 +132,10 @@ watch_one() {
     fi
 
     # Backend verdict check: only at POLL_INTERVAL cadence
-    if [[ $elapsed -lt $next_backend_check ]]; then
+    if [[ $chunk_elapsed -lt $next_backend_check ]]; then
       continue
     fi
-    next_backend_check=$((elapsed + POLL_INTERVAL))
+    next_backend_check=$((chunk_elapsed + POLL_INTERVAL))
 
     # Crash/blocked detection: only when a handle file is present (without
     # it, we can't verify the worker). The backend reports the ADR-0018
@@ -184,18 +223,30 @@ watch_one() {
     fi
   done
 
-  # Timeout: state file did not indicate completion
-  # ADR-0020: no TERMINATED write for timeout (slot held — on doubt, refuse to free)
+  # #630: Recompute cumulative elapsed at loop exit
+  cumulative_elapsed=$(( $(date +%s) - spawned_at ))
+
   if [[ -z "$result" ]]; then
-    result="{\"issue\":${issue},\"result\":\"timeout\",\"detail\":\"No response within ${TIMEOUT}s\"}"
-    echo "Issue #${issue} timed out after ${TIMEOUT}s." >&2
-    log_event "$issue" "WATCH_TIMEOUT" "issue=#${issue} timeout=${TIMEOUT}s"
+    if [[ $cumulative_elapsed -ge $TIMEOUT ]]; then
+      # Timeout: state file did not indicate completion
+      # ADR-0020: no TERMINATED write for timeout (slot held — on doubt, refuse to free)
+      result="{\"issue\":${issue},\"result\":\"timeout\",\"detail\":\"No response within ${TIMEOUT}s\",\"elapsed\":${cumulative_elapsed}}"
+      echo "Issue #${issue} timed out after ${cumulative_elapsed}s (cumulative)." >&2
+      log_event "$issue" "WATCH_TIMEOUT" "issue=#${issue} timeout=${TIMEOUT}s elapsed=${cumulative_elapsed}s"
+    else
+      # #630: Chunk boundary reached — Worker still running.
+      # Return exit 0 with a "watching" sentinel so the Orchestrator
+      # knows to re-invoke watch.sh (not an error).
+      result="{\"issue\":${issue},\"result\":\"watching\",\"detail\":\"Worker still running (chunk ${CHUNK_TIMEOUT}s elapsed)\",\"elapsed\":${cumulative_elapsed}}"
+      echo "Issue #${issue} chunk complete (${cumulative_elapsed}s cumulative, re-invoke watch)." >&2
+      log_event "$issue" "WATCH_CHUNK" "issue=#${issue} chunk=${CHUNK_TIMEOUT}s cumulative=${cumulative_elapsed}s"
+    fi
   fi
 
   echo "$result" > "${RESULT_DIR}/${issue}"
-  local result_status
   local result_value
   result_value=$(echo "$result" | jq -r '.result')
+  # "watching" is exit 0 (sentinel, not an error)
   [[ "$result_value" != "timeout" && "$result_value" != "error" && "$result_value" != "crashed" && "$result_value" != "blocked" ]]
 }
 
