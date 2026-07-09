@@ -79,7 +79,7 @@ Assess whether changes follow these UNIX philosophy principles:
 - **zsh compatibility**: Scripts `source`d in Claude Code must use `${BASH_SOURCE[0]:-${(%):-%x}}` fallback.
 - **bash 3.2 compatibility**: No `declare -A` (associative arrays). Use temp files with `grep -qxF` instead.
 - **Arithmetic safety**: Use `var=$((var + 1))` instead of `((var++))` (fails under `set -e` when var=0).
-- **Subagent nesting**: Officially supported since Claude Code v2.1.172 (fixed depth limit: 5). Subagents fit short-lived, session-bound work (e.g., Reviewer); use independent processes with FIFO IPC where cross-session persistence is required (e.g., Workers).
+- **Subagent nesting**: Officially supported since Claude Code v2.1.172 (fixed depth limit: 5). Subagents fit short-lived, session-bound work (e.g., Reviewer); use independent processes with file-based IPC (state files) where cross-session persistence is required (e.g., Workers).
 - **Context window**: Workers must externalize state to files/git — do not rely on conversation history.
 
 ## Scripts
@@ -310,7 +310,6 @@ In legacy-harness files, use the functions provided by `helpers.sh`:
 assert_eq <label> <expected> <actual>
 assert_match <label> <regex-pattern> <actual>
 assert_file_exists <label> <path>
-assert_fifo_exists <label> <path>
 assert_dir_exists <label> <path>
 assert_not_exists <label> <path>
 report_results  # "Results: N passed, M failed"

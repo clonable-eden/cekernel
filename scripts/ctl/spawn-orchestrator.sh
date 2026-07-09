@@ -11,8 +11,8 @@
 # replaces both orchestrator.pid liveness management and the post-startup
 # discovery heuristic that mis-attributed concurrent sessions (#571).
 #
-# Unlike Workers, the Orchestrator does not need its own worktree, FIFO,
-# or state management — it is the managing process, not a managed one.
+# Unlike Workers, the Orchestrator does not need its own worktree or
+# state management — it is the managing process, not a managed one.
 #
 # Environment:
 #   CEKERNEL_SESSION_ID — Session identifier (required, set by skill)
