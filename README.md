@@ -180,15 +180,12 @@ skills/
     SKILL.md               # /unix-architect skill — ADR authoring and review
 tests/
   ctl/*.bats               # Control script tests (orchctl, spawn-orchestrator)
-  helpers.sh               # Assertion helpers (legacy harness)
   helpers/
-    assertions.bash        # Assertion helpers (bats lane)
-  orchestrator/test-*.sh   # Orchestrator script tests
-  run-tests.sh             # Dual-lane test runner (legacy test-*.sh + *.bats)
-  scheduler/test-*.sh      # Scheduler script tests
-  shared/test-*.sh         # Shared helper tests
-  shared/*.bats            # bats-core tests (ADR-0017 migration)
-  process/test-*.sh        # Process script tests
+    assertions.bash        # Assertion helpers (bats)
+  orchestrator/*.bats      # Orchestrator script tests
+  scheduler/*.bats         # Scheduler script tests
+  shared/*.bats            # Shared helper tests
+  process/*.bats           # Process script tests
 ```
 
 ## Dependencies

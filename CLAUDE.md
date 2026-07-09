@@ -253,22 +253,17 @@ text of scripts either. Grep-testing a generated runner for strings like
 is the same anti-pattern as `.md`-grep — it breaks on mechanism or wording
 changes even when behavior is preserved.
 
-### Test Harness (dual-lane, ADR-0017 migration)
+### Test Harness (bats-core)
 
-The suite is migrating from the custom harness to [bats-core](https://bats-core.readthedocs.io/).
-`tests/run-tests.sh` runs **both lanes** during migration:
-
-1. **Legacy lane**: `tests/{category}/test-*.sh` files using `helpers.sh`
-2. **bats lane**: `tests/**/*.bats` files via `bats --recursive tests/`
+The test suite uses [bats-core](https://bats-core.readthedocs.io/) exclusively.
+CI runs `bats --recursive tests/`.
 
 Local setup: `brew install bats-core` (macOS). CI pins bats-core `v1.13.0`
 via git checkout in `cekernel-tests.yml`.
 
-New tests should be written as `.bats` files. Naming: one `.bats` file per
+Tests are written as `.bats` files. Naming: one `.bats` file per
 script under test, named after the script (e.g. `tests/shared/session-id.bats`
-for `scripts/shared/session-id.sh`). Do not add new legacy-harness
-`test-*.sh` files. `run-tests.sh` is deleted when the last legacy-harness
-file is gone.
+for `scripts/shared/session-id.sh`).
 
 In `.bats` files, use `load '../helpers/assertions'` for the ported
 `assert_*` functions (`bats-assert` is not vendored).
@@ -277,43 +272,30 @@ In `.bats` files, use `load '../helpers/assertions'` for the ported
 
 ```
 tests/
-├── run-tests.sh             # Dual-lane test runner (legacy + bats)
-├── helpers.sh               # Assertion functions (legacy harness)
 ├── helpers/
-│   ├── assertions.bash      # Assertion functions (bats lane)
-│   ├── mock-bin.bash        # mock_bin PATH-shim helper (bats lane)
+│   ├── assertions.bash      # Assertion functions
+│   ├── mock-bin.bash        # mock_bin PATH-shim helper
 │   ├── mock-claude.bash     # Canonical claude shim for v2 spawn tests
 │   └── session.bash         # Per-test unique CEKERNEL_SESSION_ID
+├── ctl/
+│   └── {script-name}.bats  # Control script tests
+├── hooks/
+│   └── {script-name}.bats  # Hook script tests
 ├── orchestrator/
-│   ├── test-concurrency-guard.sh
-│   ├── test-{feature}.sh   # Orchestrator script tests (legacy)
-│   └── {script-name}.bats  # bats tests, named after the script under test
+│   └── {script-name}.bats  # Orchestrator script tests
 ├── process/
-│   └── test-{feature}.sh   # Process script tests
+│   └── {script-name}.bats  # Process script tests
 ├── shared/
-│   ├── test-session-id.sh   # session-id.sh tests (legacy)
-│   ├── session-id.bats      # session-id.sh tests (bats)
-│   └── test-{feature}.sh   # Shared helper tests
+│   └── {script-name}.bats  # Shared helper tests
 └── scheduler/
-    └── test-{feature}.sh   # Scheduler script tests
+    └── {script-name}.bats  # Scheduler script tests
 ```
 
 ### Assertion Functions
 
-In `.bats` files, `load '../helpers/assertions'` provides the same
-`assert_*` API (failures return 1 and fail the surrounding `@test`;
-bats tracks pass/fail counts, so `report_results` does not exist there).
-
-In legacy-harness files, use the functions provided by `helpers.sh`:
-
-```bash
-assert_eq <label> <expected> <actual>
-assert_match <label> <regex-pattern> <actual>
-assert_file_exists <label> <path>
-assert_dir_exists <label> <path>
-assert_not_exists <label> <path>
-report_results  # "Results: N passed, M failed"
-```
+In `.bats` files, `load '../helpers/assertions'` provides the `assert_*`
+API (failures return 1 and fail the surrounding `@test`; bats tracks
+pass/fail counts automatically).
 
 ### Mocking
 
@@ -357,21 +339,9 @@ teardown() {
 }
 ```
 
-In legacy-harness files, use a dedicated fixed `CEKERNEL_SESSION_ID` and
-clean up before and after:
-
-```bash
-export CEKERNEL_SESSION_ID="test-feature-00000001"
-source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
-rm -rf "$CEKERNEL_IPC_DIR"
-mkdir -p "$CEKERNEL_IPC_DIR"
-# ... tests ...
-rm -rf "$CEKERNEL_IPC_DIR"
-```
-
 ## CI
 
-GitHub Actions runs `run-tests.sh` when changes are detected. PRs that fail tests are not merged.
+GitHub Actions runs `bats --recursive tests/` when changes are detected. PRs that fail tests are not merged.
 
 ## Versioning
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+bats_require_minimum_version 1.5.0
 # orchctl-read.bats — bats-core tests for scripts/ctl/orchctl.sh read subcommands
 # (ls / inspect / target resolution / ps / count / usage)
 #

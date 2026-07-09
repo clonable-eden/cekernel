@@ -1,8 +1,5 @@
 #!/usr/bin/env bats
 # session-id.bats — bats-core tests for scripts/shared/session-id.sh
-#
-# First .bats file of the ADR-0017 migration (step 1: harness bootstrap).
-# Runs in the bats lane of run-tests.sh alongside the legacy harness.
 
 load '../helpers/assertions'
 
