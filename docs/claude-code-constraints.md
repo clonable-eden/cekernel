@@ -187,9 +187,11 @@ are **undocumented**; for an agent that must spawn a sibling in both modes,
 use unrestricted `Agent` (no parentheses).
 
 **Implications for cekernel**:
-- The Reviewer runs as an Orchestrator subagent with `isolation: worktree`
-  and a structured return contract (ADR-0012 Amendment 2), replacing the
-  spawn + FIFO pattern
+- The Reviewer runs as an Orchestrator subagent **without** `isolation:
+  worktree` (ADR-0021 Decision 1): it reads the Worker's existing worktree
+  read-only — no dedicated worktree is created, so the `--bg` cleanup gap
+  above is structurally avoided. The Reviewer verifies the worktree HEAD
+  matches the PR head SHA (PR anchor) before reading
 - Independent processes with file-based IPC (state files) remain the right
   tool where **cross-session persistence** is required (Workers) — subagents
   live and die with their parent session

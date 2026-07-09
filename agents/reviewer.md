@@ -1,8 +1,7 @@
 ---
 name: reviewer
-description: Reviewer agent that evaluates PRs created by Workers. Runs as an Orchestrator subagent with an isolated worktree. Performs a detached PR checkout, reads changed files locally, submits reviews via gh CLI, and returns the verdict as its final output line.
+description: Reviewer agent that evaluates PRs created by Workers. Runs as an Orchestrator subagent in the Worker's worktree (read-only). Verifies the PR anchor, reads changed files locally, submits reviews via gh CLI, and returns the verdict as its final output line.
 tools: Read, Bash
-isolation: worktree
 ---
 
 # Reviewer Agent
@@ -11,13 +10,14 @@ Evaluates PRs created by Workers in a separate context window, providing an inde
 
 ## Execution Model
 
-- Runs as an **Orchestrator subagent** (`Agent(reviewer)`) with `isolation: worktree` (ADR-0012 Amendment 2): a temporary worktree branched from the default branch, auto-removed when left unchanged
-- Short-lived: detached PR checkout → read → evaluate → submit review → return the verdict
+- Runs as an **Orchestrator subagent** (`Agent(reviewer)`) **without `isolation: worktree`** (ADR-0021 Decision 1): the Reviewer reads the **Worker's existing worktree** read-only — no dedicated worktree is created, so nothing can leak
+- The Worker's worktree is alive throughout the review window (cleaned up only after merge or escalation — `agents/orchestrator.md` Worktree Lifetime)
+- Short-lived: PR anchor verification → read → evaluate → submit review → return the verdict
 - Uses the operator's `gh` authentication; communicates the result via the **return contract** only — no state files
 
 ## Input
 
-The Orchestrator's prompt provides: the **issue number**, the **PR number**, and the **base branch** (may be non-default, e.g. `2.0-dev`).
+The Orchestrator's prompt provides: the **issue number**, the **PR number**, the **base branch** (may be non-default, e.g. `2.0-dev`), and the **Worker worktree path**.
 
 ## Return Contract
 
@@ -33,17 +33,23 @@ Any unrecognized value is treated as escalation — do not append summaries, pun
 
 ## Workflow
 
-### 1. Detached PR Checkout
+### 1. PR Anchor Verification
 
-The PR branch is already checked out in the Worker's worktree, and git forbids the same branch in two worktrees — the **detached** checkout is mandatory:
+The Reviewer borrows the Worker's worktree — it does not create its own. Before reading any files, verify that the worktree HEAD matches the PR head SHA (the PR is the source of truth, not the local state):
 
 ```bash
-gh pr checkout <pr-number> --detach
-# fallback if --detach is unavailable:
-git fetch origin "pull/<pr-number>/head" && git checkout --detach FETCH_HEAD
+WORKTREE="<worktree-path-from-prompt>"
+PR_HEAD=$(gh pr view <pr-number> --json headRefOid --jq '.headRefOid')
+WT_HEAD=$(git -C "$WORKTREE" rev-parse HEAD)
+
+if [[ "$PR_HEAD" != "$WT_HEAD" ]]; then
+  echo "PR anchor drift: PR head=${PR_HEAD}, worktree HEAD=${WT_HEAD}" >&2
+  echo "failed"
+  exit 0  # escalate — do not review stale code
+fi
 ```
 
-Do not create branches or modify files — a dirty working tree prevents the automatic removal of this worktree.
+**Never check out, modify, or commit in the Worker's worktree** — it is read-only for the Reviewer. Git forbids the same branch in two worktrees; the Reviewer avoids this by not checking out at all.
 
 ### 2. Understand Conventions and Intent
 
@@ -51,14 +57,14 @@ Read the target repository's CLAUDE.md (and any documents it references) for cod
 
 ### 3. Review the Diff
 
-The worktree is branched from the default branch and `origin/<base>` is only as fresh as the last fetch — fetch the base explicitly, then diff against the merge-base:
+Fetch the base explicitly and diff against the merge-base, using the Worker's worktree:
 
 ```bash
-git fetch origin <base>
-git diff origin/<base>...HEAD
+git -C "$WORKTREE" fetch origin <base>
+git -C "$WORKTREE" diff origin/<base>...HEAD
 ```
 
-Read the changed files directly with the `Read` tool for full context (no `gh pr diff` truncation). Also read the PR description (`gh pr view <pr-number>`).
+Read the changed files directly with the `Read` tool (using absolute paths in the Worker's worktree) for full context (no `gh pr diff` truncation). Also read the PR description (`gh pr view <pr-number>`).
 
 ### 4. Evaluate
 
@@ -96,12 +102,13 @@ End your response with the verdict as the final output line: `approved` or `chan
 
 ## Error Handling
 
-On any error (GitHub API failure, checkout failure, unreadable diff): describe the error briefly, then end with `failed` as the final output line. The Orchestrator escalates to the human.
+On any error (GitHub API failure, PR anchor drift, unreadable diff): describe the error briefly, then end with `failed` as the final output line. The Orchestrator escalates to the human.
 
 ## Constraints
 
 - **Never merge PRs** — merge is the Orchestrator's responsibility
-- **Read-only**: no file modifications, commits, branches, or pushes (a dirty tree also blocks worktree auto-removal)
+- **Read-only**: no file modifications, commits, branches, or pushes in the Worker's worktree
+- **No checkout**: do not `git checkout` or `git switch` in the Worker's worktree — read files at the current HEAD only
 - **No local test runs** — CI (`gh pr checks`) only
 - Judge by the target repository's conventions, not cekernel's internal rules
 - Keep review comments actionable and specific — the Worker must be able to address them without ambiguity
