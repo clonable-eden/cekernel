@@ -52,15 +52,21 @@ the Reviewer mechanism as one coherent contract.
 The Reviewer remains an Orchestrator subagent. Three rules define its
 contract.
 
-### 1. cekernel owns the Reviewer worktree (#602)
+### 1. The Reviewer stops using a platform-managed worktree (#602)
 
-Drop `isolation: worktree`. cekernel creates and removes the worktree itself
-— `.worktrees/reviewer-<issue>/` via `git worktree add`/`remove`, on the same
-`cleanup-worktree.sh` lifecycle that already governs Worker worktrees. The
-leak's cause is delegating worktree lifecycle to a platform trigger that does
-not fire under `--bg`; owning it removes that dependency. A small
-`orchctl gc` sweep of stray `reviewer-*` worktrees remains as insurance
-against abnormal termination.
+Drop `isolation: worktree`. The leak's cause is delegating the Reviewer's
+worktree lifecycle to a platform trigger (`WorktreeRemove`) that does not fire
+under `--bg`; dropping the platform-managed worktree removes that dependency,
+and the leak with it.
+
+The replacement mechanism is settled when implementing #602 (see Amendment 1).
+The leading option creates **no** Reviewer worktree at all — the Reviewer reads
+the **Worker's existing worktree** read-only, which is alive throughout the
+review window (cleaned up only after merge or escalation —
+`agents/orchestrator.md` Worktree Lifetime). The PR stays the source of truth:
+verify the worktree `HEAD` matches the PR head, escalate on drift, and never
+check out or modify (git forbids a second worktree on the same branch). With no
+reviewer-specific worktree, nothing can leak.
 
 ### 2. The Reviewer's state lives in a state file (#627)
 
@@ -117,17 +123,17 @@ stops a silent worktree leak — an accumulation that fails quietly.
 > Rule of Least Surprise: "In interface design, always do the least surprising
 > thing."
 
-Decision 1 makes the Reviewer worktree behave like the Worker's — cekernel
-owned and cleaned — instead of relying on a platform trigger that surprisingly
-does not fire under `--bg`.
+Decision 1 removes the Reviewer's reliance on a platform trigger that
+surprisingly does not fire under `--bg`; the Reviewer works within cekernel's
+existing worktrees instead of a platform-managed throwaway.
 
 ### Platform Constraints
 
 - **`--bg` vs interactive worktree lifecycle**: the leak (#602) exists because
   `WorktreeRemove` fires only interactively — an "Evolving" platform behavior.
-  If the platform later fires it under `--bg`, Decision 1 is still safe
-  (removing an already-removed worktree is idempotent), so there is no
-  staleness risk.
+  Dropping `isolation: worktree` removes the platform-managed worktree
+  entirely, so if the platform later fires the trigger under `--bg` it has
+  nothing to act on — no staleness risk either way.
 - **Subagent has no session liveness**: a subagent does not appear in
   `claude agents --json`; Decision 2 follows directly — state file, not
   liveness query.
@@ -158,8 +164,9 @@ contract, #521 truncation fix) to solve only the worktree leak.
 ### Alternative: three separate amendments to ADR-0012
 
 Rejected: the three defects share one root (the subagent shift) and one design
-response (cekernel-owned mechanism). One contract is clearer than three more
-entries on an already-long chain (Rule of Clarity).
+response (take the Reviewer's mechanism off the platform's defaults). One
+contract is clearer than three more entries on an already-long chain (Rule of
+Clarity).
 
 ## Open Questions
 
@@ -199,17 +206,18 @@ path already reasons about Orchestrator liveness, but does not clean
 
 ### Positive
 
-- Reviewer worktree, state, and verdict are all cekernel-owned and consistent
-  — the same ownership model as the Worker.
+- The Reviewer no longer depends on a platform-managed worktree; its state and
+  verdict are cekernel-controlled — consistent with the Worker.
 - The worktree leak is closed structurally, not swept; reviews become visible
   in `orchctl ls`/`ps`; the Orchestrator no longer reports a simulated
   approval or swallows a security warning.
 
 ### Negative
 
-- The Orchestrator gains two small duties: create/remove the Reviewer
-  worktree, and write `reviewer-<issue>.state` around the call. A minimal
-  `gc` insurance sweep remains — not zero mechanism.
+- The Orchestrator gains a small duty: write `reviewer-<issue>.state` around
+  the `Agent(reviewer)` call. The leading worktree option (reuse the Worker's,
+  settled in #602) adds no create/remove step and needs no `gc` insurance
+  sweep.
 
 ### Trade-offs
 
@@ -217,3 +225,23 @@ path already reasons about Orchestrator liveness, but does not clean
   staleness is bounded by and detected through the Orchestrator's own liveness,
   not a new mechanism — the same trade-off ADR-0020 already made for
   liveness-less records.
+
+## Amendments
+
+### Amendment 1 (2026-07-09): reuse the Worker's worktree
+
+As accepted, Decision 1 named a concrete mechanism — a dedicated
+`.worktrees/reviewer-<issue>/` that cekernel adds and removes, plus a `gc`
+insurance sweep. During #602 implementation triage a simpler mechanism was
+found that satisfies the same decision (drop `isolation: worktree`; take the
+Reviewer's worktree off the platform's defaults): create **no** reviewer
+worktree at all and read the Worker's existing worktree read-only, keeping the
+PR as the source of truth (verify `HEAD` matches the PR head, escalate on
+drift). With no reviewer worktree, the leak is impossible by construction and
+the `gc` insurance sweep is unnecessary.
+
+Feasibility was probed (2026-07-09): a non-isolated subagent reaches the
+Worker's worktree, the PR-anchor check distinguishes a match from drift, and
+on-disk reads match the PR diff. Decision 1 above is reworded to state the
+principle and name this as the leading mechanism; the exact form is confirmed
+when implementing #602, gated by the both-modes live check (CLAUDE.md).
