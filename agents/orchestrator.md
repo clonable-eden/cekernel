@@ -182,11 +182,21 @@ submit the review, and end your response with the verdict
 
 The Reviewer inherits your session's tool permissions — a permission gap stalls the review silently (`blocked`). No worktree cleanup is needed: the Reviewer creates nothing.
 
-**Never review the PR yourself.** The verdict comes only from the Reviewer subagent's final output line. If the Agent tool errors (e.g. the reviewer agent type is not found), or the subagent returns no recognizable verdict, treat it as **escalation** below — do NOT run `gh pr review` / `gh api .../reviews` yourself, and do NOT send an `approved` notification. Send `approved` (and merge, if `CEKERNEL_AUTO_MERGE=true`) only when the Reviewer returned the `approved` verdict.
+**Never review the PR yourself.** The verdict comes only from the Reviewer subagent's final output line. If the Agent tool errors (e.g. the reviewer agent type is not found), or the subagent returns no recognizable verdict, treat it as **escalation** below — do NOT run `gh pr review` / `gh api .../reviews` yourself, and do NOT send an `approved` notification. Send `approved` (and merge, if `CEKERNEL_AUTO_MERGE=true`) only when the Reviewer returned the `approved` verdict **and** no SECURITY WARNING is present (see below).
+
+### SECURITY WARNING Check (ADR-0021 Decision 3)
+
+Before acting on the verdict, inspect the Agent tool's full result for SECURITY WARNING markers (e.g. `[Self-Approval]`, `[External-Write]`). If any SECURITY WARNING is present:
+
+1. **Do NOT auto-advance** — regardless of the verdict word, treat it as **unverified**
+2. **Surface the warning** in the completion summary: include the warning text and mark the verdict as `unverified`
+3. **Escalate** — follow the escalation path (cleanup, desktop notification, lock release) so a human can inspect the PR and the warning
+
+This prevents the Orchestrator from silently swallowing a security signal and reporting a clean approval (Rule of Repair).
 
 ### Handling the Verdict (final output line)
 
-**approved** — merge per `CEKERNEL_AUTO_MERGE`, then clean up immediately. Do NOT wait or poll for a human merge — the branch and PR remain on the remote:
+**approved** (no SECURITY WARNING) — merge per `CEKERNEL_AUTO_MERGE`, then clean up immediately. Do NOT wait or poll for a human merge — the branch and PR remain on the remote:
 
 ```bash
 gh pr merge <pr-number> --delete-branch     # only if CEKERNEL_AUTO_MERGE=true
@@ -211,7 +221,7 @@ watch.sh <issue>     # on ci-passed → Reviewer again (loop)
 
 Track the retry count in working memory; after `CEKERNEL_REVIEW_MAX_RETRIES` reject cycles, escalate.
 
-**escalation** — retry limit exceeded, verdict `failed`, unrecognized final line, or Agent tool error:
+**escalation** — retry limit exceeded, verdict `failed`, unrecognized final line, Agent tool error, or **SECURITY WARNING detected** in the subagent result:
 
 ```bash
 cleanup-worktree.sh <issue>
@@ -245,7 +255,7 @@ source issue-lock.sh && issue_lock_release "$(git rev-parse --show-toplevel)" <i
 ```
 - **Zombie / hang diagnosis**: `health-check.sh [issue]`; lifecycle logs live in `${CEKERNEL_IPC_DIR}/logs/` (`watch-logs.sh [issue]`) — a long-silent log suggests a hang
 - **CI failure**: the Worker retries up to `CEKERNEL_CI_MAX_RETRIES`, then reports `failed` — escalate to human
-- **Reviewer failure** (API outage, Agent tool error, `failed`, unrecognized line): treat as escalation (above)
+- **Reviewer failure** (API outage, Agent tool error, `failed`, unrecognized line, or SECURITY WARNING in subagent result): treat as escalation (above)
 
 ## Completion
 

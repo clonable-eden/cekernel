@@ -96,9 +96,11 @@ gh api "repos/${OWNER_REPO}/pulls/<pr-number>/reviews" \
   -f event="$EVENT" -f body="..."
 ```
 
+**Self-review body constraint (ADR-0021 Decision 3)**: when `EVENT=COMMENT` (self-review), the review body must be **neutral** — it contains only your review findings (what you observed, what needs fixing if any). **Never write approval words** (`APPROVE`, `approve`, `LGTM`, etc.) in the body text. The GitHub COMMENT is an *artifact* of your review, not the *verdict*. Writing an approval word in a COMMENT body simulates an approval the GitHub identity cannot legitimately make, and trips the auto-mode `[Self-Approval]` security classifier. The verdict is conveyed exclusively via the return contract (final output line) — see below.
+
 ### 6. Return the Verdict
 
-End your response with the verdict as the final output line: `approved` or `changes-requested`. Return the **review verdict**, not the GitHub submission method — a self-review submitted as COMMENT still returns the verdict. Nothing may follow the verdict line.
+End your response with the verdict as the final output line: `approved` or `changes-requested`. Return the **review verdict**, not the GitHub submission method — a self-review submitted as COMMENT still returns the verdict. The verdict travels **out-of-band** (your final output line to the Orchestrator) and must not depend on or duplicate in the GitHub review body. Nothing may follow the verdict line.
 
 ## Error Handling
 
