@@ -59,3 +59,84 @@ setup() {
   assert_eq "exits 0" "0" "$status"
   assert_match "new ID has {name}-{hex8} format" "^[a-z0-9._-]+-[0-9a-f]{8}$" "$output"
 }
+
+# ── .cekernel-env auto-discovery (issue #629) ──
+
+@test "session-id.sh reads provisioned ID from .cekernel-env when CEKERNEL_SESSION_ID is unset" {
+  # Create a temp git repo with .cekernel-env (simulates a Worker worktree)
+  local tmpdir
+  tmpdir=$(mktemp -d)
+  git -C "$tmpdir" init --quiet
+  echo "export CEKERNEL_SESSION_ID=cekernel-provisioned1" > "${tmpdir}/.cekernel-env"
+
+  run bash -c "
+    cd '$tmpdir'
+    unset CEKERNEL_SESSION_ID
+    unset CEKERNEL_IPC_DIR
+    source '${SESSION_SCRIPT}'
+    echo \"\${CEKERNEL_SESSION_ID}\"
+  "
+  rm -rf "$tmpdir"
+
+  assert_eq "exits 0" "0" "$status"
+  assert_eq "uses provisioned session ID" "cekernel-provisioned1" "$output"
+}
+
+@test "session-id.sh ignores .cekernel-env when CEKERNEL_SESSION_ID is already set" {
+  local tmpdir
+  tmpdir=$(mktemp -d)
+  git -C "$tmpdir" init --quiet
+  echo "export CEKERNEL_SESSION_ID=cekernel-provisioned2" > "${tmpdir}/.cekernel-env"
+
+  run bash -c "
+    cd '$tmpdir'
+    export CEKERNEL_SESSION_ID='cekernel-explicit99'
+    unset CEKERNEL_IPC_DIR
+    source '${SESSION_SCRIPT}'
+    echo \"\${CEKERNEL_SESSION_ID}\"
+  "
+  rm -rf "$tmpdir"
+
+  assert_eq "exits 0" "0" "$status"
+  assert_eq "keeps explicit ID" "cekernel-explicit99" "$output"
+}
+
+@test "session-id.sh derives correct IPC dir from .cekernel-env provisioned ID" {
+  local tmpdir
+  tmpdir=$(mktemp -d)
+  git -C "$tmpdir" init --quiet
+  echo "export CEKERNEL_SESSION_ID=cekernel-ipctest01" > "${tmpdir}/.cekernel-env"
+
+  local expected_var_dir="${CEKERNEL_VAR_DIR:-$HOME/.local/var/cekernel}"
+  run bash -c "
+    cd '$tmpdir'
+    unset CEKERNEL_SESSION_ID
+    unset CEKERNEL_IPC_DIR
+    source '${SESSION_SCRIPT}'
+    echo \"\${CEKERNEL_IPC_DIR}\"
+  "
+  rm -rf "$tmpdir"
+
+  assert_eq "exits 0" "0" "$status"
+  assert_eq "IPC dir uses provisioned ID" "${expected_var_dir}/ipc/cekernel-ipctest01" "$output"
+}
+
+@test "session-id.sh falls back to generation when no .cekernel-env exists" {
+  # Use a temp git repo WITHOUT .cekernel-env
+  local tmpdir
+  tmpdir=$(mktemp -d)
+  git -C "$tmpdir" init --quiet
+
+  run bash -c "
+    cd '$tmpdir'
+    unset CEKERNEL_SESSION_ID
+    unset CEKERNEL_IPC_DIR
+    source '${SESSION_SCRIPT}'
+    echo \"\${CEKERNEL_SESSION_ID}\"
+  "
+  rm -rf "$tmpdir"
+
+  assert_eq "exits 0" "0" "$status"
+  # Temp dir basename may contain uppercase (mktemp), so allow [A-Za-z]
+  assert_match "generates new ID" "^[a-zA-Z0-9._-]+-[0-9a-f]{8}$" "$output"
+}
