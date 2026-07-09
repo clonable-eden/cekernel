@@ -3,7 +3,6 @@
 #
 # Usage: spawn-worker.sh [--resume] [--priority <priority>] [--repo <owner/repo>] <issue-number> [base-branch]
 #   priority: critical|high|normal|low or numeric 0-19 (default: normal)
-# Output: FIFO path (stdout last line)
 # Options:
 #   --resume    Resume a suspended Worker (reuse existing worktree)
 #   --priority  Set worker priority (nice value)

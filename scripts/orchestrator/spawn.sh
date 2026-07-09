@@ -4,7 +4,6 @@
 # Usage: spawn.sh --agent <type> [--resume] [--priority <priority>] [--repo <owner/repo>] [--fallback-model <model>] <issue-number> [base-branch]
 #   type:     Process type (e.g., worker)
 #   priority: critical|high|normal|low or numeric 0-19 (default: normal)
-# Output: FIFO path (stdout last line; ADR-0020 Phase 3 will remove this)
 # Options:
 #   --agent           Process type to spawn (required)
 #   --resume          Resume a suspended process (reuse existing worktree)
@@ -157,8 +156,7 @@ rollback() {
   # Delete log file
   rm -f "${LOG_FILE:-}"
   rmdir "${LOG_DIR:-}" 2>/dev/null || true
-  # Delete FIFO, state file, priority file, type file, and backend file
-  rm -f "${FIFO:-}"
+  # Delete state file, priority file, type file, and backend file
   rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.state"
   rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.priority"
   rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.type"
@@ -170,12 +168,8 @@ rollback() {
 }
 trap rollback ERR
 
-# ── Create FIFO (named pipe) ──
-mkdir -p "$CEKERNEL_IPC_DIR"
-FIFO="${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}"
-[[ -p "$FIFO" ]] || mkfifo "$FIFO"
-
 # ── State: NEW (Process spawned, worktree being created) ──
+mkdir -p "$CEKERNEL_IPC_DIR"
 worker_state_write "$ISSUE_NUMBER" NEW "spawning"
 
 # ── Priority: Set process nice value ──
@@ -191,9 +185,6 @@ echo "$CEKERNEL_ACTIVE_BACKEND" > "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.ba
 LOG_DIR="${CEKERNEL_IPC_DIR}/logs"
 mkdir -p "$LOG_DIR"
 LOG_FILE="${LOG_DIR}/worker-${ISSUE_NUMBER}.log"
-
-# ── Log FIFO creation ──
-echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] FIFO_CREATE issue=#${ISSUE_NUMBER} path=${FIFO}" >> "$LOG_FILE"
 
 # ── Stale worktree/branch cleanup (retry safety) ──
 # If a previous spawn failure + incomplete rollback left stale worktree or branch,
@@ -365,6 +356,3 @@ else
   echo "session: $CEKERNEL_SESSION_ID" >&2
   echo "${AGENT_TYPE} spawned: issue #${ISSUE_NUMBER}" >&2
 fi
-
-# Return FIFO path (used by orchestrator for reading)
-echo "$FIFO"
