@@ -29,6 +29,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../shared/load-env.sh"
 source "${SCRIPT_DIR}/../shared/issue-lock.sh"
 source "${SCRIPT_DIR}/../shared/worker-state.sh"
+source "${SCRIPT_DIR}/../shared/reviewer-state.sh"
 source "${SCRIPT_DIR}/../shared/worker-priority.sh"
 source "${SCRIPT_DIR}/../shared/checkpoint-file.sh"
 source "${SCRIPT_DIR}/../shared/claude-bg.sh"
@@ -218,7 +219,7 @@ detect_backend() {
 # Commands
 # ══════════════════════════════════════════════
 
-# ── ls: List all workers across all sessions ──
+# ── ls: List all workers and reviewers across all sessions ──
 cmd_ls() {
   local found=0
 
@@ -284,6 +285,32 @@ cmd_ls() {
         --arg priority_name "$priority_name" \
         --arg elapsed "${elapsed:-}" \
         --arg backend "$backend" \
+        '{session: $session, repo: $repo, issue: $issue, type: $type, state: $state, detail: $detail, priority: $priority, priority_name: $priority_name, elapsed: $elapsed, backend: $backend}'
+    done
+
+    # ADR-0021 Decision 2: enumerate reviewer-*.state separately.
+    # Reviewer state is isolated from worker machinery (spawn count,
+    # health-check, gc sweep). No priority, backend, or .type file.
+    for issue in $(reviewer_state_list_active "$session_dir"); do
+      found=$((found + 1))
+      export CEKERNEL_IPC_DIR="$session_dir"
+
+      local rstate_json rstate rdetail
+      rstate_json=$(reviewer_state_read "$issue")
+      rstate=$(echo "$rstate_json" | jq -r '.state')
+      rdetail=$(echo "$rstate_json" | jq -r '.detail')
+
+      jq -cn \
+        --arg session "$sid" \
+        --arg repo "$sid_repo" \
+        --argjson issue "$issue" \
+        --arg type "reviewer" \
+        --arg state "$rstate" \
+        --arg detail "$rdetail" \
+        --argjson priority "null" \
+        --arg priority_name "" \
+        --arg elapsed "" \
+        --arg backend "subagent" \
         '{session: $session, repo: $repo, issue: $issue, type: $type, state: $state, detail: $detail, priority: $priority, priority_name: $priority_name, elapsed: $elapsed, backend: $backend}'
     done
   done
@@ -361,7 +388,7 @@ cmd_ps() {
       fi
     fi
 
-    # ── Managed rows (Worker/Reviewer sessions) ──
+    # ── Managed rows: Worker sessions (handle-based, ADR-0016 Phase 4) ──
     for handle_file in "${session_dir}"handle-*.*; do
       [[ -f "$handle_file" ]] || continue
       local fname issue_type issue mtype
@@ -387,6 +414,19 @@ cmd_ps() {
 
       found=$((found + 1))
       echo "  ${mtype}  #${issue}  claude=${mtoken}  phase=${phase}  priority=${priority}  ${mstate}"
+    done
+
+    # ── Managed rows: Reviewer subagents (state-file based, ADR-0021 #627) ──
+    # Reviewers run as Orchestrator subagents — no handle, no session token.
+    # Their state is surfaced from reviewer-<issue>.state files.
+    for rissue in $(reviewer_state_list_active "$session_dir"); do
+      local rstate_json rstate rdetail
+      rstate_json=$(CEKERNEL_IPC_DIR="$session_dir" reviewer_state_read "$rissue")
+      rstate=$(echo "$rstate_json" | jq -r '.state')
+      rdetail=$(echo "$rstate_json" | jq -r '.detail')
+
+      found=$((found + 1))
+      echo "  reviewer  #${rissue}  state=${rstate}  detail=${rdetail}"
     done
   done
 
