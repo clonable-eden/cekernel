@@ -236,7 +236,7 @@ lock_with_token() {
   mock_claude
   lock_with_token
   mock_claude_enqueue_agents \
-    "[$(mock_claude_agent_record_pair "$TOKEN" background /tmp/wt 1700000000000 idle working)]"
+    "[$(mock_claude_agent_record_pair "$TOKEN" background /tmp/wt 1700000000000 running active)]"
   run issue_lock_acquire "$REPO_A" "$ISSUE"
   assert_eq "acquire fails (unknown-value → assume alive)" "1" "$status"
 }

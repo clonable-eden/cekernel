@@ -500,7 +500,7 @@ make_handle() {
   # — schema drift counts as alive.
   make_orchestrator "$IPC_A" "$ORCH_TOKEN_A"
   mock_claude_enqueue_agents \
-    "[$(mock_claude_agent_record_pair "$ORCH_TOKEN_A" background /repo 1700000000000 idle working)]"
+    "[$(mock_claude_agent_record_pair "$ORCH_TOKEN_A" background /repo 1700000000000 running active)]"
   run --separate-stderr bash "$ORCHCTL" count
   assert_eq "unknown-value counted as alive" "1" "$output"
 }
