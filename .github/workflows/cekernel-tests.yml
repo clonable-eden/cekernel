@@ -40,8 +40,8 @@ jobs:
         run: |
           git clone --depth 1 --branch v1.13.0 https://github.com/bats-core/bats-core.git "${RUNNER_TEMP}/bats-core"
           echo "${RUNNER_TEMP}/bats-core/bin" >> "$GITHUB_PATH"
-      - name: "Run cekernel tests (dual-lane: legacy harness + bats)"
-        run: bash tests/run-tests.sh
+      - name: Run cekernel tests (bats)
+        run: bats --recursive tests/
 
   # Ruleset required status check (reports success even when test is skipped)
   status:
