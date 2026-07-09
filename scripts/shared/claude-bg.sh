@@ -155,7 +155,10 @@ claude_bg_token_verdict_from_json() {
   # The observed (status, state) matrix — see the header table. Liveness
   # lives in `status`, terminality in `state` (#581, #591).
   case "${status}/${state}" in
-    busy/working|busy/-|-/busy)
+    busy/working|busy/-|-/busy|idle/working)
+      # idle/working: v2.1.205 shape (#638) — live session between active
+      # turns. idle = not currently in a turn (not terminal), working =
+      # session not finished → alive. Same verdict as busy/working.
       echo "alive"
       return 0
       ;;
