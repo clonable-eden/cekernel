@@ -65,7 +65,7 @@ For each issue, check content with `gh issue view` and verify: requirement clari
 Ending your final turn terminates the orchestration: the session transitions to `done`, and whether a background-task completion re-invokes a `done` session is unverified — live Workers would be orphaned.
 
 - **NEVER end your turn while any issue is in a non-terminal state** (anything other than merged / failed / cancelled).
-- Waiting is a **foreground blocking call**: when no other work is pending, run `watch.sh <issue>` as a normal foreground Bash call with a generous timeout, handling one notification at a time in a loop.
+- Waiting is a **foreground blocking call**: when no other work is pending, run `watch.sh <issue>` as a normal foreground Bash call with `timeout: 600000`, handling one notification at a time in a loop. `watch.sh` self-limits each invocation to `CEKERNEL_WATCH_CHUNK_TIMEOUT` (default 540s, below the Bash tool's 600s hard limit) and returns exit 0 with `"result":"watching"` when the chunk expires — re-invoke `watch.sh` on this result (#630).
 - `run_in_background: true` for `watch.sh` is safe **only** while further foreground work remains in the same turn (e.g. spawning the next Worker). Before you would otherwise end your turn, switch to foreground watch until all issues are terminal.
 - Do NOT poll with `sleep && process-status.sh` — `watch.sh` is the sole completion mechanism (state-file polling, crash detection). Polling wastes tokens and floods notifications while adding no information.
 
@@ -81,6 +81,7 @@ watch.sh 4           # run_in_background: true ONLY while more foreground work r
 #   merged    → legacy Worker flow: cleanup-worktree.sh 4 directly, no Reviewer
 #   failed    → Error Handling (below)
 #   cancelled → SUSPEND handling (Scheduling below)
+#   watching  → Worker still running, re-invoke: watch.sh 4 (#630)
 ```
 
 ## Scheduling

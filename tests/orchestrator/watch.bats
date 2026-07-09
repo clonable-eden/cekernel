@@ -410,12 +410,17 @@ teardown() {
   # .spawned 60 seconds ago
   echo "$(( $(date +%s) - 60 ))" > "${CEKERNEL_IPC_DIR}/worker-631.spawned"
 
-  run bash "$WATCH_SCRIPT" 631
-  assert_eq "watch exits 0" "0" "$status"
-  assert_match "result is watching" '"result":"watching"' "$output"
+  local out="${BATS_TEST_TMPDIR}/watch-out-631.json"
+  bash "$WATCH_SCRIPT" 631 > "$out" 2>/dev/null
+  local exit_code=$?
+
+  local result_json
+  result_json=$(cat "$out")
+  assert_eq "watch exits 0" "0" "$exit_code"
+  assert_match "result is watching" '"result":"watching"' "$result_json"
   # elapsed should be ≥60 (60s before spawn + ~2s chunk wait)
   local elapsed
-  elapsed=$(echo "$output" | jq -r '.elapsed')
+  elapsed=$(echo "$result_json" | jq -r '.elapsed')
   [[ "$elapsed" -ge 60 ]]
 }
 
