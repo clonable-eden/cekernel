@@ -1,10 +1,9 @@
 #!/usr/bin/env bats
 # task-file.bats — bats-core tests for scripts/shared/task-file.sh
 #
-# Covers the cross-repo `repo` argument of create_task_file (#440):
-# recorded gh argv (ADR-0017: executed effects, not generated text) and
-# the `repo:` frontmatter field. Legacy coverage for the repo-less
-# behavior lives in tests/shared/test-task-file.sh.
+# Covers the cross-repo `repo` argument of create_task_file (#440),
+# base branch propagation (#562), and task_file_clear_resume_marker.
+# Recorded gh argv (ADR-0017: executed effects, not generated text).
 
 load '../helpers/assertions'
 load '../helpers/mock-bin'
@@ -118,4 +117,59 @@ JSON"
     return 1
   fi
   assert_match "task file still has issue number" "issue: 42" "$content"
+}
+
+# ── task_file_clear_resume_marker ──
+
+@test "task_file_clear_resume_marker removes resume marker section" {
+  source "${CEKERNEL_DIR}/scripts/shared/task-file.sh"
+  cat > "${WORKTREE}/.cekernel-task.md" <<'TASK'
+---
+issue: 100
+title: "test issue"
+labels: [enhancement]
+---
+
+Issue body content here.
+
+## Resume Reason: changes-requested
+
+Review comments are on PR #50. Read them with `gh pr view 50 --comments`.
+TASK
+
+  task_file_clear_resume_marker "$WORKTREE"
+  local content
+  content="$(cat "${WORKTREE}/.cekernel-task.md")"
+  if [[ "$content" == *"Resume Reason"* ]]; then
+    echo "FAIL: resume marker should be removed" >&2
+    return 1
+  fi
+  assert_match "original content preserved" "Issue body content here" "$content"
+}
+
+@test "task_file_clear_resume_marker is no-op when no marker exists" {
+  source "${CEKERNEL_DIR}/scripts/shared/task-file.sh"
+  cat > "${WORKTREE}/.cekernel-task.md" <<'TASK'
+---
+issue: 101
+title: "test issue without marker"
+labels: []
+---
+
+Just a normal task file.
+TASK
+
+  local before after
+  before="$(cat "${WORKTREE}/.cekernel-task.md")"
+  task_file_clear_resume_marker "$WORKTREE"
+  after="$(cat "${WORKTREE}/.cekernel-task.md")"
+  assert_eq "content unchanged" "$before" "$after"
+}
+
+@test "task_file_clear_resume_marker exits cleanly when no task file" {
+  source "${CEKERNEL_DIR}/scripts/shared/task-file.sh"
+  local empty_wt="${BATS_TEST_TMPDIR}/empty-wt"
+  mkdir -p "$empty_wt"
+  run task_file_clear_resume_marker "$empty_wt"
+  assert_eq "exits 0" "0" "$status"
 }

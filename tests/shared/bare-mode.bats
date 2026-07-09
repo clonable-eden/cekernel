@@ -7,8 +7,7 @@
 # keeps --bare; otherwise --bare is dropped (OAuth/keychain auth) with a
 # one-line stderr notice, while context injection (--plugin-dir/--add-dir)
 # is preserved.
-# Legacy coverage for --plugin-dir/--add-dir/--settings/preflight
-# lives in tests/shared/test-bare-mode.sh (pre-ADR-0017 harness).
+# Also covers bare_mode_preflight (hard gate for cron/at).
 
 load '../helpers/assertions'
 
@@ -106,4 +105,28 @@ setup() {
     return 1
   fi
   assert_match "flags string keeps --plugin-dir" "--plugin-dir ${CEKERNEL_DIR}" "$flags"
+}
+
+# ── bare_mode_preflight (hard gate for cron/at scheduled path) ──
+
+@test "bare_mode_preflight fails without any bare-compatible auth" {
+  run bash -c "unset ANTHROPIC_API_KEY CEKERNEL_CLAUDE_SETTINGS; source '${BARE_SCRIPT}'; bare_mode_preflight 2>/dev/null"
+  assert_eq "preflight exits 1" "1" "$status"
+}
+
+@test "bare_mode_preflight passes with ANTHROPIC_API_KEY" {
+  run bash -c "export ANTHROPIC_API_KEY='test-key'; unset CEKERNEL_CLAUDE_SETTINGS; source '${BARE_SCRIPT}'; bare_mode_preflight"
+  assert_eq "preflight exits 0" "0" "$status"
+}
+
+@test "bare_mode_preflight passes with CEKERNEL_CLAUDE_SETTINGS" {
+  local settings="${BATS_TEST_TMPDIR}/settings.json"
+  echo '{}' > "$settings"
+  run bash -c "unset ANTHROPIC_API_KEY; export CEKERNEL_CLAUDE_SETTINGS='${settings}'; source '${BARE_SCRIPT}'; bare_mode_preflight"
+  assert_eq "preflight exits 0" "0" "$status"
+}
+
+@test "bare_mode_preflight fails when CEKERNEL_CLAUDE_SETTINGS points to missing file" {
+  run bash -c "unset ANTHROPIC_API_KEY; export CEKERNEL_CLAUDE_SETTINGS='/tmp/no-such-settings-$$.json'; source '${BARE_SCRIPT}'; bare_mode_preflight 2>/dev/null"
+  assert_eq "preflight exits 1" "1" "$status"
 }
