@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 Supersedes ADR-0012 Amendments 1, 2, and 5 (the Reviewer *mechanism*).
 ADR-0012's core decision — separating review and merge from Worker
