@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # test-health-check.sh — Zombie Worker detection tests
 # ADR-0020 Phase 2: zombie = non-TERMINATED state + dead backend verdict.
-# Workers are discovered by state file, not FIFO.
+# Workers are discovered by state file.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

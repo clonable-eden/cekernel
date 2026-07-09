@@ -11,23 +11,23 @@ echo "test: timeout"
 
 export CEKERNEL_SESSION_ID="test-timeout-00000001"
 source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
+source "${CEKERNEL_DIR}/scripts/shared/worker-state.sh"
 
 ISSUE=99
 
 cleanup() {
-  rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
-  rmdir "$CEKERNEL_IPC_DIR" 2>/dev/null || true
+  rm -rf "$CEKERNEL_IPC_DIR"
 }
 trap cleanup EXIT
 
-mkdir -p "$CEKERNEL_IPC_DIR"
-mkfifo "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
+mkdir -p "${CEKERNEL_IPC_DIR}/logs"
+worker_state_write "$ISSUE" RUNNING "phase1:implement"
 
 # ── Test 1: Timeout returns appropriate JSON ──
 RESULT_FILE=$(mktemp)
 
-# Launch watch with 2s timeout (Writer does not write)
-CEKERNEL_WORKER_TIMEOUT=2 \
+# Launch watch with 2s timeout (state stays RUNNING)
+CEKERNEL_WORKER_TIMEOUT=2 CEKERNEL_STATE_POLL_INTERVAL=1 \
   bash "${CEKERNEL_DIR}/scripts/orchestrator/watch.sh" "$ISSUE" > "$RESULT_FILE" 2>/dev/null &
 WATCH_PID=$!
 
@@ -53,25 +53,22 @@ assert_match "Issue number in result" '"issue":99' "$RESULT"
 assert_match "Timeout detail in result" 'No response within' "$RESULT"
 
 # ── Test 2: Normal completion returns before timeout ──
-# Recreate FIFO (deleted by watch_one in Test 1)
-mkfifo "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
+# Reset state to RUNNING
+worker_state_write "$ISSUE" RUNNING "phase1:implement"
 
 RESULT_FILE=$(mktemp)
 
-CEKERNEL_WORKER_TIMEOUT=10 \
+CEKERNEL_WORKER_TIMEOUT=10 CEKERNEL_STATE_POLL_INTERVAL=1 \
   bash "${CEKERNEL_DIR}/scripts/orchestrator/watch.sh" "$ISSUE" > "$RESULT_FILE" 2>/dev/null &
 WATCH_PID=$!
 
-# Wait for watch to open FIFO
-sleep 0.5
+# Wait for watch to start polling, then write TERMINATED
+sleep 2
+worker_state_write "$ISSUE" TERMINATED "merged:PR-99"
 
-# Write immediately
-echo '{"issue":99,"result":"merged","detail":"PR-99"}' > "${CEKERNEL_IPC_DIR}/worker-${ISSUE}" &
-WRITER_PID=$!
-
-# Poll for completion (should complete within 3 seconds)
+# Poll for completion (should complete within 5 seconds)
 WATCH_DONE=0
-for _ in $(seq 1 30); do
+for _ in $(seq 1 50); do
   if ! kill -0 "$WATCH_PID" 2>/dev/null; then
     WATCH_DONE=1
     break
@@ -79,9 +76,6 @@ for _ in $(seq 1 30); do
   sleep 0.1
 done
 
-kill "$WRITER_PID" 2>/dev/null || true
-rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
-wait "$WRITER_PID" 2>/dev/null || true
 wait "$WATCH_PID" 2>/dev/null || true
 
 assert_eq "Completed before timeout" "1" "$WATCH_DONE"
