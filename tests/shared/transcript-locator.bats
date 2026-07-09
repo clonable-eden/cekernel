@@ -62,3 +62,58 @@ setup() {
   run transcript_locate_worker 99 "$CLAUDE_HOME" "$VAR_DIR"
   assert_eq "exit status" "1" "$status"
 }
+
+# ── Orchestrator transcript discovery ──
+
+@test "locate_orchestrator finds subagent transcripts by session ID" {
+  local sess_dir="${CLAUDE_HOME}/projects/-Users-t-repo/session-orch1/subagents"
+  mkdir -p "$sess_dir"
+  touch "${sess_dir}/agent-001.jsonl"
+  touch "${sess_dir}/agent-002.jsonl"
+
+  run transcript_locate_orchestrator "session-orch1" "$CLAUDE_HOME" "-Users-t-repo"
+  assert_eq "exit 0" "0" "$status"
+  local count
+  count=$(echo "$output" | wc -l | tr -d ' ')
+  assert_eq "finds 2 subagent transcripts" "2" "$count"
+}
+
+@test "locate_orchestrator returns exit 1 when session not found" {
+  run transcript_locate_orchestrator "nonexistent-session" "$CLAUDE_HOME" "-Users-t-repo"
+  assert_eq "exit 1" "1" "$status"
+}
+
+@test "locate_orchestrator_by_issue finds transcripts via .spawned reverse lookup" {
+  local mock_session="mock-orch-sess"
+  local mock_ipc="${VAR_DIR}/ipc/${mock_session}"
+  mkdir -p "$mock_ipc"
+  touch "${mock_ipc}/worker-42.spawned"
+
+  local sess_dir="${CLAUDE_HOME}/projects/-Users-t-repo/${mock_session}/subagents"
+  mkdir -p "$sess_dir"
+  touch "${sess_dir}/agent-010.jsonl"
+
+  run transcript_locate_orchestrator_by_issue 42 "$VAR_DIR" "$CLAUDE_HOME" "-Users-t-repo"
+  assert_eq "exit 0" "0" "$status"
+  assert_match "finds orchestrator transcript" "agent-010\.jsonl" "$output"
+}
+
+@test "locate_all combines worker and orchestrator transcripts" {
+  # Worker transcripts already exist from setup ($PROJECT_DIR has 2 .jsonl files)
+  # Add orchestrator subagent transcripts
+  local mock_session="mock-all-sess"
+  local mock_ipc="${VAR_DIR}/ipc/${mock_session}"
+  mkdir -p "$mock_ipc"
+  touch "${mock_ipc}/worker-42.spawned"
+
+  local sess_dir="${CLAUDE_HOME}/projects/-Users-t-repo/${mock_session}/subagents"
+  mkdir -p "$sess_dir"
+  touch "${sess_dir}/agent-all-001.jsonl"
+
+  run transcript_locate_all 42 "" "$CLAUDE_HOME" "-Users-t-repo" "$VAR_DIR"
+  assert_eq "exit 0" "0" "$status"
+  local count
+  count=$(echo "$output" | wc -l | tr -d ' ')
+  # 2 worker transcripts + 1 orchestrator transcript = 3
+  assert_eq "combines all transcripts" "3" "$count"
+}

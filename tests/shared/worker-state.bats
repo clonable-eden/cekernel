@@ -72,3 +72,42 @@ teardown() {
   assert_eq "exit 0" "0" "$status"
   assert_eq "lists issue 99" "99" "$output"
 }
+
+# ── Core write/read round-trip ──
+
+@test "worker_state_write creates state file and worker_state_read returns correct JSON" {
+  worker_state_write 50 RUNNING "phase1:implement"
+  assert_file_exists "state file created" "${CEKERNEL_IPC_DIR}/worker-50.state"
+  local state
+  state=$(worker_state_read 50)
+  assert_match "state is RUNNING" '"state":"RUNNING"' "$state"
+  assert_match "detail is phase1:implement" '"detail":"phase1:implement"' "$state"
+  assert_match "issue is 50" '"issue":50' "$state"
+}
+
+@test "worker_state_write rejects invalid state with exit 1" {
+  run worker_state_write 50 INVALID
+  assert_eq "exits 1" "1" "$status"
+}
+
+@test "worker_state_read returns UNKNOWN for nonexistent state" {
+  local state
+  state=$(worker_state_read 999)
+  assert_match "state is UNKNOWN" '"state":"UNKNOWN"' "$state"
+}
+
+@test "worker_state_write fails when CEKERNEL_IPC_DIR is unset" {
+  run bash -c "
+    source '${CEKERNEL_DIR}/scripts/shared/worker-state.sh'
+    unset CEKERNEL_IPC_DIR
+    worker_state_write 60 RUNNING 'test'
+  "
+  assert_eq "exits 1" "1" "$status"
+}
+
+@test "worker_state_write preserves TDD sub-detail with parentheses" {
+  worker_state_write 70 RUNNING "phase1:implement(red)"
+  local state
+  state=$(worker_state_read 70)
+  assert_match "TDD sub-detail preserved" '"detail":"phase1:implement\(red\)"' "$state"
+}
