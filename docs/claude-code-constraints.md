@@ -302,13 +302,14 @@ roster observation; claude v2.1.202):
   detection never fires (#591).
 - **Observed (status, state) matrix** (ADR-0018 — this table is the
   contract; it is mirrored in `scripts/shared/claude-bg.sh` and
-  `tests/helpers/mock-claude.bash`):
+  `tests/helpers/mock-claude.bash`; last updated v2.1.205, 2026-07-09):
 
   | `status` | `state` | Verdict |
   |----------|---------|---------|
   | `busy` | `working` | alive |
   | `busy` | (absent) | alive |
   | (absent) | `busy` | alive (pre-split legacy shape) |
+  | `idle` | `working` | alive (v2.1.205: between turns, #638) |
   | `blocked` | `working` | blocked (v2.1.201 shape) |
   | `idle` | `blocked` | blocked (v2.1.202 shape) |
   | (absent) | `blocked` | blocked (pre-split legacy shape) |
@@ -319,11 +320,12 @@ roster observation; claude v2.1.202):
   | — session absent — | | not-listed |
   | any pair not above | | unknown-value |
 
-  Real roster tally (2026-07-07, v2.1.202): `busy/working`,
-  `busy/(absent)` (interactive), `idle/blocked`, `idle/done`,
-  `(absent)/done`, `(absent)/stopped`. Note `blocked` appeared in
-  `state` with `status: "idle"` — NOT in `status` as ADR-0018
-  originally predicted from v2.1.201.
+  Real roster tally (2026-07-07, v2.1.202; updated 2026-07-09,
+  v2.1.205): `busy/working`, `busy/(absent)` (interactive),
+  `idle/working` (v2.1.205, live session between turns, #638),
+  `idle/blocked`, `idle/done`, `(absent)/done`, `(absent)/stopped`.
+  Note `blocked` appeared in `state` with `status: "idle"` — NOT in
+  `status` as ADR-0018 originally predicted from v2.1.201.
 - **`agents --json` does not resurrect the daemon** (isolated-HOME
   probe, v2.1.202, #593): with no daemon running, `claude agents
   --json` (and `--all`) returns `[]` with exit 0, starts no `claude

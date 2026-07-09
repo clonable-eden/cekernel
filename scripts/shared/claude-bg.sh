@@ -15,13 +15,14 @@
 #   bg-session.sh  — lifecycle core, predicates only
 #   backends / watch / orchctl / wrapper / issue-lock — verdict consumers
 #
-# ── Observed (status, state) matrix — v2.1.202, 2026-07-07 (ADR-0018) ──
+# ── Observed (status, state) matrix — v2.1.205, 2026-07-09 (ADR-0018) ──
 #
 #   | `status`  | `state`   | Verdict            |
 #   |-----------|-----------|--------------------|
 #   | busy      | working   | alive              |
 #   | busy      | (absent)  | alive              |
 #   | (absent)  | busy      | alive   (pre-split legacy shape)      |
+#   | idle      | working   | alive   (v2.1.205: between turns, #638)  |
 #   | blocked   | working   | blocked (v2.1.201 shape)              |
 #   | idle      | blocked   | blocked (v2.1.202 shape)              |
 #   | (absent)  | blocked   | blocked (pre-split legacy shape)      |
@@ -155,7 +156,10 @@ claude_bg_token_verdict_from_json() {
   # The observed (status, state) matrix — see the header table. Liveness
   # lives in `status`, terminality in `state` (#581, #591).
   case "${status}/${state}" in
-    busy/working|busy/-|-/busy)
+    busy/working|busy/-|-/busy|idle/working)
+      # idle/working: v2.1.205 shape (#638) — live session between active
+      # turns. idle = not currently in a turn (not terminal), working =
+      # session not finished → alive. Same verdict as busy/working.
       echo "alive"
       return 0
       ;;

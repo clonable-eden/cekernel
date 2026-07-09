@@ -308,7 +308,7 @@ FULL_UUID="aaaa1111-2222-4333-8444-555566667777"
 @test "backend_worker_status propagates unknown-value (never coerced)" {
   echo "$FULL_UUID" > "${CEKERNEL_IPC_DIR}/handle-500.worker"
   mock_claude_enqueue_agents \
-    "[$(mock_claude_agent_record_pair "$FULL_UUID" background "$WORKTREE_REAL" 1700000000000 idle working)]"
+    "[$(mock_claude_agent_record_pair "$FULL_UUID" background "$WORKTREE_REAL" 1700000000000 running active)]"
   run --separate-stderr backend_worker_status 500
   assert_eq "exit status" "5" "$status"
   assert_eq "report" "unknown-value" "$output"

@@ -196,7 +196,7 @@ teardown() {
   worker_state_write 594 RUNNING "phase1:implement"
   echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-594.worker"
   mock_claude_enqueue_agents \
-    "[$(mock_claude_agent_record_pair "$TOKEN" background /tmp/wt 1700000000000 idle working)]"
+    "[$(mock_claude_agent_record_pair "$TOKEN" background /tmp/wt 1700000000000 running active)]"
   export CEKERNEL_WATCH_QUERY_RETRY_MAX=10
 
   local out="${BATS_TEST_TMPDIR}/watch-out.json"
