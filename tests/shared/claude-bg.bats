@@ -91,6 +91,16 @@ enqueue_pair() {
   assert_eq "verdict" "done" "$output"
 }
 
+@test "verdict matrix: idle/working is alive (v2.1.205 shape, #638)" {
+  # claude 2.1.205: live session between active turns reports status=idle,
+  # state=working. idle = between turns (not terminal), working = session
+  # not finished → alive. Observed 2026-07-09, stable across 3 samples.
+  enqueue_pair idle working
+  run claude_bg_token_verdict "$FULL_UUID"
+  assert_eq "exit status" "0" "$status"
+  assert_eq "verdict" "alive" "$output"
+}
+
 @test "verdict matrix: idle/stopped and absent/stopped are stopped" {
   enqueue_pair idle stopped
   run claude_bg_token_verdict "$FULL_UUID"
@@ -120,12 +130,12 @@ enqueue_pair() {
 }
 
 @test "verdict: out-of-matrix pair reports unknown-value with exit 5 and stderr warning" {
-  enqueue_pair idle working
+  enqueue_pair running active
   run --separate-stderr claude_bg_token_verdict "$FULL_UUID"
   assert_eq "exit status" "5" "$status"
   assert_eq "report" "unknown-value" "$output"
-  assert_match "stderr warning names the pair" "idle" "$stderr"
-  assert_match "stderr warning names the pair" "working" "$stderr"
+  assert_match "stderr warning names the pair" "running" "$stderr"
+  assert_match "stderr warning names the pair" "active" "$stderr"
 }
 
 @test "verdict_from_json: malformed body reports query-failed" {
@@ -182,9 +192,16 @@ enqueue_pair() {
 
 @test "token_alive_from_json: unknown-value propagates as exit 5" {
   local json
-  json="[$(mock_claude_agent_record_pair "$FULL_UUID" background /tmp/x 1700000000000 idle working)]"
+  json="[$(mock_claude_agent_record_pair "$FULL_UUID" background /tmp/x 1700000000000 running active)]"
   run claude_bg_token_alive_from_json "$json" "$FULL_UUID"
   assert_eq "unknown-value propagates as 5" "5" "$status"
+}
+
+@test "token_alive_from_json: idle/working is alive (v2.1.205 shape, #638)" {
+  local json
+  json="[$(mock_claude_agent_record_pair "$FULL_UUID" background /tmp/x 1700000000000 idle working)]"
+  run claude_bg_token_alive_from_json "$json" "$FULL_UUID"
+  assert_eq "idle/working is alive" "0" "$status"
 }
 
 @test "token_alive_from_json: busy and blocked are alive; done and missing are not" {
