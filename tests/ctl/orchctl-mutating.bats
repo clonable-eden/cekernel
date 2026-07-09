@@ -483,6 +483,12 @@ worker_state() {
   assert_file_exists "stale state preserved" "${session_dir}/worker-300.state"
   assert_dir_exists "stale lock preserved" "$lock_dry"
   assert_match "output indicates dry-run" "dry-run" "$output"
+  # State-based specificity: the dry-run must name the stale worker-state
+  # resource it would remove (replaces the pre-Phase-3 "stale FIFO" assertion,
+  # so a regression in state-based stale detection is caught, not just the
+  # generic dry-run banner).
+  assert_match "output names the stale worker state" \
+    "would remove orphan IPC file.*worker-300\.state" "$output"
 }
 
 # ── gc: output summary ──
