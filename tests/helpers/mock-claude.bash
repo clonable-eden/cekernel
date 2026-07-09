@@ -9,13 +9,14 @@
 # `agents --json` records carry extra fields — pid, id, name — and a
 # numeric epoch-millis startedAt, with a realpath'd cwd).
 #
-# ── Observed (status, state) matrix — v2.1.202, 2026-07-07 (ADR-0018) ──
+# ── Observed (status, state) matrix — v2.1.205, 2026-07-09 (ADR-0018) ──
 #
 #   | `status`  | `state`   | Verdict            |
 #   |-----------|-----------|--------------------|
 #   | busy      | working   | alive              |
 #   | busy      | (absent)  | alive              |
 #   | (absent)  | busy      | alive   (pre-split legacy shape)      |
+#   | idle      | working   | alive   (v2.1.205: between turns, #638)  |
 #   | blocked   | working   | blocked (v2.1.201 shape)              |
 #   | idle      | blocked   | blocked (v2.1.202 shape)              |
 #   | (absent)  | blocked   | blocked (pre-split legacy shape)      |
