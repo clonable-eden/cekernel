@@ -90,7 +90,7 @@ echo "42" > "${CEKERNEL_IPC_DIR}/pane-${ISSUE}.worker"
 cd "$FAKE_REPO"
 CEKERNEL_BACKEND=wezterm bash "${CEKERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
 
-if grep -q "stop ${SESSION_TOKEN}" "$CLAUDE_LOG" 2>/dev/null; then
+if grep -q "stop ${SESSION_TOKEN:0:8}" "$CLAUDE_LOG" 2>/dev/null; then
   echo "  PASS: Session stopped via claude stop"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else

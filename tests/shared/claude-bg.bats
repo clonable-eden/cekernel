@@ -249,19 +249,34 @@ enqueue_pair() {
   assert_eq "exit status" "1" "$status"
 }
 
-# ── claude_bg_stop ──
+# ── claude_bg_stop (#621: token truncation + Rule of Repair) ──
 
-@test "stop: delegates to claude stop and never fails" {
+@test "stop: full UUID is truncated to short 8-char job ID" {
   run claude_bg_stop "$FULL_UUID"
   assert_eq "exit status" "0" "$status"
   assert_file_exists "stop recorded" "${MOCK_CLAUDE_STATE_DIR}/stop.log"
-  assert_eq "stopped token" "$FULL_UUID" "$(cat "${MOCK_CLAUDE_STATE_DIR}/stop.log")"
+  assert_eq "stopped token" "aaaa1111" "$(cat "${MOCK_CLAUDE_STATE_DIR}/stop.log")"
+}
+
+@test "stop: short ID is passed through unchanged" {
+  run claude_bg_stop "abcd5678"
+  assert_eq "exit status" "0" "$status"
+  assert_file_exists "stop recorded" "${MOCK_CLAUDE_STATE_DIR}/stop.log"
+  assert_eq "stopped token" "abcd5678" "$(cat "${MOCK_CLAUDE_STATE_DIR}/stop.log")"
 }
 
 @test "stop: empty token is a no-op success" {
   run claude_bg_stop ""
   assert_eq "exit status" "0" "$status"
   assert_not_exists "no stop recorded" "${MOCK_CLAUDE_STATE_DIR}/stop.log"
+}
+
+@test "stop: failure emits a stderr warning (Rule of Repair) but still exits 0" {
+  # Replace claude shim with one that fails on stop
+  mock_bin claude 'if [ "$1" = "stop" ]; then echo "No job matching" >&2; exit 1; fi'
+  run --separate-stderr claude_bg_stop "deadbeef"
+  assert_eq "exit status (reap semantics)" "0" "$status"
+  assert_match "stderr warns about stop failure" "stop.*failed|Warning.*stop" "$stderr"
 }
 
 # ── claude_bg_capture_session_id ──

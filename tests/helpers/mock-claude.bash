@@ -105,7 +105,9 @@
 # Shim behavior:
 #   claude ... --bg ...    → prints `backgrounded · <short-id>`, records argv
 #   claude agents --json   → replays the enqueued response sequence
-#   claude stop <id>       → appends <id> to stop.log
+#   claude stop <id>       → appends <id> to stop.log (the real CLI
+#                            accepts only the short 8-char job ID — #621;
+#                            claude-bg.sh truncates before calling)
 #   anything else          → diagnostic on stderr, exit 1 (Rule of Repair:
 #                            argv shapes the mock does not model must fail
 #                            noisily, never pass silently)

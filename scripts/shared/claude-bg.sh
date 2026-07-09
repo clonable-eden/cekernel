@@ -97,8 +97,11 @@
 #       calling — the daemon's inherited environment is unspecified.
 #
 #   claude_bg_stop <token>
-#     — Stop the session via `claude stop`. Never fails; empty token is a
-#       no-op (reap semantics: done sessions linger until stopped).
+#     — Stop the session via `claude stop`. The token (full UUID or short
+#       ID) is truncated to 8 chars — `claude stop` only accepts the
+#       short job ID (#621). Never fails (reap semantics: returns 0 even
+#       when `claude stop` errors); stop failure emits a stderr warning
+#       (Rule of Repair). Empty token is a no-op.
 #
 #   claude_bg_wait_terminal <token> <interval> <timeout>
 #     — Poll `agents --json --all` until the verdict is terminal for
@@ -246,7 +249,17 @@ claude_bg_spawn() {
 claude_bg_stop() {
   local token="${1:-}"
   [[ -n "$token" ]] || return 0
-  claude stop "$token" >/dev/null 2>&1 || true
+
+  # `claude stop` accepts only the short 8-char job ID (first 8 hex chars
+  # of the sessionId). Full UUIDs always fail with "No job matching" (#621).
+  local job_id="${token:0:8}"
+  local stop_err
+  if ! stop_err=$(claude stop "$job_id" 2>&1); then
+    # Rule of Repair: make stop failure visible — the previous || true
+    # silently swallowed every failure, hiding #621 for weeks.
+    echo "Warning: claude stop '${job_id}' failed: ${stop_err}" >&2
+  fi
+  return 0
 }
 
 # claude_bg_wait_terminal <token> <interval> <timeout>

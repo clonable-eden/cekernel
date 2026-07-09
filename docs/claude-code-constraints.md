@@ -283,7 +283,11 @@ Verified 2026-07-07 (Phase 1 probe, #546, session `971e554a`):
   is **epoch milliseconds** (numeric), not an ISO string.
 - The reported `cwd` is **realpath'd** (`/tmp` → `/private/tmp` on macOS)
   — cwd-based matching must normalize with `pwd -P` first.
-- `claude stop <short-id>` accepts the short ID as the stop token.
+- `claude stop <short-id>` accepts **only** the short 8-char job ID as
+  the stop token — a full session UUID fails with "No job matching"
+  (#621, verified v2.1.202). The short ID is the first 8 hex chars of
+  the `sessionId`. `claude-bg.sh` truncates the handle token before
+  passing it to `claude stop`.
 
 Verified 2026-07-07 (#581 field split, #591 terminal conflation, #593
 roster observation; claude v2.1.202):
