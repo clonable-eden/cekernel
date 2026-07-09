@@ -742,3 +742,46 @@ worker_state() {
   assert_match "state is TERMINATED" "^TERMINATED:" "$state_content"
   assert_match "detail is crashed:detected-by-gc" "crashed:detected-by-gc" "$state_content"
 }
+
+# ── gc: reviewer-*.state isolation (#627, ADR-0021 OQ2) ──
+# gc must NOT touch reviewer-*.state files. A REVIEWING record has no
+# session token, so the worker sweep would immediately reap it. The fix
+# is to not sweep reviewer state at all — staleness is bounded by the
+# Orchestrator's liveness (future scope).
+
+@test "gc does NOT reap live REVIEWING reviewer state" {
+  local session_dir="${IPC_BASE}/session-gc-rev1"
+  mkdir -p "$session_dir"
+  echo "REVIEWING:2026-07-09T10:00:00Z:review:in-progress" > "${session_dir}/reviewer-42.state"
+  run bash "$ORCHCTL" gc
+  assert_file_exists "live REVIEWING state preserved" "${session_dir}/reviewer-42.state"
+}
+
+@test "gc does NOT reap TERMINATED reviewer state" {
+  local session_dir="${IPC_BASE}/session-gc-rev2"
+  mkdir -p "$session_dir"
+  echo "TERMINATED:2026-07-09T10:00:00Z:approved" > "${session_dir}/reviewer-43.state"
+  run bash "$ORCHCTL" gc
+  assert_file_exists "TERMINATED reviewer state preserved" "${session_dir}/reviewer-43.state"
+}
+
+@test "gc does NOT interfere with reviewer state when reaping stale workers" {
+  mock_claude
+  local session_dir="${IPC_BASE}/session-gc-rev3"
+  mkdir -p "$session_dir"
+  # Stale worker: dead handle
+  echo "RUNNING:2026-07-09T10:00:00Z:working" > "${session_dir}/worker-50.state"
+  echo "99999999" > "${session_dir}/handle-50.worker"
+  # Live reviewer for a different issue
+  echo "REVIEWING:2026-07-09T10:00:00Z:review:in-progress" > "${session_dir}/reviewer-51.state"
+  run bash "$ORCHCTL" gc
+  # Worker should be reaped
+  local worker_state
+  worker_state=$(cat "${session_dir}/worker-50.state")
+  assert_match "stale worker reaped" "^TERMINATED:" "$worker_state"
+  # Reviewer should be untouched
+  assert_file_exists "reviewer state preserved" "${session_dir}/reviewer-51.state"
+  local reviewer_state
+  reviewer_state=$(cat "${session_dir}/reviewer-51.state")
+  assert_match "reviewer state unchanged" "^REVIEWING:" "$reviewer_state"
+}

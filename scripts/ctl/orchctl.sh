@@ -29,6 +29,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../shared/load-env.sh"
 source "${SCRIPT_DIR}/../shared/issue-lock.sh"
 source "${SCRIPT_DIR}/../shared/worker-state.sh"
+source "${SCRIPT_DIR}/../shared/reviewer-state.sh"
 source "${SCRIPT_DIR}/../shared/worker-priority.sh"
 source "${SCRIPT_DIR}/../shared/checkpoint-file.sh"
 source "${SCRIPT_DIR}/../shared/claude-bg.sh"
@@ -218,7 +219,7 @@ detect_backend() {
 # Commands
 # ══════════════════════════════════════════════
 
-# ── ls: List all workers across all sessions ──
+# ── ls: List all workers and reviewers across all sessions ──
 cmd_ls() {
   local found=0
 
@@ -286,6 +287,32 @@ cmd_ls() {
         --arg backend "$backend" \
         '{session: $session, repo: $repo, issue: $issue, type: $type, state: $state, detail: $detail, priority: $priority, priority_name: $priority_name, elapsed: $elapsed, backend: $backend}'
     done
+
+    # ADR-0021 Decision 2: enumerate reviewer-*.state separately.
+    # Reviewer state is isolated from worker machinery (spawn count,
+    # health-check, gc sweep). No priority, backend, or .type file.
+    for issue in $(reviewer_state_list_active "$session_dir"); do
+      found=$((found + 1))
+      export CEKERNEL_IPC_DIR="$session_dir"
+
+      local rstate_json rstate rdetail
+      rstate_json=$(reviewer_state_read "$issue")
+      rstate=$(echo "$rstate_json" | jq -r '.state')
+      rdetail=$(echo "$rstate_json" | jq -r '.detail')
+
+      jq -cn \
+        --arg session "$sid" \
+        --arg repo "$sid_repo" \
+        --argjson issue "$issue" \
+        --arg type "reviewer" \
+        --arg state "$rstate" \
+        --arg detail "$rdetail" \
+        --argjson priority "null" \
+        --arg priority_name "" \
+        --arg elapsed "" \
+        --arg backend "subagent" \
+        '{session: $session, repo: $repo, issue: $issue, type: $type, state: $state, detail: $detail, priority: $priority, priority_name: $priority_name, elapsed: $elapsed, backend: $backend}'
+    done
   done
 
   if [[ "$found" -eq 0 ]]; then
@@ -293,7 +320,7 @@ cmd_ls() {
   fi
 }
 
-# ── ps: agents --json view layer (ADR-0016 Phase 4) ──
+# ── ps: agents --json view layer (ADR-0016 Phase 4, ADR-0021 #627) ──
 # `claude agents --json` is fetched ONCE per invocation (the body is an
 # OPAQUE snapshot — only claude-bg.sh predicates parse it, ADR-0018);
 # every registered token (orchestrator.claude-session-id,
@@ -301,10 +328,11 @@ cmd_ls() {
 # ADR-0018 verdict tokens print as-is so `blocked` (permission-dialog
 # stall) is surfaced distinctly; an absent token shows as `not-listed`,
 # schema drift as `unknown-value` — a view reports honestly, it does not
-# interpret. Worker/Reviewer rows join the cekernel-specific columns —
-# issue, phase (state-file detail), priority — per the ADR-0015 boundary:
-# the view adds only what `claude agents` cannot know. Sessions without an
-# orchestrator token (interactive orchestrators) still list their workers.
+# interpret. Worker rows (handle-based) join cekernel-specific columns —
+# issue, phase (state-file detail), priority — per the ADR-0015 boundary.
+# Reviewer rows come from reviewer-*.state files (subagents have no
+# session token — ADR-0021 Decision 2). Sessions without an orchestrator
+# token (interactive orchestrators) still list their workers.
 cmd_ps() {
   local session_filter=""
 
@@ -361,7 +389,7 @@ cmd_ps() {
       fi
     fi
 
-    # ── Managed rows (Worker/Reviewer sessions) ──
+    # ── Managed rows: Worker sessions (handle-based, ADR-0016 Phase 4) ──
     for handle_file in "${session_dir}"handle-*.*; do
       [[ -f "$handle_file" ]] || continue
       local fname issue_type issue mtype
@@ -387,6 +415,19 @@ cmd_ps() {
 
       found=$((found + 1))
       echo "  ${mtype}  #${issue}  claude=${mtoken}  phase=${phase}  priority=${priority}  ${mstate}"
+    done
+
+    # ── Managed rows: Reviewer subagents (state-file based, ADR-0021 #627) ──
+    # Reviewers run as Orchestrator subagents — no handle, no session token.
+    # Their state is surfaced from reviewer-<issue>.state files.
+    for rissue in $(reviewer_state_list_active "$session_dir"); do
+      local rstate_json rstate rdetail
+      rstate_json=$(CEKERNEL_IPC_DIR="$session_dir" reviewer_state_read "$rissue")
+      rstate=$(echo "$rstate_json" | jq -r '.state')
+      rdetail=$(echo "$rstate_json" | jq -r '.detail')
+
+      found=$((found + 1))
+      echo "  reviewer  #${rissue}  state=${rstate}  detail=${rdetail}"
     done
   done
 
@@ -583,7 +624,9 @@ cmd_kill() {
   local backend
   backend=$(detect_backend "$CEKERNEL_IPC_DIR" "$RESOLVED_ISSUE")
 
-  # Stop all sessions for this issue (Worker + Reviewer).
+  # Stop all sessions for this issue (Worker handles).
+  # Reviewer runs as a foreground subagent (no handle since ADR-0021),
+  # so only Worker handles are enumerated here.
   # v2: the handle is an opaque session token on ALL backends — the daemon
   # owns the process, so termination delegates to claude stop
   # (ADR-0005 Amendment 1, ADR-0016 Phase 1/5)
