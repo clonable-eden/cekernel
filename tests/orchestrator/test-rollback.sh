@@ -78,9 +78,6 @@ mkdir -p "$CEKERNEL_IPC_DIR"
   mkdir -p "$WORKTREE_DIR"
   git worktree add -b "$BRANCH" "$WORKTREE" HEAD --quiet
 
-  FIFO="${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}"
-  mkfifo "$FIFO"
-
   LOG_DIR="${CEKERNEL_IPC_DIR}/logs"
   mkdir -p "$LOG_DIR"
   LOG_FILE="${LOG_DIR}/worker-${ISSUE_NUMBER}.log"
@@ -88,6 +85,9 @@ mkdir -p "$CEKERNEL_IPC_DIR"
 
   AGENT_TYPE="worker"
   echo "fake-pane-id" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE_NUMBER}.${AGENT_TYPE}"
+
+  # Create state file (rollback should clean it up)
+  echo "NEW:2026-07-09T00:00:00Z:spawning" > "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.state"
 
   # Register trust
   register_trust "$WORKTREE"
@@ -97,10 +97,10 @@ mkdir -p "$CEKERNEL_IPC_DIR"
   rollback 2>/dev/null
 
   # Verify
-  assert_not_exists "FIFO removed after rollback" "$FIFO"
   assert_not_exists "Handle file removed after rollback" "${CEKERNEL_IPC_DIR}/handle-${ISSUE_NUMBER}.${AGENT_TYPE}"
   assert_not_exists "Worktree removed after rollback" "$WORKTREE"
   assert_not_exists "Log file removed after rollback" "$LOG_FILE"
+  assert_not_exists "State file removed after rollback" "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.state"
 
   # Verify trust is unregistered
   if [[ -f "$CLAUDE_JSON" ]]; then
@@ -123,7 +123,7 @@ mkdir -p "$CEKERNEL_IPC_DIR"
   report_results
 )
 
-# ── Test 2: Partial resources (FIFO only) → rollback without error ──
+# ── Test 2: Partial resources (state file only) → rollback without error ──
 rm -rf "$CEKERNEL_IPC_DIR"
 mkdir -p "$CEKERNEL_IPC_DIR"
 rm -f "$FAKE_CLAUDE_JSON"
@@ -134,18 +134,17 @@ rm -f "$FAKE_CLAUDE_JSON"
   export CEKERNEL_BACKEND=wezterm
   source "${CEKERNEL_DIR}/scripts/shared/backend-adapter.sh"
 
-  # Create only FIFO (worktree, handle not created)
+  # Create only state file (worktree, handle not created)
   ISSUE_NUMBER="101"
   AGENT_TYPE="worker"
-  FIFO="${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}"
-  mkfifo "$FIFO"
+  echo "NEW:2026-07-09T00:00:00Z:spawning" > "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.state"
 
   # WORKTREE, BRANCH remain undefined
 
   source_rollback
   rollback 2>/dev/null
 
-  assert_not_exists "FIFO removed in partial rollback" "$FIFO"
+  assert_not_exists "State file removed in partial rollback" "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.state"
 
   report_results
 )

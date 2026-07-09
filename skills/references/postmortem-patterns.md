@@ -42,7 +42,7 @@ Patterns are organized by category. Each has:
 ## IPC / State Anomalies
 
 ### IPC directory missing or deleted
-- **Detect**: `no such file or directory` errors on `$CEKERNEL_IPC_DIR` paths, `worker_state_write` failures, FIFO-related errors
+- **Detect**: `no such file or directory` errors on `$CEKERNEL_IPC_DIR` paths, `worker_state_write` failures
 - **Severity**: critical
 - **Class**: 1
 - **Example**: [#335] — `worker_state_write` failed because IPC directory did not exist; Worker had to `mkdir -p` manually
@@ -50,11 +50,6 @@ Patterns are organized by category. Each has:
 ### Stale lock files
 - **Detect**: `issue_lock_check` returns locked for an issue with no active Worker process
 - **Severity**: warning
-- **Class**: 1
-
-### FIFO corruption or missing
-- **Detect**: `cat` or `echo` on FIFO paths returning errors, `mkfifo` failures
-- **Severity**: critical
 - **Class**: 1
 
 ---

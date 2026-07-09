@@ -7,10 +7,10 @@
 # or kills process group for headless backend).
 #
 # CEKERNEL_KEEP_WORKTREE=true preserves the worktree and local branch while
-# still killing the Worker and cleaning IPC resources. Concurrency slots
-# are freed by deleting the state file (ADR-0020 Phase 1). --force always
-# removes the worktree, ignoring CEKERNEL_KEEP_WORKTREE (zombie recovery
-# must free the worktree).
+# still killing the Worker and cleaning IPC resources (state files).
+# Concurrency slots are freed by deleting the state file (ADR-0020 Phase 1).
+# --force always removes the worktree, ignoring CEKERNEL_KEEP_WORKTREE
+# (zombie recovery must free the worktree).
 # ADR-0020: non-TERMINATED state is logged (REAP_EXIT) before deletion;
 # lifecycle logs are retained (gc handles orphan log cleanup).
 set -euo pipefail
@@ -94,8 +94,6 @@ if [[ "$_REAP_STATE" != "TERMINATED" ]]; then
   fi
 fi
 
-# FIFO cleanup (session-scoped)
-rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}"
 # State file cleanup
 rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE_NUMBER}.state"
 # Type file cleanup

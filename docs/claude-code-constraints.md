@@ -106,7 +106,7 @@ subagent.)
 **Implications for cekernel**:
 - The Orchestrator/Worker separation maps correctly to separate sessions
 - Worker isolation via git worktrees aligns with "one agent, one workspace"
-- Inter-agent communication must use external mechanisms (files, FIFOs)
+- Inter-agent communication must use external mechanisms (files, state files)
 
 ### Subagent (Task) Tool
 
@@ -190,9 +190,9 @@ use unrestricted `Agent` (no parentheses).
 - The Reviewer runs as an Orchestrator subagent with `isolation: worktree`
   and a structured return contract (ADR-0012 Amendment 2), replacing the
   spawn + FIFO pattern
-- Independent processes with FIFO IPC remain the right tool where
-  **cross-session persistence** is required (Workers) — subagents live and
-  die with their parent session
+- Independent processes with file-based IPC (state files) remain the right
+  tool where **cross-session persistence** is required (Workers) — subagents
+  live and die with their parent session
 
 ### Dynamic Workflows (`/workflows`)
 
@@ -585,7 +585,7 @@ their working directory. File operations are synchronous and atomic from
 the agent's perspective.
 
 **Implications for cekernel**:
-- File-based IPC (signal files, state files, FIFOs) is a natural fit
+- File-based IPC (signal files, state files) is a natural fit
 - Atomic write patterns (temp + rename) work correctly
 
 ### Permission Model
@@ -663,7 +663,7 @@ occur through the filesystem or external services.
 - The session IPC directory (`${CEKERNEL_VAR_DIR}/ipc/{SESSION_ID}`) is the
   correct coordination point. The base path defaults to `~/.local/var/cekernel`
   and is user-configurable via env profiles (e.g., `~/.config/cekernel/envs/default.env`)
-- Workers in separate sessions correctly communicate via files and FIFOs
+- Workers in separate sessions correctly communicate via files and state files
 - There is no "shared memory" shortcut between agents
 
 ### Worker Process Backend

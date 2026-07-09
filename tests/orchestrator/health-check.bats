@@ -30,10 +30,9 @@ teardown() {
   rm -rf "$CEKERNEL_IPC_DIR"
 }
 
-# Active worker fixture: FIFO + handle + RUNNING state
+# Active worker fixture: handle + RUNNING state
 _active_worker() {
   local issue="$1"
-  mkfifo "${CEKERNEL_IPC_DIR}/worker-${issue}"
   echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-${issue}.worker"
   worker_state_write "$issue" RUNNING "phase1:implement"
 }
@@ -90,27 +89,19 @@ _active_worker() {
 
 # ── ADR-0020 Phase 2: state-based zombie detection ──
 
-# Active worker fixture WITHOUT FIFO: state + handle only
-_active_worker_no_fifo() {
-  local issue="$1"
-  echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-${issue}.worker"
-  worker_state_write "$issue" RUNNING "phase1:implement"
-}
-
-@test "health-check discovers workers by state file, not FIFO (ADR-0020 Phase 2)" {
-  # Worker with state but NO FIFO — should be discoverable
-  _active_worker_no_fifo 95
+@test "health-check discovers workers by state file (ADR-0020 Phase 2)" {
+  _active_worker 95
   mock_claude_enqueue_agents \
     "[$(mock_claude_agent_record "$TOKEN" background /tmp/wt 1700000000000 busy)]"
 
   run bash "$HEALTH_SCRIPT"
-  assert_match "worker found without FIFO" '"issue":95' "$output"
+  assert_match "worker found by state file" '"issue":95' "$output"
   assert_match "status healthy" '"status":"healthy"' "$output"
 }
 
 @test "health-check zombie = non-TERMINATED + dead verdict (ADR-0020 Phase 2)" {
   # Worker with non-TERMINATED state + dead backend → zombie
-  _active_worker_no_fifo 96
+  _active_worker 96
 
   run bash "$HEALTH_SCRIPT"
   assert_eq "exit 1 (zombie)" "1" "$status"

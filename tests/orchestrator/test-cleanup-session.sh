@@ -20,42 +20,40 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# ── Test 1: Session directory removed when empty after FIFO deletion ──
+# ── Test 1: Session directory removed when empty after state file deletion ──
 mkdir -p "$CEKERNEL_IPC_DIR"
-FIFO="${CEKERNEL_IPC_DIR}/worker-50"
-mkfifo "$FIFO"
+STATE_FILE="${CEKERNEL_IPC_DIR}/worker-50.state"
+echo "RUNNING:2026-07-09T00:00:00Z:phase1" > "$STATE_FILE"
 
-assert_fifo_exists "FIFO exists before cleanup" "$FIFO"
+assert_file_exists "State file exists before cleanup" "$STATE_FILE"
 
-# Manually delete FIFO then rmdir to remove directory
-rm -f "$FIFO"
+# Manually delete state file then rmdir to remove directory
+rm -f "$STATE_FILE"
 rmdir "$CEKERNEL_IPC_DIR" 2>/dev/null || true
 
 assert_not_exists "Empty session dir removed" "$CEKERNEL_IPC_DIR"
 
-# ── Test 2: Directory remains when other FIFOs exist ──
+# ── Test 2: Directory remains when other state files exist ──
 mkdir -p "$CEKERNEL_IPC_DIR"
-mkfifo "${CEKERNEL_IPC_DIR}/worker-51"
-mkfifo "${CEKERNEL_IPC_DIR}/worker-52"
+echo "RUNNING:2026-07-09T00:00:00Z:phase1" > "${CEKERNEL_IPC_DIR}/worker-51.state"
+echo "RUNNING:2026-07-09T00:00:00Z:phase1" > "${CEKERNEL_IPC_DIR}/worker-52.state"
 
 # Delete only worker-51
-rm -f "${CEKERNEL_IPC_DIR}/worker-51"
+rm -f "${CEKERNEL_IPC_DIR}/worker-51.state"
 rmdir "$CEKERNEL_IPC_DIR" 2>/dev/null || true
 
-assert_dir_exists "Session dir remains (other FIFOs exist)" "$CEKERNEL_IPC_DIR"
-assert_fifo_exists "worker-52 still exists" "${CEKERNEL_IPC_DIR}/worker-52"
+assert_dir_exists "Session dir remains (other state files exist)" "$CEKERNEL_IPC_DIR"
+assert_file_exists "worker-52.state still exists" "${CEKERNEL_IPC_DIR}/worker-52.state"
 
 # ── Test 3: .backend and .priority files are cleaned up ──
 cleanup
 mkdir -p "$CEKERNEL_IPC_DIR"
 ISSUE=53
-mkfifo "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
-echo '{"state":"RUNNING"}' > "${CEKERNEL_IPC_DIR}/worker-${ISSUE}.state"
+echo "RUNNING:2026-07-09T00:00:00Z:phase1" > "${CEKERNEL_IPC_DIR}/worker-${ISSUE}.state"
 echo "wezterm" > "${CEKERNEL_IPC_DIR}/worker-${ISSUE}.backend"
 echo '{"priority":50}' > "${CEKERNEL_IPC_DIR}/worker-${ISSUE}.priority"
 
-# Simulate the IPC cleanup portion of cleanup-worktree.sh (lines 64-81)
-rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
+# Simulate the IPC cleanup portion of cleanup-worktree.sh
 rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE}.state"
 rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE}.type"
 rm -f "${CEKERNEL_IPC_DIR}/worker-${ISSUE}.signal"

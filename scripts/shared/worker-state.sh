@@ -27,7 +27,7 @@ _CEKERNEL_VALID_STATES="NEW READY RUNNING WAITING SUSPENDED TERMINATED"
 #   List issue numbers of non-TERMINATED workers in the given IPC directory.
 #   Outputs one issue number per line, sorted.
 #   Used by roster consumers (orchctl ls, process-status.sh, health-check.sh)
-#   to enumerate active workers without relying on FIFO existence.
+#   to enumerate active workers.
 #   ADR-0020 Phase 2: single enumeration primitive, multiple consumers.
 worker_state_list_active() {
   local ipc_dir="${1:?Usage: worker_state_list_active <ipc-dir>}"

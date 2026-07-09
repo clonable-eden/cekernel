@@ -3,8 +3,8 @@
 # (ADR-0020 Phase 2: roster enumeration via state files)
 #
 # worker_state_list_active enumerates issue numbers from non-TERMINATED
-# state files in a given IPC directory. It replaces FIFO-based iteration
-# for all roster consumers (orchctl ls, process-status.sh, health-check.sh).
+# state files in a given IPC directory. Used by all roster consumers
+# (orchctl ls, process-status.sh, health-check.sh).
 
 load '../helpers/assertions'
 load '../helpers/session'

@@ -67,7 +67,7 @@ Ending your final turn terminates the orchestration: the session transitions to 
 - **NEVER end your turn while any issue is in a non-terminal state** (anything other than merged / failed / cancelled).
 - Waiting is a **foreground blocking call**: when no other work is pending, run `watch.sh <issue>` as a normal foreground Bash call with a generous timeout, handling one notification at a time in a loop.
 - `run_in_background: true` for `watch.sh` is safe **only** while further foreground work remains in the same turn (e.g. spawning the next Worker). Before you would otherwise end your turn, switch to foreground watch until all issues are terminal.
-- Do NOT poll with `sleep && process-status.sh` — `watch.sh` is the sole completion mechanism (FIFO, state-file fallback, crash detection). Polling wastes tokens and floods notifications while adding no information.
+- Do NOT poll with `sleep && process-status.sh` — `watch.sh` is the sole completion mechanism (state-file polling, crash detection). Polling wastes tokens and floods notifications while adding no information.
 
 ## Workflow
 
@@ -153,9 +153,9 @@ Workers fully follow the target repository's CLAUDE.md. cekernel defines only th
 
 ## Reviewer Phase
 
-On `ci-passed`, invoke the Reviewer before merge. It runs as an **Orchestrator subagent** with `isolation: worktree` (ADR-0012 Amendment 2) — no spawn script, FIFO, or `watch.sh`.
+On `ci-passed`, invoke the Reviewer before merge. It runs as an **Orchestrator subagent** with `isolation: worktree` (ADR-0012 Amendment 2) — no spawn script or `watch.sh`.
 
-Invoke with the **Agent tool**, subagent type from `CEKERNEL_AGENT_REVIEWER`, in the **foreground** (reviews are short; Worker FIFO events buffer during the block, they are not lost). The prompt must include the issue number, PR number, and base branch:
+Invoke with the **Agent tool**, subagent type from `CEKERNEL_AGENT_REVIEWER`, in the **foreground** (reviews are short; Worker state-file events are polled after the block). The prompt must include the issue number, PR number, and base branch:
 
 ```
 Review PR #<pr> for issue #<issue>. The PR base branch is <base>.
@@ -219,7 +219,7 @@ source issue-lock.sh && issue_lock_release "$(git rev-parse --show-toplevel)" <i
 
 - **Worker unresponsive or timeout** (`watch.sh` returns `timeout`): `send-signal.sh <issue> TERM` → `sleep ${CEKERNEL_TERM_GRACE_PERIOD:-120}` → `health-check.sh <issue>`:
   - Worker still alive → `cleanup-worktree.sh --force <issue>` (kills the session)
-  - Worker dead (TERM succeeded but no FIFO notification) → `cleanup-worktree.sh <issue>` (plain cleanup; the reaper writes the exit record for non-TERMINATED state — ADR-0020 Phase 1)
+  - Worker dead (TERM succeeded but no completion notification) → `cleanup-worktree.sh <issue>` (plain cleanup; the reaper writes the exit record for non-TERMINATED state — ADR-0020 Phase 1)
 - **Worker blocked** (`watch.sh` returns `blocked`): the Worker session is stalled on a permission dialog that nobody can approve headless. `watch.sh` has already written the terminal record (`TERMINATED:blocked`). Stop the session and clean up:
 
 ```bash

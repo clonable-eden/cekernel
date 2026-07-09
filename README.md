@@ -27,13 +27,13 @@ graph LR
 | address space | git worktree |
 | process states | `worker-state.sh` (NEW/RUNNING/WAITING/SUSPENDED/TERMINATED) |
 | `nice` / priority | `--priority` flag + `worker-priority.sh` |
-| IPC pipe | named pipe (FIFO) |
+| completion record | `worker-state.sh` (TERMINATED + result:detail) |
 | IPC namespace | session (`CEKERNEL_SESSION_ID`) |
 | SIGTERM | `send-signal.sh TERM` |
 | SIGSTOP / SIGCONT | `send-signal.sh SUSPEND` / `spawn-worker.sh --resume` |
 | SIGKILL | `cleanup-worktree.sh --force` |
 | SIGALRM / watchdog | `CEKERNEL_WORKER_TIMEOUT` + escalation (TERM → grace → force-kill) |
-| `waitpid` | `watch.sh` (triple-path: FIFO + state file + crash detection) |
+| `waitpid` | `watch.sh` (dual-path: state file + crash detection) |
 | zombie reaping | `health-check.sh` + `cleanup-worktree.sh` |
 | core dump / checkpoint | `.cekernel-checkpoint.md` (suspend/resume) |
 | `systemctl` | `orchctl.sh` / `/orchctl` skill |
@@ -48,7 +48,7 @@ graph LR
 | `ulimit -u` (max processes) | `CEKERNEL_MAX_ORCH_CHILDREN` |
 | `ps aux` | `process-status.sh` |
 | process scheduler | Orchestrator queuing logic (priority queue + preemption) |
-| semaphore | Concurrency guard via FIFO count |
+| semaphore | Concurrency guard via non-TERMINATED state count |
 | `flock` / mutex | `issue-lock.sh` (repo × issue lockfile) |
 | `cron` / `systemd timer` | `/cron` skill + OS-native schedulers (launchd/crontab) |
 | `at` (one-shot job) | `/at` skill + OS-native schedulers (launchd/atd) |
@@ -66,7 +66,7 @@ Claude Code's dynamic `/workflows` also runs agents in parallel, so the two can 
 | Survives the session | Yes — OS processes, files, git worktrees | No — a run dies with its session |
 | Time horizon | Hours–days (CI waits, human review, retries) | One session's wall-clock |
 | Identity | Issue number = PID; named branches and PRs | Anonymous agent index |
-| Trigger | Event-driven (FIFO, cron/at, human) | Single deterministic run |
+| Trigger | Event-driven (state file, cron/at, human) | Single deterministic run |
 
 ## Structure
 
@@ -109,10 +109,10 @@ scripts/
     cleanup-worktree.sh    # Remove worktree + branch + logs
     health-check.sh        # Detect zombie Workers
     send-signal.sh         # Send signal (TERM/SUSPEND) to a running Worker
-    spawn.sh               # Common process spawning logic (concurrency guard, FIFO, state, backend, Type)
+    spawn.sh               # Common process spawning logic (concurrency guard, state, backend, Type)
     spawn-worker.sh        # Spawn Worker (thin wrapper for spawn.sh --agent worker)
     watch-logs.sh          # Real-time Worker log monitoring
-    watch.sh               # Monitor process completion (FIFO + state file + crash detection)
+    watch.sh               # Monitor process completion (state file + crash detection)
     process-status.sh       # List active Worker processes
   scheduler/
     at-backend.sh          # At backend adapter (launchd/atd)

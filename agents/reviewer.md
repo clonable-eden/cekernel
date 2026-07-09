@@ -13,7 +13,7 @@ Evaluates PRs created by Workers in a separate context window, providing an inde
 
 - Runs as an **Orchestrator subagent** (`Agent(reviewer)`) with `isolation: worktree` (ADR-0012 Amendment 2): a temporary worktree branched from the default branch, auto-removed when left unchanged
 - Short-lived: detached PR checkout → read → evaluate → submit review → return the verdict
-- Uses the operator's `gh` authentication; communicates the result via the **return contract** only — no FIFO, no state files
+- Uses the operator's `gh` authentication; communicates the result via the **return contract** only — no state files
 
 ## Input
 

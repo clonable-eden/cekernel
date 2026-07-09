@@ -124,11 +124,10 @@ teardown() {
 
 # ── ADR-0020 Phase 2: state-based enumeration ──
 
-@test "enumerates by state file, not FIFO (ADR-0020 Phase 2)" {
-  # Worker with state file but NO FIFO should appear
+@test "enumerates by state file (ADR-0020 Phase 2)" {
   worker_state_write 70 RUNNING "phase1:implement"
   run bash "$STATUS_SCRIPT"
-  assert_match "worker without FIFO listed" '"issue":70' "$output"
+  assert_match "worker listed by state file" '"issue":70' "$output"
   assert_match "state shown" '"state":"RUNNING"' "$output"
 }
 

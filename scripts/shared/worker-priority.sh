@@ -4,7 +4,7 @@
 # Usage: source worker-priority.sh
 #
 # Provides functions to read/write Worker priority files.
-# Priority files live alongside FIFOs and state files in the session IPC directory.
+# Priority files live alongside state files in the session IPC directory.
 #
 # Nice value range: 0-19 (lower = higher priority, like Unix nice)
 #   critical = 0

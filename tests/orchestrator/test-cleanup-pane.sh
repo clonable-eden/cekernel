@@ -82,7 +82,6 @@ ISSUE="200"
 WORKTREE=$(setup_worktree "$ISSUE" "$FAKE_REPO")
 
 mkdir -p "$CEKERNEL_IPC_DIR"
-mkfifo "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
 # Phase 5: handle = opaque session token; pane = visualization detail
 echo "$SESSION_TOKEN" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE}.worker"
 echo "42" > "${CEKERNEL_IPC_DIR}/pane-${ISSUE}.worker"
@@ -120,7 +119,6 @@ ISSUE="201"
 WORKTREE=$(setup_worktree "$ISSUE" "$FAKE_REPO")
 
 mkdir -p "$CEKERNEL_IPC_DIR"
-mkfifo "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
 echo "$SESSION_TOKEN" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE}.worker"
 echo "99" > "${CEKERNEL_IPC_DIR}/pane-${ISSUE}.worker"
 
@@ -146,7 +144,6 @@ ISSUE="202"
 WORKTREE=$(setup_worktree "$ISSUE" "$FAKE_REPO")
 
 mkdir -p "$CEKERNEL_IPC_DIR"
-mkfifo "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
 # Do not create handle or pane files
 
 CEKERNEL_BACKEND=wezterm bash "${CEKERNEL_DIR}/scripts/orchestrator/cleanup-worktree.sh" "$ISSUE" 2>/dev/null
@@ -185,7 +182,6 @@ ISSUE="203"
 WORKTREE=$(setup_worktree "$ISSUE" "$FAKE_REPO")
 
 mkdir -p "$CEKERNEL_IPC_DIR"
-mkfifo "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
 echo "$SESSION_TOKEN" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE}.worker"
 echo "42" > "${CEKERNEL_IPC_DIR}/pane-${ISSUE}.worker"
 
@@ -224,7 +220,6 @@ ISSUE="204"
 WORKTREE=$(setup_worktree "$ISSUE" "$FAKE_REPO")
 
 mkdir -p "$CEKERNEL_IPC_DIR"
-mkfifo "${CEKERNEL_IPC_DIR}/worker-${ISSUE}"
 echo "$SESSION_TOKEN" > "${CEKERNEL_IPC_DIR}/handle-${ISSUE}.worker"
 echo "55" > "${CEKERNEL_IPC_DIR}/pane-${ISSUE}.worker"
 

@@ -48,11 +48,10 @@ teardown() {
   rm -rf "$IPC_BASE" "$CEKERNEL_VAR_DIR"
 }
 
-# Create a worker (FIFO + state + priority) in the given session dir.
+# Create a worker (state + priority) in the given session dir.
 make_worker() {
   local ipc_dir="$1" issue="$2" state_line="${3:-RUNNING:2026-02-28T10:00:00Z:phase1:implement}"
   mkdir -p "$ipc_dir"
-  mkfifo "${ipc_dir}/worker-${issue}"
   echo "$state_line" > "${ipc_dir}/worker-${issue}.state"
   echo "10" > "${ipc_dir}/worker-${issue}.priority"
 }
@@ -168,11 +167,10 @@ make_handle() {
     "$(echo "$output" | grep '"issue":10')"
 }
 
-@test "ls elapsed reads from .spawned file (not FIFO stat)" {
+@test "ls elapsed reads from .spawned file (not state file stat)" {
   make_worker "$IPC_A" 10
   echo "worker" > "${IPC_A}/worker-10.type"
   # Epoch 0 in .spawned forces a very large elapsed (many hours).
-  # FIFO-mtime-based elapsed would report seconds ("Xs") instead.
   echo "0" > "${IPC_A}/worker-10.spawned"
   run bash "$ORCHCTL" ls
   assert_match "elapsed from .spawned (epoch 0 → hours)" '"elapsed":"[0-9]+h' \
@@ -524,13 +522,12 @@ make_handle() {
 
 # ── ls: ADR-0020 Phase 2 — state-based enumeration ──
 
-@test "ls enumerates by state file, not FIFO (ADR-0020 Phase 2)" {
-  # Worker with state file but NO FIFO should appear in ls
+@test "ls enumerates by state file (ADR-0020 Phase 2)" {
   mkdir -p "$IPC_A"
   echo "RUNNING:2026-02-28T10:00:00Z:phase1:implement" > "${IPC_A}/worker-10.state"
   echo "10" > "${IPC_A}/worker-10.priority"
   run bash "$ORCHCTL" ls
-  assert_match "lists worker without FIFO" '"issue":10' "$output"
+  assert_match "lists worker by state file" '"issue":10' "$output"
   assert_match "shows state RUNNING" '"state":"RUNNING"' "$output"
 }
 
