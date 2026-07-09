@@ -630,13 +630,14 @@ worker_state() {
 # Non-TERMINATED state files protect the issue from gc orphan sweep,
 # regardless of FIFO existence. This ensures held slots survive gc.
 
-@test "gc preserves non-TERMINATED state files (held slot survives gc)" {
+@test "gc preserves non-TERMINATED state files with live handle (held slot survives gc)" {
   local session_dir="${IPC_BASE}/session-gc-held"
   mkdir -p "$session_dir"
-  # No FIFO, but non-TERMINATED state → held slot, must survive
+  # Non-TERMINATED state + live handle → held slot, must survive
   echo "RUNNING:2026-02-28T10:00:00Z:phase1:implement" > "${session_dir}/worker-710.state"
   echo "10" > "${session_dir}/worker-710.priority"
   echo "worker" > "${session_dir}/worker-710.type"
+  echo "$$" > "${session_dir}/handle-710.worker"  # live handle
   run bash "$ORCHCTL" gc
   assert_file_exists "held slot state preserved" "${session_dir}/worker-710.state"
   assert_file_exists "held slot priority preserved" "${session_dir}/worker-710.priority"

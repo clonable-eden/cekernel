@@ -161,19 +161,7 @@ format_elapsed() {
   fi
 }
 
-# ── Helper: compute elapsed time from .spawned file ──
-compute_elapsed() {
-  local fifo="$1"
-  local ipc_dir
-  ipc_dir=$(dirname "$fifo")
-  local issue
-  issue=$(basename "$fifo" | sed 's/^worker-//')
-
-  compute_elapsed_from_issue "$ipc_dir" "$issue"
-}
-
 # ── Helper: compute elapsed time from ipc_dir + issue ──
-# ADR-0020 Phase 2: decoupled from FIFO path for state-based enumeration.
 compute_elapsed_from_issue() {
   local ipc_dir="$1" issue="$2"
 
@@ -411,8 +399,6 @@ cmd_ps() {
 cmd_inspect() {
   resolve_target "$@" || return 1
   set_ipc_context
-
-  local fifo="${CEKERNEL_IPC_DIR}/worker-${RESOLVED_ISSUE}"
 
   # Type
   local process_type="unknown"
@@ -728,14 +714,14 @@ cmd_gc() {
     [[ "$gc_agents_ok" -eq 1 ]]
   }
 
-  # ── Helper: check if a FIFO is stale ──
+  # ── Helper: check if a worker is stale ──
   # Returns 0 (stale) or 1 (active).
-  # A FIFO is stale when:
+  # A worker is stale when:
   #   - State is TERMINATED and no live handle exists
   #   - No handle exists and state is NEW/READY past stale_timeout
   #   - Handle exists but the referenced process is dead
-  _gc_is_stale_fifo() {
-    local sdir="$1" issue="$2" fifo="$3" timeout="$4"
+  _gc_is_stale_worker() {
+    local sdir="$1" issue="$2" timeout="$3"
 
     # Check for any handle file
     local has_live_handle=0
@@ -785,7 +771,7 @@ cmd_gc() {
       fi
     done
 
-    # If there's a live handle, the FIFO is active
+    # If there's a live handle, the worker is active
     if [[ "$has_live_handle" -eq 1 ]]; then
       return 1
     fi
@@ -799,7 +785,7 @@ cmd_gc() {
       state="${line%%:*}"
     fi
 
-    # TERMINATED → always stale (process completed, FIFO should have been cleaned)
+    # TERMINATED → always stale (process completed)
     if [[ "$state" == "TERMINATED" ]]; then
       return 0
     fi
@@ -836,11 +822,11 @@ cmd_gc() {
     return 0
   }
 
-  # ── 1. Collect active issues (FIFOs + non-TERMINATED state across all sessions) ──
+  # ── 1. Collect active issues (state files across all sessions) ──
   # Build a set of active issue numbers per session for orphan detection.
-  # ADR-0020 Phase 1: non-TERMINATED state files mark the issue active
-  # (held slot), regardless of FIFO existence.
-  # FIFOs are still checked for staleness (Phase 3 will remove FIFO create).
+  # ADR-0020 Phase 3+4: state files are the sole roster key (FIFOs removed).
+  # Non-TERMINATED state files mark the issue active (held slot).
+  # Stale workers (non-TERMINATED + dead handle) are reaped here.
   # Uses a temp file instead of declare -A for bash 3.2 compatibility.
   local active_issues_file
   active_issues_file=$(mktemp /tmp/cekernel-gc-active.XXXXXX)
@@ -849,7 +835,7 @@ cmd_gc() {
     for session_dir in "$IPC_BASE"/*/; do
       [[ -d "$session_dir" ]] || continue
 
-      # ADR-0020: scan state files for non-TERMINATED (held slot protection)
+      # Scan state files: non-TERMINATED → check liveness, reap if stale
       for state_file in "$session_dir"worker-*.state; do
         [[ -f "$state_file" ]] || continue
         local sf_name sf_issue sf_state
@@ -861,46 +847,40 @@ cmd_gc() {
         sf_line=$(cat "$state_file")
         sf_state="${sf_line%%:*}"
         if [[ "$sf_state" != "TERMINATED" ]]; then
-          echo "${session_dir}:${sf_issue}" >> "$active_issues_file"
+          # Check if this non-TERMINATED worker is stale
+          if _gc_is_stale_worker "$session_dir" "$sf_issue" "$stale_timeout"; then
+            # Stale worker: reap
+            if [[ "$dry_run" -eq 1 ]]; then
+              echo "[dry-run] would reap stale worker: ${session_dir}worker-${sf_issue}" >&2
+            else
+              # ADR-0020 Phase 2: write TERMINATED:crashed:detected-by-gc
+              # (write-once: never clobber existing TERMINATED).
+              local _gc_ts
+              _gc_ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+              echo "TERMINATED:${_gc_ts}:crashed:detected-by-gc" > "$state_file"
+            fi
+            # Protect the reaped record from the orphan sweep below
+            # (the TERMINATED exit record is the permanent crash evidence).
+            echo "${session_dir}:${sf_issue}" >> "$active_issues_file"
+            cleaned=$((cleaned + 1))
+          else
+            echo "${session_dir}:${sf_issue}" >> "$active_issues_file"
+          fi
         fi
       done
 
+      # Legacy: remove any stale FIFOs from pre-Phase 3 sessions
       for fifo in "$session_dir"worker-*; do
         [[ -p "$fifo" ]] || continue
         local fname
         fname=$(basename "$fifo")
-        # Only match worker-{issue} FIFOs (not worker-{issue}.state etc)
         [[ "$fname" == worker-* && "$fname" != *.* ]] || continue
-        local issue="${fname#worker-}"
-
-        # Check if this FIFO is stale
-        if _gc_is_stale_fifo "$session_dir" "$issue" "$fifo" "$stale_timeout"; then
-          # Stale: remove FIFO
-          if [[ "$dry_run" -eq 1 ]]; then
-            echo "[dry-run] would remove stale FIFO: $fifo" >&2
-          else
-            rm -f "$fifo"
-            # ADR-0020 Phase 2: write TERMINATED:crashed:detected-by-gc for
-            # non-TERMINATED entries (write-once: never clobber existing TERMINATED).
-            local _gc_state_file="${session_dir}worker-${issue}.state"
-            if [[ -f "$_gc_state_file" ]]; then
-              local _gc_line _gc_state
-              _gc_line=$(cat "$_gc_state_file")
-              _gc_state="${_gc_line%%:*}"
-              if [[ "$_gc_state" != "TERMINATED" ]]; then
-                local _gc_ts
-                _gc_ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-                echo "TERMINATED:${_gc_ts}:crashed:detected-by-gc" > "$_gc_state_file"
-              fi
-            fi
-          fi
-          cleaned=$((cleaned + 1))
+        if [[ "$dry_run" -eq 1 ]]; then
+          echo "[dry-run] would remove legacy FIFO: $fifo" >&2
         else
-          # Add to active_issues if not already present (from state file scan)
-          if ! grep -qxF "${session_dir}:${issue}" "$active_issues_file" 2>/dev/null; then
-            echo "${session_dir}:${issue}" >> "$active_issues_file"
-          fi
+          rm -f "$fifo"
         fi
+        cleaned=$((cleaned + 1))
       done
     done
   fi
@@ -955,7 +935,7 @@ cmd_gc() {
 
   # ── Helper: clean orphan files matching a glob pattern ──
   # Extracts issue number from filename using the given prefix, then checks
-  # if a FIFO exists for that issue. If not, removes the file.
+  # if the issue is active (has a non-TERMINATED state). If not, removes the file.
   # Args: session_dir glob_pattern prefix label
   _gc_clean_orphan_files() {
     local sdir="$1" pattern="$2" prefix="$3" label="$4"
@@ -966,7 +946,7 @@ cmd_gc() {
       local issue_with_ext="${fname#"${prefix}"}"
       local issue="${issue_with_ext%%.*}"
 
-      # Skip if there's an active FIFO
+      # Skip if there's an active worker
       if grep -qxF "${sdir}:${issue}" "$active_issues_file" 2>/dev/null; then
         continue
       fi
@@ -1035,7 +1015,7 @@ cmd_gc() {
     done
   fi
 
-  # ── 4. Clean orphan IPC files (no active FIFO) ──
+  # ── 4. Clean orphan IPC files (no active worker) ──
   if [[ -d "$IPC_BASE" ]]; then
     for session_dir in "$IPC_BASE"/*/; do
       [[ -d "$session_dir" ]] || continue
