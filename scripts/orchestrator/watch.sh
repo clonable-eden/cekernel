@@ -263,9 +263,24 @@ for pid in "${PIDS[@]}"; do
   wait "$pid" || FAILED=$((FAILED + 1))
 done
 
-# Output results
+# Classify results: count how many workers are still running (watching sentinel)
+WATCHING=0
+for issue in "${ISSUE_NUMBERS[@]}"; do
+  if [[ -f "${RESULT_DIR}/${issue}" ]]; then
+    local_result=$(jq -r '.result' < "${RESULT_DIR}/${issue}" 2>/dev/null || true)
+    if [[ "$local_result" == "watching" ]]; then
+      WATCHING=$((WATCHING + 1))
+    fi
+  fi
+done
+
+# Output banner — gate "All workers finished" to true terminal states only (#651)
 echo "---" >&2
-echo "All workers finished. (failed: ${FAILED})" >&2
+if [[ $WATCHING -gt 0 ]]; then
+  echo "Chunk elapsed; ${WATCHING} worker(s) still running." >&2
+else
+  echo "All workers finished. (failed: ${FAILED})" >&2
+fi
 echo "---" >&2
 
 for issue in "${ISSUE_NUMBERS[@]}"; do
