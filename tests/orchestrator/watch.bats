@@ -471,3 +471,58 @@ teardown() {
   assert_match "result is ci-passed" '"result":"ci-passed"' "$result_json"
   assert_match "detail is 77" '"detail":"77"' "$result_json"
 }
+
+# ── #651: banner accuracy — chunk timeout vs true completion ──
+
+@test "chunk timeout banner says still running, not All workers finished" {
+  # When chunk timeout fires (watching sentinel), the banner must NOT say
+  # "All workers finished" — that is a Rule of Least Surprise violation.
+  worker_state_write 651 RUNNING "phase1:implement"
+  echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-651.worker"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$TOKEN" background /tmp/wt 1700000000000 busy)]"
+
+  export CEKERNEL_WATCH_CHUNK_TIMEOUT=2
+  export CEKERNEL_WORKER_TIMEOUT=10
+  export CEKERNEL_STATE_POLL_INTERVAL=1
+
+  date +%s > "${CEKERNEL_IPC_DIR}/worker-651.spawned"
+
+  run bash "$WATCH_SCRIPT" 651
+  assert_eq "watch exits 0 at chunk boundary" "0" "$status"
+  # "All workers finished" must NOT appear in output (stdout+stderr via run)
+  if [[ "$output" == *"All workers finished"* ]]; then
+    echo "FAIL: 'All workers finished' banner appeared during chunk timeout" >&2
+    echo "  output: $output" >&2
+    return 1
+  fi
+  # Correct banner for chunk timeout should mention still running
+  assert_match "banner says still running" "still running" "$output"
+}
+
+@test "true completion banner says All workers finished" {
+  # When all workers genuinely complete, the banner must still say
+  # "All workers finished" — only chunk timeouts should use a different banner.
+  worker_state_write 652 RUNNING "phase1:implement"
+  echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-652.worker"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$TOKEN" background /tmp/wt 1700000000000 busy)]"
+
+  export CEKERNEL_WATCH_CHUNK_TIMEOUT=10
+  export CEKERNEL_WORKER_TIMEOUT=3600
+  export CEKERNEL_STATE_POLL_INTERVAL=1
+
+  date +%s > "${CEKERNEL_IPC_DIR}/worker-652.spawned"
+
+  local out="${BATS_TEST_TMPDIR}/watch-out-652.json"
+  local err="${BATS_TEST_TMPDIR}/watch-err-652.txt"
+  bash "$WATCH_SCRIPT" 652 > "$out" 2>"$err" &
+  local watch_pid=$!
+  sleep 2
+  worker_state_write 652 TERMINATED "ci-passed:88"
+  wait "$watch_pid"
+
+  local stderr_text
+  stderr_text=$(cat "$err")
+  assert_match "banner says All workers finished" "All workers finished" "$stderr_text"
+}
