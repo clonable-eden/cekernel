@@ -15,6 +15,7 @@ setup() {
 
   set_test_session_id
   source "${CEKERNEL_DIR}/scripts/shared/session-id.sh"
+  export CEKERNEL_ENV="${CEKERNEL_ENV:-default}"
   rm -rf "$CEKERNEL_IPC_DIR"
   mkdir -p "$CEKERNEL_IPC_DIR"
 
