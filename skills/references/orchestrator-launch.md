@@ -59,9 +59,10 @@ _path="${_url#*:}"; _path="${_path#*//}"; _path="${_path%.git}"
 echo "${_path#*/}" > "${CEKERNEL_IPC_DIR}/repo"
 
 echo "CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID}"
+echo "CEKERNEL_IPC_DIR=${CEKERNEL_IPC_DIR}"
 ```
 
-Capture `CEKERNEL_SESSION_ID` from the output line. It must be the `{repo}-{hex8}` value, **not** the Claude Code session UUID. (The Claude Code session ID is captured and persisted by `spawn-orchestrator.sh` itself — neither the skill nor the Orchestrator writes it.)
+Capture `CEKERNEL_SESSION_ID` and `CEKERNEL_IPC_DIR` from the output lines. `CEKERNEL_SESSION_ID` must be the `{repo}-{hex8}` value, **not** the Claude Code session UUID. `CEKERNEL_IPC_DIR` is used in the prompt's environment bootstrap line. (The Claude Code session ID is captured and persisted by `spawn-orchestrator.sh` itself — neither the skill nor the Orchestrator writes it.)
 
 ## Step E: Construct the Prompt and Launch
 
@@ -73,13 +74,11 @@ Process the following issues: <#N title, #M title, ...>
 <Base branch: <branch> if specified, otherwise omit this line>
 <Issue repo: <owner/repo> — pass --repo <owner/repo> to spawn-worker.sh and to issue-related gh commands. Only for cross-repo issues, otherwise omit this line>
 
-Environment values to propagate in ALL script invocations:
-- CEKERNEL_SESSION_ID=<session-id>
-- CEKERNEL_ENV=<profile>
-- CEKERNEL_SCRIPTS=<scripts-path>
-- CEKERNEL_AGENT_WORKER=<worker-agent-name>
-- CEKERNEL_AGENT_REVIEWER=<reviewer-agent-name>
+Environment bootstrap (run at the start of every Bash call):
+  source "<ipc-dir>/env.sh" && verify-env.sh
 ```
+
+The `<ipc-dir>` is the literal `CEKERNEL_IPC_DIR` path (from Step D). `env.sh` sets all `CEKERNEL_*` variables (session ID, env profile, agent names, etc.) and `PATH`. Do **not** list individual variable values in the prompt — `env.sh` is the sole delivery channel (#652).
 
 **MUST NOT**: do not include Worker spawn instructions using Agent tool language (`subagent_type`, `Agent(worker)`, etc.) in the prompt. Workers are spawned by the Orchestrator via `spawn-worker.sh` (Bash); the Reviewer is invoked by the Orchestrator itself as a subagent, following its own agent definition.
 
