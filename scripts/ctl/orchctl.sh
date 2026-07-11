@@ -12,7 +12,7 @@
 #   term <target>               Send TERM signal (graceful shutdown)
 #   kill <target>               Force kill worker
 #   nice <target> <priority>    Change worker priority
-#   gc [--dry-run]              Clean up stale IPC/lock resources
+#   gc [--dry-run]              Clean up stale IPC/lock/worktree resources
 #
 # Target formats:
 #   <issue>                     Match by issue number (unique across all sessions)
@@ -50,7 +50,7 @@ Commands:
   term <target>               Send TERM signal
   kill <target>               Force kill worker
   nice <target> <priority>    Change priority
-  gc [--dry-run]              Clean up stale resources
+  gc [--dry-run]              Clean up stale IPC/lock/worktree resources
 
 Target: <issue> | <repo>:<issue> | <issue> --session <id>
 USAGE
