@@ -12,7 +12,7 @@ graph LR
     H[Human / Scheduler] -->|/orchestrate<br/>/dispatch| O[Orchestrator<br/>main working tree]
     O -->|spawn-worker.sh| W[Worker<br/>git worktree]
     W -->|notify ci-passed| O
-    O -->|Agent tool<br/>isolation: worktree| R[Reviewer<br/>subagent worktree]
+    O -->|Agent tool| R[Reviewer<br/>subagent]
     R -->|return approved| O
     O -->|cleanup + notify| H
 ```
@@ -344,7 +344,7 @@ If using the WezTerm backend, see [`config/README.md`](./config/README.md) for p
 | `/setup` | Interactive runtime setup (first-time) |
 | `/orchestrate` | Issue delegation and parallel processing |
 | `/dispatch` | Batch-process ready-labeled issues |
-| `/orchctl` | Worker inspection and control |
+| `/orchctl` | Process control and monitoring |
 | `/cron` | Recurring schedule management (launchd/crontab) |
 | `/at` | One-shot schedule management (launchd/atd) |
 | `/postmortem` | Transcript-based post-mortem analysis |
