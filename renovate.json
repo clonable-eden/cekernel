@@ -6,6 +6,15 @@
   ],
   "platformAutomerge": true,
   "minimumReleaseAge": "7 days",
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.github/workflows/.+\\.ya?ml$/"],
+      "matchStrings": ["--branch (?<currentValue>v[0-9.]+) https://github\\.com/bats-core/bats-core"],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "bats-core/bats-core"
+    }
+  ],
   "packageRules": [
     {
       "matchManagers": ["github-actions"],
