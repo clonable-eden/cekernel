@@ -16,32 +16,30 @@ Operates in the main working tree and manages the issue lifecycle:
 
 ## Process Environment
 
-You run as an independent `claude --bg` background session (ADR-0016 Phase 2). `spawn-orchestrator.sh` sets your process environment at spawn:
+You run as an independent `claude --bg` background session (ADR-0016 Phase 2). Shell state does not persist between Bash tool calls — every call starts from scratch.
 
-- `CEKERNEL_SESSION_ID`, `CEKERNEL_ENV`, `CEKERNEL_IPC_DIR` — session-scoped configuration
-- `PATH` — includes `scripts/orchestrator/`, `scripts/process/`, `scripts/shared/`
+`spawn-orchestrator.sh` writes `${CEKERNEL_IPC_DIR}/env.sh` before launching your session. This file contains all `CEKERNEL_*` variables, `PATH` (with `scripts/orchestrator/`, `scripts/process/`, `scripts/shared/`), and `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS`. Your prompt provides the `CEKERNEL_IPC_DIR` path.
 
-Every Bash call inherits these. Do **not** prefix commands with `export CEKERNEL_...` chains, and invoke scripts by bare name:
+**Startup checklist** (every Bash call, in this order):
+
+1. `source "<CEKERNEL_IPC_DIR>/env.sh"` — substitute the literal path from your prompt
+2. `verify-env.sh` — validates required vars and PATH (exit 1 = STOP, do not proceed)
 
 ```bash
-# Good
+source "<CEKERNEL_IPC_DIR>/env.sh" && verify-env.sh
+# now all CEKERNEL_* vars and PATH are set — invoke scripts by bare name
 spawn-worker.sh 4
-
-# Unnecessary — env is already set; full paths not needed
-export CEKERNEL_SESSION_ID=${CEKERNEL_SESSION_ID} && ${CEKERNEL_SCRIPTS}/orchestrator/spawn-worker.sh 4
 ```
 
-Shared helpers are sourced by bare name too (PATH-resolved): `source issue-lock.sh`, `source desktop-notify.sh`.
+If `verify-env.sh` fails, **STOP immediately**. Do **not** fall back to inline `export` — manual exports drift and drop variables (#652, #641-644). The env file is the sole delivery channel.
 
-**Startup check** (once, in your first Bash call): env delivery relies on the `claude --bg` daemon having been started with your values — a pre-existing daemon keeps its own environment (verified 2026-07-07, v2.1.202). Verify against your prompt:
+After sourcing, invoke scripts by bare name (PATH-resolved):
 
 ```bash
-echo "SID=${CEKERNEL_SESSION_ID:-UNSET} ENV=${CEKERNEL_ENV:-UNSET} spawn=$(command -v spawn-worker.sh || echo MISSING)"
+spawn-worker.sh 4
+source issue-lock.sh
+source desktop-notify.sh
 ```
-
-If a value is missing or differs from your prompt, the prompt is authoritative: prefix every subsequent script call with literal exports of the prompt values, and use `${CEKERNEL_SCRIPTS}`-prefixed paths from the prompt.
-
-The same applies to the other prompt-provided values (`CEKERNEL_AGENT_WORKER`, `CEKERNEL_AGENT_REVIEWER`, `CEKERNEL_AUTO_MERGE`, ...): normally already in your environment; on mismatch, use the prompt's literal values. If `CEKERNEL_AGENT_REVIEWER` is absent, derive it from `CEKERNEL_AGENT_WORKER` (`worker` → `reviewer`, `cekernel:worker` → `cekernel:reviewer`).
 
 Your Claude Code session UUID (separate from `CEKERNEL_SESSION_ID`) is captured and persisted by `spawn-orchestrator.sh` at spawn time. Never re-discover or overwrite it — a heuristic rewrite mis-attributes concurrent sessions (#571).
 

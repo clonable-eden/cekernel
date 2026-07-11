@@ -51,15 +51,37 @@ CEKERNEL_ORCHESTRATOR_SCRIPTS="$(cd "${SCRIPT_DIR}/../orchestrator" && pwd)"
 CEKERNEL_PROCESS_SCRIPTS="$(cd "${SCRIPT_DIR}/../process" && pwd)"
 CEKERNEL_SHARED_SCRIPTS="$(cd "${SCRIPT_DIR}/../shared" && pwd)"
 
+# ── Generate env.sh for Orchestrator env delivery (#652) ──
+# The daemon's inherited environment is UNSPECIFIED: a pre-existing daemon
+# keeps its own env, so subshell exports below only reach auto-started
+# daemons (ADR-0018 Decision 3, #589). env.sh is the reliable delivery
+# channel — the Orchestrator sources it on every Bash call.
+{
+  # Required variables — always include (some may not be exported, e.g.
+  # CEKERNEL_ENV is set but not exported by load-env.sh)
+  printf 'export CEKERNEL_SESSION_ID="%s"\n' "$CEKERNEL_SESSION_ID"
+  printf 'export CEKERNEL_IPC_DIR="%s"\n' "$CEKERNEL_IPC_DIR"
+  printf 'export CEKERNEL_ENV="%s"\n' "${CEKERNEL_ENV:-default}"
+  # Additional CEKERNEL_* variables from the exported environment
+  # (agent names, auto-merge, etc. — set by the invoking skill)
+  while IFS='=' read -r _key _val; do
+    case "$_key" in
+      CEKERNEL_SESSION_ID|CEKERNEL_IPC_DIR|CEKERNEL_ENV) continue ;;
+      CEKERNEL_*) printf 'export %s="%s"\n' "$_key" "$_val" ;;
+    esac
+  done < <(env | sort)
+  # PATH with cekernel script directories
+  printf 'export PATH="%s:%s:%s:$PATH"\n' \
+    "$CEKERNEL_ORCHESTRATOR_SCRIPTS" \
+    "$CEKERNEL_PROCESS_SCRIPTS" \
+    "$CEKERNEL_SHARED_SCRIPTS"
+  # Disable background tasks (#558 — session re-invocation unverified)
+  printf 'export CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1\n'
+} > "${CEKERNEL_IPC_DIR}/env.sh"
+
 # ── Launch Orchestrator as a background agent session ──
-# The --bg invocation and spawn-line parsing live in claude_bg_spawn
-# (ADR-0018 Decision 1); this spawner injects the session env explicitly
-# (ADR-0018 Decision 3, #589 — the daemon's inherited environment is
-# UNSPECIFIED: these exports reach the session only when this call
-# auto-starts the daemon; a pre-existing daemon keeps its own env. The
-# reliable channel for CEKERNEL_* values is the prompt, which the
-# orchestrate/dispatch skills populate; the Orchestrator verifies env at
-# startup).
+# Subshell exports are best-effort (reach auto-started daemons only).
+# The reliable env channel is env.sh above — the Orchestrator sources it.
 # CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 stays for now: under --bg an
 # auto-detached Bash call no longer kills the process (#558), but whether
 # a background-task completion re-invokes a `done` session is unverified —
