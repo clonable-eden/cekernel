@@ -10,7 +10,7 @@ These can be set via env profiles or explicit `export`.
 |----------|---------|-------------|---------|---------|
 | `CEKERNEL_BACKEND` | `headless` | `wezterm`, `tmux`, `headless` | `backend-adapter.sh` | Select Worker process backend |
 | `CEKERNEL_MAX_ORCHESTRATORS` | `3` | Positive integer | `dispatch`, `orchestrate` | Maximum number of concurrently running orchestrators |
-| `CEKERNEL_MAX_ORCH_CHILDREN` | `5` | Positive integer | `spawn.sh` | Maximum concurrent children (workers + reviewers) per orchestrator |
+| `CEKERNEL_MAX_ORCH_CHILDREN` | `5` | Positive integer | `spawn.sh` | Maximum concurrent workers per orchestrator (reviewer subagents are not counted) |
 | `CEKERNEL_WORKER_TIMEOUT` | `3600` | Positive integer (seconds) | `watch.sh` | Worker timeout before auto-termination |
 | `CEKERNEL_WATCH_CHUNK_TIMEOUT` | `540` | Positive integer (seconds) | `watch.sh` | Max seconds per `watch.sh` invocation before returning a `watching` sentinel (exit 0). Must be shorter than the Bash tool's 600s hard limit to avoid SIGTERM. The Orchestrator re-calls `watch.sh` on a `watching` result; cumulative elapsed is computed from the Worker's `.spawned` timestamp (#630) |
 | `CEKERNEL_STATE_POLL_INTERVAL` | `5` | Positive integer (seconds) | `watch.sh` | State file poll interval (local fs read — cheap). Completion latency is bounded by this value (ADR-0020 Phase 1: polling split) |
