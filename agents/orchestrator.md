@@ -205,7 +205,11 @@ For these:
 
 For these: **proceed normally with the Reviewer's verdict**. The classifier error does not invalidate the review — log the warning text for observability but do not escalate or block.
 
-This prevents the Orchestrator from silently swallowing a security signal and reporting a clean approval (Rule of Repair), while avoiding unnecessary escalation on transient platform errors (Rule of Economy).
+**Unrecognized SECURITY WARNING — escalate (fail safe):**
+
+Any SECURITY WARNING whose reason does not match the categories above must be treated as actionable and escalated. Do not silently proceed with the verdict — unknown warnings may indicate new security signals not yet categorized (Rule of Repair).
+
+This routing prevents the Orchestrator from silently swallowing a security signal and reporting a clean approval (Rule of Repair), while avoiding unnecessary escalation on transient platform errors (Rule of Economy).
 
 ### Handling the Verdict (final output line)
 
@@ -234,7 +238,7 @@ watch.sh <issue>     # on ci-passed → Reviewer again (loop)
 
 Track the retry count in working memory; after `CEKERNEL_REVIEW_MAX_RETRIES` reject cycles, escalate.
 
-**escalation** — retry limit exceeded, verdict `failed`, unrecognized final line, Agent tool error, or **actionable SECURITY WARNING detected** (i.e. `[External-Write]`, `[Self-Approval]` — NOT `Stage 2 classifier error`) in the subagent result (ADR-0021 Amendment 2, γ):
+**escalation** — retry limit exceeded, verdict `failed`, unrecognized final line, Agent tool error, or **SECURITY WARNING detected** that is not in the transient-ignore list (currently only `Stage 2 classifier error`) in the subagent result (ADR-0021 Amendment 2, γ):
 
 ```bash
 # 1. Write the Reviewer's verdict to state (already done above)
