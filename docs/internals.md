@@ -47,7 +47,6 @@ Post-mortem analysis (`/postmortem` skill, [ADR-0013](./adr/0013-transcript-base
 
 Functions:
 - `claude_session_id_persist <uuid>` — write UUID to `${CEKERNEL_IPC_DIR}/orchestrator.claude-session-id`
-- `claude_session_id_read` — read the persisted UUID
 
 ### Spawn Markers (`.spawned` files)
 
@@ -72,7 +71,6 @@ Locates `.jsonl` transcript files by issue number or session ID.
 | `transcript_locate_worker` | issue number | Glob `~/.claude/projects/*-issue-{N}-*/*.jsonl` |
 | `transcript_locate_orchestrator` | session UUID | Glob `~/.claude/projects/*/{uuid}/subagents/*.jsonl` |
 | `transcript_locate_orchestrator_by_issue` | issue number | Scan `${CEKERNEL_VAR_DIR}/ipc/*/{worker,reviewer}-{N}.spawned` for session reverse lookup |
-| `transcript_locate_all` | issue number + optional session UUID | Combine worker + orchestrator discovery |
 
 > **Note**: Transcript paths depend on Claude Code's internal storage layout. All path resolution is centralized in these two scripts to localize the impact of upstream changes.
 

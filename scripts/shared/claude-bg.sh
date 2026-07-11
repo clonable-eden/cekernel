@@ -76,7 +76,6 @@
 #       through, e.g. --all), then delegates. Adds the query-failed report
 #       when the fetch fails.
 #
-#   claude_bg_token_alive_from_json <json> <token>
 #   claude_bg_token_alive <token>
 #     — Boolean projection of the verdict: exit 0 when alive or blocked
 #       (blocked = waiting on a permission dialog — alive but stalled,
@@ -199,17 +198,6 @@ claude_bg_token_verdict() {
     return 4
   fi
   claude_bg_token_verdict_from_json "$json" "$token"
-}
-
-# claude_bg_token_alive_from_json <json> <token>
-claude_bg_token_alive_from_json() {
-  local verdict rc=0
-  verdict=$(claude_bg_token_verdict_from_json "$1" "$2") || rc=$?
-  case "$rc" in
-    0) [[ "$verdict" == "alive" || "$verdict" == "blocked" ]] ;;
-    3) return 1 ;;      # not-listed — verifiably not alive
-    *) return "$rc" ;;  # query-failed / unknown-value — never coerced
-  esac
 }
 
 # claude_bg_token_alive <token>

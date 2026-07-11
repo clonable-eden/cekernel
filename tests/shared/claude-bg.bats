@@ -191,51 +191,14 @@ enqueue_pair() {
   assert_eq "query-failed propagates as 4" "4" "$status"
 }
 
-@test "token_alive_from_json: unknown-value propagates as exit 5" {
-  local json
-  json="[$(mock_claude_agent_record_pair "$FULL_UUID" background /tmp/x 1700000000000 running active)]"
-  run claude_bg_token_alive_from_json "$json" "$FULL_UUID"
-  assert_eq "unknown-value propagates as 5" "5" "$status"
-}
-
-@test "token_alive_from_json: idle/working is alive (v2.1.205 shape, #638)" {
-  local json
-  json="[$(mock_claude_agent_record_pair "$FULL_UUID" background /tmp/x 1700000000000 idle working)]"
-  run claude_bg_token_alive_from_json "$json" "$FULL_UUID"
-  assert_eq "idle/working is alive" "0" "$status"
-}
-
-@test "token_alive_from_json: busy and blocked are alive; done and missing are not" {
-  # Pre-fetched body — no CLI call. Single-fetch views (orchctl ps/count)
-  # resolve every token against one response (ADR-0016 Phase 4); the
-  # verdict vocabulary lives HERE, not in the view layers.
-  local json
-  json="[
-    $(mock_claude_agent_record "$FULL_UUID" background /tmp/x 1700000000000 busy),
-    $(mock_claude_agent_record "bbbb0000-1111-4222-8333-444455556666" background /tmp/x 1700000001000 blocked),
-    $(mock_claude_agent_record "cccc0000-1111-4222-8333-444455556666" background /tmp/x 1700000002000 done)
-  ]"
-
-  run claude_bg_token_alive_from_json "$json" "$FULL_UUID"
-  assert_eq "busy is alive" "0" "$status"
-
-  run claude_bg_token_alive_from_json "$json" "bbbb0000"
-  assert_eq "blocked is alive" "0" "$status"
-
-  run claude_bg_token_alive_from_json "$json" "cccc0000"
-  assert_eq "done is dead" "1" "$status"
-
-  run claude_bg_token_alive_from_json "$json" "ffff0000"
-  assert_eq "missing is dead" "1" "$status"
-}
-
-@test "token_alive_from_json: real live shape (status:busy + state:working) is alive" {
+@test "verdict_from_json: real live shape (status:busy + state:working) is alive" {
   # Raw literal pins the real v2.1.202 live shape independently of the
   # mock helper.
   local json
   json="[{\"sessionId\":\"$FULL_UUID\",\"kind\":\"background\",\"cwd\":\"/tmp/x\",\"startedAt\":1700000000000,\"status\":\"busy\",\"state\":\"working\"}]"
-  run claude_bg_token_alive_from_json "$json" "$FULL_UUID"
-  assert_eq "status busy + state working is alive" "0" "$status"
+  run claude_bg_token_verdict_from_json "$json" "$FULL_UUID"
+  assert_eq "exit 0" "0" "$status"
+  assert_eq "status busy + state working is alive" "alive" "$output"
 }
 
 # ── claude_bg_spawn (ADR-0018 Decision 1: --bg invocation + spawn-line

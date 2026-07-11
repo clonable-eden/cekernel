@@ -50,25 +50,6 @@ setup() {
   assert_eq "exit 1" "1" "$status"
 }
 
-@test "read_checkpoint_file returns JSON with all fields" {
-  create_checkpoint_file "$MOCK_WORKTREE" "Phase 1 (Implementation)" \
-    "tests written" "implement files" "chose approach X"
-  local json
-  json=$(read_checkpoint_file "$MOCK_WORKTREE")
-  assert_match "JSON contains phase" '"phase"' "$json"
-  assert_match "JSON contains completed" '"completed"' "$json"
-  assert_match "JSON contains next" '"next"' "$json"
-  assert_match "JSON contains decisions" '"decisions"' "$json"
-}
-
-@test "read_checkpoint_file returns exists:false for missing checkpoint" {
-  local empty_wt="${BATS_TEST_TMPDIR}/empty-wt2"
-  mkdir -p "$empty_wt"
-  local json
-  json=$(read_checkpoint_file "$empty_wt")
-  assert_match "exists:false returned" '"exists":false' "$json"
-}
-
 @test "create_checkpoint_file with empty optional fields" {
   create_checkpoint_file "$MOCK_WORKTREE" "Phase 2 (PR)" "" "" ""
   assert_file_exists "checkpoint created" "${MOCK_WORKTREE}/.cekernel-checkpoint.md"
