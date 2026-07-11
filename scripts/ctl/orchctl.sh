@@ -1002,7 +1002,8 @@ cmd_gc() {
       fi
 
       for meta_file in "$orch_sid_file" "$orch_legacy_pid_file" \
-        "${session_dir}orchestrator.spawned" "${session_dir}repo"; do
+        "${session_dir}orchestrator.spawned" "${session_dir}repo" \
+        "${session_dir}env.sh"; do
         if [[ -f "$meta_file" ]]; then
           if [[ "$dry_run" -eq 1 ]]; then
             echo "[dry-run] would remove stale metadata: $meta_file" >&2
