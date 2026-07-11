@@ -94,9 +94,13 @@ gh pr list --state merged --base main --search "merged:>=$(git log -1 --format=%
 
 #### 4b: Build release notes
 
-Generate the following sections from the commit and PR analysis:
+Generate the following sections from the commit and PR analysis.
+
+**IMPORTANT**: The first line MUST be `# cekernel-v${VERSION}` (hyphen between `cekernel` and `v`, matching the tag name exactly). The workflow `plugin-release-tag.yml` uses this heading for extraction — a mismatch (e.g. space instead of hyphen) causes an empty release body.
 
 ```markdown
+# cekernel-v${VERSION}
+
 ## Highlights
 - Summary of the most important changes in this release (3-8 bullet points)
 - Focus on user-facing impact, not implementation details

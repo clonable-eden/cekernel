@@ -47,9 +47,25 @@ jobs:
             awk -v tag="# ${TAG}" \
               '$0==tag{f=1;next} f&&/^---$/{exit} f&&s==0&&/^$/{next} f{s=1;print}' \
               RELEASE_NOTES.md > /tmp/release-body.md
-            gh release create "${TAG}" \
-              --title "${TAG}" \
-              --notes-file /tmp/release-body.md
+
+            if [ -s /tmp/release-body.md ]; then
+              gh release create "${TAG}" \
+                --title "${TAG}" \
+                --notes-file /tmp/release-body.md
+            else
+              echo "::warning::RELEASE_NOTES.md found but body extraction for '# ${TAG}' returned empty — falling back to --generate-notes"
+              PREV_TAG=$(git tag -l "${PLUGIN}-v*" --sort=-v:refname | head -1)
+              if [ -n "${PREV_TAG}" ]; then
+                gh release create "${TAG}" \
+                  --title "${TAG}" \
+                  --generate-notes \
+                  --notes-start-tag "${PREV_TAG}"
+              else
+                gh release create "${TAG}" \
+                  --title "${TAG}" \
+                  --generate-notes
+              fi
+            fi
           else
             PREV_TAG=$(git tag -l "${PLUGIN}-v*" --sort=-v:refname | head -1)
             if [ -n "${PREV_TAG}" ]; then
