@@ -5,7 +5,7 @@
 #
 # Commands:
 #   ls                          List all workers across all sessions
-#   ps [--session <id>]         Show orchestrator process trees
+#   ps [--session <id>]         List process tree as JSON Lines
 #   inspect <target>            Detailed worker view
 #   suspend <target>            Suspend a worker (send SUSPEND signal)
 #   resume <target>             Resume a suspended or crashed worker
@@ -44,7 +44,7 @@ Usage: orchctl.sh <command> [args...]
 
 Commands:
   ls                          List all workers
-  ps [--session <id>]         Show orchestrator process trees
+  ps [--session <id>]         List process tree as JSON Lines
   inspect <target>            Detailed worker view
   suspend <target>            Suspend a worker
   resume <target>             Resume a suspended or crashed worker

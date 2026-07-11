@@ -39,7 +39,7 @@ Try `<issue>` alone first; if multiple sessions match, show the candidates and a
 | Command | Behavior | Present to user as |
 |---------|----------|--------------------|
 | `ls` | JSON Lines, one per Worker (`session`, `repo`, `issue`, `state`, `detail`, `priority`, `priority_name`, `elapsed`, `backend`); `no workers.` if none | Table: Session / Repo / Issue / State / Priority / Elapsed / Backend |
-| `ps [--session <id>]` | Pre-formatted tree of Orchestrator sessions and their Worker/Reviewer sessions (single `claude agents --json` fetch joined with issue/phase/priority — ADR-0016 Phase 4) | As-is |
+| `ps [--session <id>]` | JSON Lines, one per process (`session`, `type` [orchestrator/worker/reviewer], `claude`, `elapsed`, `verdict`, plus `issue`/`phase`/`priority` for workers, `state`/`detail` for reviewers); `no orchestrators.` if none | Table: Session / Type / Issue / Verdict / Phase / Priority / Elapsed |
 | `inspect <target>` | JSON: `session`, `issue`, `state`, `priority`, `elapsed`, `backend`, `worktree`, `checkpoint` | Structured summary, highlighting checkpoint data (phase, completed work, next steps, key decisions) |
 | `suspend <target>` | Sends SUSPEND (RUNNING/WAITING/READY only); Worker checkpoints and stops at the next phase boundary | Confirm action |
 | `resume <target>` | SUSPENDED (or TERMINATED with `crashed*` detail) → READY; prints the restart command | Confirm, then show the printed `spawn-worker.sh --resume` command for the user to run |
@@ -48,6 +48,6 @@ Try `<issue>` alone first; if multiple sessions match, show the candidates and a
 | `kill <target>` | Immediate termination + TERMINATED (when `term` is insufficient) | Confirm action |
 | `nice <target> <priority>` | Change priority: `critical` (0), `high` (5), `normal` (10), `low` (15), or numeric 0-19 (lower = higher) | Confirm action |
 
-`ps` notes: Worker rows show the raw `claude agents --json` trailing state (`busy`, `blocked`, `done`, ...); `missing` = no longer listed. **`blocked` means stalled on a permission dialog — surface it prominently.** Reviewer rows come from `reviewer-*.state` files (subagents have no session token) and show `state=REVIEWING` / `TERMINATED`. Sessions spawned by an interactive Orchestrator have no `orchestrator` row, but their Worker rows still appear.
+`ps` notes: Output is JSON Lines (same as `ls`). Each line has a `type` field: `orchestrator`, `worker`, or `reviewer`. The `verdict` field shows the ADR-0018 verdict (`alive`, `blocked`, `done`, `not-listed`, etc.). **`blocked` means stalled on a permission dialog — surface it prominently.** Reviewer rows come from `reviewer-*.state` files (subagents have no session token) and show `state`/`detail`. Sessions spawned by an interactive Orchestrator have no `orchestrator` row, but their Worker rows still appear. Tree structure assembly (grouping workers under their orchestrator) is the skill's responsibility.
 
 Crash recovery sequence: `health-check.sh` (detect zombie) → `orchctl recover` → `orchctl resume` → `spawn-worker.sh --resume`.
