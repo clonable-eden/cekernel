@@ -1,15 +1,15 @@
 ---
-description: Control and inspect running Workers and Orchestrators (systemctl for cekernel). List, suspend, resume, kill, manage priorities, and show process trees.
+description: Control running Workers and Orchestrators (systemctl for cekernel). List, suspend, resume, kill, manage priorities, and show process trees.
 argument-hint: "<command> [target] [args...]"
 allowed-tools: Bash, Read
 ---
 
 # /orchctl
 
-Worker control interface for cekernel — like `systemctl` / `supervisorctl`, inspects and manages running Workers across all sessions.
+Worker control interface for cekernel — like `systemctl` / `supervisorctl`, manages running Workers across all sessions.
 
 ```
-/orchctl ls | ps [--session <id>] | inspect|suspend|resume|recover|term|kill <target> | nice <target> <priority>
+/orchctl ls | ps [--session <id>] | suspend|resume|recover|term|kill <target> | nice <target> <priority>
 ```
 
 Note: In plugin mode, `/cekernel:orchctl` also works.
@@ -38,9 +38,8 @@ Try `<issue>` alone first; if multiple sessions match, show the candidates and a
 
 | Command | Behavior | Present to user as |
 |---------|----------|--------------------|
-| `ls` | JSON Lines, one per Worker (`session`, `repo`, `issue`, `state`, `detail`, `priority`, `priority_name`, `elapsed`, `backend`); `no workers.` if none | Table: Session / Repo / Issue / State / Priority / Elapsed / Backend |
+| `ls` | JSON Lines, one per Worker (`session`, `repo`, `issue`, `type`, `state`, `detail`, `priority`, `priority_name`, `elapsed`, `backend`); `no workers.` if none | Table: Session / Repo / Issue / Type / State / Detail / Priority / Elapsed / Backend. Use `orchctl ls \| jq 'select(.issue == N)'` to filter a specific worker |
 | `ps [--session <id>]` | JSON Lines, one per process (`session`, `type` [orchestrator/worker/reviewer], `claude`, `elapsed`, `verdict`, plus `issue`/`phase`/`priority` for workers, `state`/`detail` for reviewers); `no orchestrators.` if none | Table: Session / Type / Issue / Verdict / Phase / Priority / Elapsed |
-| `inspect <target>` | JSON: `session`, `issue`, `state`, `priority`, `elapsed`, `backend`, `worktree`, `checkpoint` | Structured summary, highlighting checkpoint data (phase, completed work, next steps, key decisions) |
 | `suspend <target>` | Sends SUSPEND (RUNNING/WAITING/READY only); Worker checkpoints and stops at the next phase boundary | Confirm action |
 | `resume <target>` | SUSPENDED (or TERMINATED with `crashed*` detail) → READY; prints the restart command | Confirm, then show the printed `spawn-worker.sh --resume` command for the user to run |
 | `recover <target>` | Marks a dead RUNNING/WAITING Worker as `TERMINATED`/`crashed:detected-by-recover`; errors if the process is alive (suggest `term`/`kill`) | Confirm transition, suggest `orchctl resume` next |

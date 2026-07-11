@@ -6,7 +6,6 @@
 # Commands:
 #   ls                          List all workers across all sessions
 #   ps [--session <id>]         List process tree as JSON Lines
-#   inspect <target>            Detailed worker view
 #   suspend <target>            Suspend a worker (send SUSPEND signal)
 #   resume <target>             Resume a suspended or crashed worker
 #   recover <target>            Mark a dead RUNNING worker as crashed
@@ -31,7 +30,6 @@ source "${SCRIPT_DIR}/../shared/issue-lock.sh"
 source "${SCRIPT_DIR}/../shared/worker-state.sh"
 source "${SCRIPT_DIR}/../shared/reviewer-state.sh"
 source "${SCRIPT_DIR}/../shared/worker-priority.sh"
-source "${SCRIPT_DIR}/../shared/checkpoint-file.sh"
 source "${SCRIPT_DIR}/../shared/claude-bg.sh"
 
 CEKERNEL_VAR_DIR="${CEKERNEL_VAR_DIR:-$HOME/.local/var/cekernel}"
@@ -45,7 +43,6 @@ Usage: orchctl.sh <command> [args...]
 Commands:
   ls                          List all workers
   ps [--session <id>]         List process tree as JSON Lines
-  inspect <target>            Detailed worker view
   suspend <target>            Suspend a worker
   resume <target>             Resume a suspended or crashed worker
   recover <target>            Mark a dead RUNNING worker as crashed
@@ -459,71 +456,6 @@ cmd_ps() {
   if [[ "$found" -eq 0 ]]; then
     echo "no orchestrators."
   fi
-}
-
-# ── inspect: Detailed worker view ──
-cmd_inspect() {
-  resolve_target "$@" || return 1
-  set_ipc_context
-
-  # Type
-  local process_type="unknown"
-  local type_file="${CEKERNEL_IPC_DIR}/worker-${RESOLVED_ISSUE}.type"
-  if [[ -f "$type_file" ]]; then
-    process_type=$(tr -d '[:space:]' < "$type_file")
-  fi
-
-  # State
-  local state_json
-  state_json=$(worker_state_read "$RESOLVED_ISSUE")
-  local state
-  state=$(echo "$state_json" | jq -r '.state')
-  local detail
-  detail=$(echo "$state_json" | jq -r '.detail')
-  local timestamp
-  timestamp=$(echo "$state_json" | jq -r '.timestamp')
-
-  # Priority
-  local priority_json
-  priority_json=$(worker_priority_read "$RESOLVED_ISSUE")
-  local priority
-  priority=$(echo "$priority_json" | jq -r '.priority')
-
-  # Elapsed time (ADR-0020 Phase 2: uses issue-based lookup, not FIFO)
-  local elapsed=""
-  elapsed=$(compute_elapsed_from_issue "$CEKERNEL_IPC_DIR" "$RESOLVED_ISSUE")
-
-  # Backend
-  local backend
-  backend=$(detect_backend "$CEKERNEL_IPC_DIR" "$RESOLVED_ISSUE")
-
-  # Worktree (try to find from git worktree list)
-  local worktree=""
-  worktree=$(git worktree list --porcelain 2>/dev/null \
-    | grep "^worktree " \
-    | sed 's/^worktree //' \
-    | grep "/issue/${RESOLVED_ISSUE}-" \
-    | head -1 || true)
-
-  # Checkpoint
-  local checkpoint_json='{"exists":false}'
-  if [[ -n "$worktree" ]]; then
-    checkpoint_json=$(read_checkpoint_file "$worktree")
-  fi
-
-  jq -cn \
-    --arg session "$RESOLVED_SESSION" \
-    --argjson issue "$RESOLVED_ISSUE" \
-    --arg type "$process_type" \
-    --arg state "$state" \
-    --arg detail "$detail" \
-    --arg timestamp "$timestamp" \
-    --argjson priority "$priority" \
-    --arg elapsed "${elapsed:-}" \
-    --arg backend "$backend" \
-    --arg worktree "${worktree:-}" \
-    --argjson checkpoint "$checkpoint_json" \
-    '{session: $session, issue: $issue, type: $type, state: $state, detail: $detail, timestamp: $timestamp, priority: $priority, elapsed: $elapsed, backend: $backend, worktree: $worktree, checkpoint: $checkpoint}'
 }
 
 # ── suspend: Send SUSPEND signal ──
@@ -1172,7 +1104,6 @@ shift || true
 case "$COMMAND" in
   ls)      cmd_ls "$@" ;;
   ps)      cmd_ps "$@" ;;
-  inspect) cmd_inspect "$@" ;;
   suspend) cmd_suspend "$@" ;;
   resume)  cmd_resume "$@" ;;
   recover) cmd_recover "$@" ;;
