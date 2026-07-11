@@ -57,11 +57,19 @@ CEKERNEL_SHARED_SCRIPTS="$(cd "${SCRIPT_DIR}/../shared" && pwd)"
 # daemons (ADR-0018 Decision 3, #589). env.sh is the reliable delivery
 # channel — the Orchestrator sources it on every Bash call.
 {
-  # Dump all CEKERNEL_* variables from the current environment
+  # Required variables — always include (some may not be exported, e.g.
+  # CEKERNEL_ENV is set but not exported by load-env.sh)
+  printf 'export CEKERNEL_SESSION_ID="%s"\n' "$CEKERNEL_SESSION_ID"
+  printf 'export CEKERNEL_IPC_DIR="%s"\n' "$CEKERNEL_IPC_DIR"
+  printf 'export CEKERNEL_ENV="%s"\n' "${CEKERNEL_ENV:-default}"
+  # Additional CEKERNEL_* variables from the exported environment
+  # (agent names, auto-merge, etc. — set by the invoking skill)
   while IFS='=' read -r _key _val; do
-    [[ "$_key" == CEKERNEL_* ]] || continue
-    printf 'export %s="%s"\n' "$_key" "$_val"
-  done < <(env | grep '^CEKERNEL_' | sort)
+    case "$_key" in
+      CEKERNEL_SESSION_ID|CEKERNEL_IPC_DIR|CEKERNEL_ENV) continue ;;
+      CEKERNEL_*) printf 'export %s="%s"\n' "$_key" "$_val" ;;
+    esac
+  done < <(env | sort)
   # PATH with cekernel script directories
   printf 'export PATH="%s:%s:%s:$PATH"\n' \
     "$CEKERNEL_ORCHESTRATOR_SCRIPTS" \
