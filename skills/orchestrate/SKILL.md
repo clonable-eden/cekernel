@@ -14,7 +14,7 @@ Receive issue numbers (single or multiple) from the user.
 
 Optional flags:
 
-- `--env <profile>` — Env profile (default: `default`). Available: `default`, `headless`, `ci`, or any custom profile in `.cekernel/envs/`.
+- `--env <profile>` — Env profile (default: `default`). Available: `default`, `headless`, `tmux`, `wezterm`, or any custom profile in `.cekernel/envs/`.
 
 ```
 /orchestrate #108
