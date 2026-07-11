@@ -18,6 +18,7 @@ source "${SCRIPT_DIR}/../shared/session-id.sh"
 source "${SCRIPT_DIR}/../shared/worker-state.sh"
 source "${SCRIPT_DIR}/../shared/worker-priority.sh"
 source "${SCRIPT_DIR}/../shared/resolve-repo-root.sh"
+source "${SCRIPT_DIR}/../shared/format-elapsed.sh"
 
 if [[ ! -d "$CEKERNEL_IPC_DIR" ]]; then
   echo "No active session: ${CEKERNEL_IPC_DIR}" >&2
@@ -54,13 +55,7 @@ for issue in $(worker_state_list_active "$CEKERNEL_IPC_DIR"); do
   spawned_at="${spawned_at:-$(date +%s)}"
   now=$(date +%s)
   elapsed=$((now - spawned_at))
-  if [[ $elapsed -ge 3600 ]]; then
-    uptime="$((elapsed / 3600))h$((elapsed % 3600 / 60))m"
-  elif [[ $elapsed -ge 60 ]]; then
-    uptime="$((elapsed / 60))m"
-  else
-    uptime="${elapsed}s"
-  fi
+  uptime=$(format_elapsed "$elapsed")
 
   # Read worker state
   state_json=$(worker_state_read "$issue")

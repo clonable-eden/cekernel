@@ -31,6 +31,7 @@ source "${SCRIPT_DIR}/../shared/worker-state.sh"
 source "${SCRIPT_DIR}/../shared/reviewer-state.sh"
 source "${SCRIPT_DIR}/../shared/worker-priority.sh"
 source "${SCRIPT_DIR}/../shared/claude-bg.sh"
+source "${SCRIPT_DIR}/../shared/format-elapsed.sh"
 
 CEKERNEL_VAR_DIR="${CEKERNEL_VAR_DIR:-$HOME/.local/var/cekernel}"
 IPC_BASE="${CEKERNEL_IPC_BASE:-${CEKERNEL_VAR_DIR}/ipc}"
@@ -145,18 +146,6 @@ resolve_target() {
 set_ipc_context() {
   export CEKERNEL_SESSION_ID="$RESOLVED_SESSION"
   export CEKERNEL_IPC_DIR="${IPC_BASE}/${RESOLVED_SESSION}"
-}
-
-# ── Helper: format elapsed seconds as h/m/s ──
-format_elapsed() {
-  local elapsed="$1"
-  if [[ $elapsed -ge 3600 ]]; then
-    echo "$((elapsed / 3600))h$((elapsed % 3600 / 60))m"
-  elif [[ $elapsed -ge 60 ]]; then
-    echo "$((elapsed / 60))m"
-  else
-    echo "${elapsed}s"
-  fi
 }
 
 # ── Helper: compute elapsed time from ipc_dir + issue ──
