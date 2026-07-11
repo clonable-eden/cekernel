@@ -245,3 +245,97 @@ Worker's worktree, the PR-anchor check distinguishes a match from drift, and
 on-disk reads match the PR diff. Decision 1 above is reworded to state the
 principle and name this as the leading mechanism; the exact form is confirmed
 when implementing #602, gated by the both-modes live check (CLAUDE.md).
+
+### Amendment 2 (2026-07-11): Reviewer result handling (#646)
+
+First production reviews (PRs #645/#647/#648) exposed three defects in
+Decisions 2–3 — all rooted in the Orchestrator's handling of the Reviewer
+result, not the Reviewer's execution model itself.
+
+#### (α) External-Write false positive — authorization in Reviewer prompt
+
+The auto-mode `[External System Writes]` security classifier flagged the
+Reviewer's legitimate `gh api .../reviews` POST as an unauthorized external
+write, intermittently (2/3 in production, 3/3 in controlled probes without
+the fix). The classifier's clear condition states: "*the user must name the
+PR being reviewed and authorize posting the review comment*". The
+Orchestrator→Reviewer prompt named the PR (`Review PR #<pr>`) but did not
+explicitly authorize the POST.
+
+**Fix**: add `You are authorized to post a review comment on PR #<pr> in
+<owner/repo> via gh api.` to the Orchestrator→Reviewer prompt template
+(`agents/orchestrator.md`). Probed at clonable-eden/test-cekernel PR #118:
+0/3 false-fire rate with the authorization text vs 3/3 without.
+
+`reviewer.md` is unchanged — the Reviewer's responsibility to submit reviews
+via `gh api` is unaffected. The authorization is an Orchestrator-side prompt
+addition, consistent with the classifier's documented clear condition.
+
+#### (β) Reviewer verdict protocol — canonical enum and validation
+
+The same `approved` outcome was recorded as three different strings across
+production runs: `approved` (Reviewer's actual verdict), `unverified`
+(Orchestrator narration in #641), `escalated` (state file in #643/#644).
+Neither `unverified` nor `escalated` is part of the Reviewer's return
+contract (`approved / changes-requested / failed`); both were
+Orchestrator-invented labels written to `reviewer-<issue>.state` without
+validation. `reviewer_state_write` accepted any string, so the inconsistency
+was silent (violating Rule of Repair).
+
+**Fix**: `reviewer_state_write` now validates the detail field when state is
+`TERMINATED` — only `approved`, `changes-requested`, and `failed` are
+accepted; unknown values produce exit 1 with an error message. The
+Orchestrator records the Reviewer's actual verdict, not a derived label.
+Escalation is an Orchestrator *action* (desktop notification, runbook
+comment), not a verdict *value*. `unverified` and `escalated` as verdict
+strings are eliminated.
+
+**Action matrix** (Orchestrator's response to Reviewer verdict × SECURITY
+WARNING presence):
+
+| Reviewer verdict | SECURITY WARNING | Orchestrator action |
+|-----------------|-----------------|---------------------|
+| `approved` | absent | merge (auto) or notify (manual) |
+| `approved` | present | escalate |
+| `changes-requested` | absent | Worker re-spawn |
+| `changes-requested` | present | escalate |
+| `failed` | N/A | escalate |
+| no verdict / invalid | N/A | escalate |
+
+#### (γ) Escalation preserves worktree and lock
+
+The escalation path previously ran `cleanup-worktree.sh` + `issue_lock_release`,
+destroying the worktree and releasing the lock. Escalation is a non-terminal
+state (the issue returns to a human for disposition), yet the runtime signaled
+completion: the worktree was gone (preventing `--resume` for
+`changes-requested`), and the freed lock let the dispatcher re-acquire the
+issue.
+
+**Fix**: escalation no longer runs cleanup or lock release. The Orchestrator
+posts a runbook comment on the issue with three action commands
+(approve-and-merge, resume, reject) that the human executes. Cleanup happens
+only at true terminal states (merged, or human-initiated rejection). With
+(α) eliminating the `[External-Write]` false positive, escalation becomes a
+rare-case path (genuine security concerns, Agent tool errors, retry limit
+exhaustion), so the runbook approach satisfies Rule of Parsimony.
+
+#### UNIX Philosophy Alignment
+
+> Rule of Repair: "When you must fail, fail noisily and as soon as possible."
+
+(β) makes `reviewer_state_write` reject unknown verdicts at write time
+instead of silently accepting them. (γ) ensures escalation preserves the
+evidence (worktree, lock) for human inspection.
+
+> Rule of Least Surprise: "In interface design, always do the least
+> surprising thing."
+
+(α) aligns the prompt with the security classifier's documented clear
+condition — the Reviewer is authorized to do what it was designed to do.
+(β) eliminates surprising verdict label inconsistency.
+
+> Rule of Parsimony: "Write a big program only when it is clear by
+> demonstration that nothing else will do."
+
+(γ) uses a runbook comment for rare-case escalation instead of building
+automated rollback or disposition machinery.

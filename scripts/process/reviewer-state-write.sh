@@ -3,6 +3,8 @@
 #
 # Usage: reviewer-state-write.sh <issue-number> <state> [detail]
 #   state: REVIEWING | TERMINATED
+#   detail (TERMINATED): approved | changes-requested | failed
+#          Unknown verdicts are rejected with exit 1 (ADR-0021 Amendment 2).
 #
 # LLM agents running in zsh can call this standalone command without
 # sourcing bash-specific scripts directly (avoids zsh "bad substitution"

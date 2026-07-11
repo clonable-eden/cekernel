@@ -11,6 +11,10 @@
 # State machine (simpler than Worker):
 #   REVIEWING → TERMINATED (with verdict as detail)
 #
+# Verdict enum (TERMINATED detail, ADR-0021 Amendment 2):
+#   approved | changes-requested | failed
+#   Unknown values are rejected with exit 1 (Rule of Repair).
+#
 # State file format: STATE:TIMESTAMP:detail (one line, detail may contain colons)
 # State file path: ${CEKERNEL_IPC_DIR}/reviewer-{issue}.state
 #
