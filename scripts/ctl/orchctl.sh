@@ -31,6 +31,7 @@ source "${SCRIPT_DIR}/../shared/worker-state.sh"
 source "${SCRIPT_DIR}/../shared/reviewer-state.sh"
 source "${SCRIPT_DIR}/../shared/worker-priority.sh"
 source "${SCRIPT_DIR}/../shared/claude-bg.sh"
+source "${SCRIPT_DIR}/../shared/resolve-repo-root.sh"
 
 CEKERNEL_VAR_DIR="${CEKERNEL_VAR_DIR:-$HOME/.local/var/cekernel}"
 IPC_BASE="${CEKERNEL_IPC_BASE:-${CEKERNEL_VAR_DIR}/ipc}"
@@ -1046,7 +1047,106 @@ cmd_gc() {
   # ── Cleanup temp file ──
   rm -f "$active_issues_file"
 
-  # ── 5. Summary ──
+  # ── 5. Escalation-residue sweep: worktrees + locks vs PR state (#671) ──
+  # ADR-0021 Amendment 2 (γ): escalation preserves the worktree and lock
+  # for human disposition, and the runbook one-liner is the only reclaim
+  # path — if the human merges/closes the PR without executing it, both
+  # leak forever. This sweep reclaims them once the PR is verifiably
+  # terminal (merged or closed).
+  # Degradation policy (ADR-0018 — never reap on doubt): an open PR, a
+  # missing PR, a detached HEAD, or a failed gh query all preserve the
+  # worktree and lock. Scoped to the repo containing the CWD (worktrees
+  # are repo-local); outside a git repo this section is a no-op.
+  local sweep_root=""
+  if git rev-parse --show-toplevel >/dev/null 2>&1; then
+    sweep_root=$(resolve_repo_root)
+  fi
+  if [[ -n "$sweep_root" && -d "${sweep_root}/.worktrees/issue" ]]; then
+    local sweep_wt
+    for sweep_wt in "${sweep_root}/.worktrees/issue"/*/; do
+      [[ -d "$sweep_wt" ]] || continue
+      sweep_wt="${sweep_wt%/}"
+
+      # Never sweep the worktree the CWD is inside (CWD safety)
+      if [[ "${PWD}/" == "${sweep_wt}/"* ]]; then
+        continue
+      fi
+
+      local sweep_issue
+      sweep_issue=$(basename "$sweep_wt")
+      sweep_issue="${sweep_issue%%-*}"
+      [[ "$sweep_issue" =~ ^[0-9]+$ ]] || continue
+
+      # Active worker (non-TERMINATED state in ANY session) → keep.
+      # Cross-repo issue-number collisions stay conservative: an active
+      # worker with this number in any session blocks the sweep.
+      local sweep_active=0 sweep_session=""
+      if [[ -d "$IPC_BASE" ]]; then
+        for session_dir in "$IPC_BASE"/*/; do
+          [[ -f "${session_dir}worker-${sweep_issue}.state" ]] || continue
+          local sweep_line
+          sweep_line=$(cat "${session_dir}worker-${sweep_issue}.state")
+          if [[ "${sweep_line%%:*}" != "TERMINATED" ]]; then
+            sweep_active=1
+            break
+          fi
+          sweep_session=$(basename "$session_dir")
+        done
+      fi
+      if [[ "$sweep_active" -eq 1 ]]; then
+        continue
+      fi
+
+      # Branch under review — detached HEAD cannot be matched to a PR
+      local sweep_branch
+      sweep_branch=$(git -C "$sweep_wt" rev-parse --abbrev-ref HEAD 2>/dev/null) || continue
+      [[ -n "$sweep_branch" && "$sweep_branch" != "HEAD" ]] || continue
+
+      # PR state via gh — reclaim only on a verified terminal state:
+      # at least one PR for the branch and none of them open.
+      local sweep_pr_states
+      sweep_pr_states=$(cd "$sweep_root" && gh pr list --head "$sweep_branch" \
+        --state all --json state --jq '.[].state' 2>/dev/null) || continue
+      [[ -n "$sweep_pr_states" ]] || continue
+      if echo "$sweep_pr_states" | grep -qxF "OPEN"; then
+        continue
+      fi
+
+      if [[ "$dry_run" -eq 1 ]]; then
+        echo "[dry-run] would reclaim worktree: $sweep_wt" >&2
+        cleaned=$((cleaned + 1))
+      else
+        # cleanup-worktree.sh owns the removal mechanism (worktree +
+        # local branch removal, trust unregistration, IPC cleanup, and
+        # the CEKERNEL_KEEP_WORKTREE branch). Pass the session holding
+        # the TERMINATED state file so IPC cleanup targets it.
+        if CEKERNEL_SESSION_ID="${sweep_session:-${CEKERNEL_SESSION_ID:-}}" \
+          "${SCRIPT_DIR}/../orchestrator/cleanup-worktree.sh" "$sweep_issue"; then
+          cleaned=$((cleaned + 1))
+        else
+          echo "gc: cleanup-worktree.sh failed for issue #${sweep_issue} — lock kept" >&2
+          continue
+        fi
+      fi
+
+      # Release the issue lock under the same verified-terminal condition.
+      # Escalation holds the lock with an alive/blocked holder, so the
+      # holder-liveness sweep (section 2) never frees it.
+      local sweep_hash sweep_lock_dir
+      sweep_hash=$(issue_lock_repo_hash "$sweep_root")
+      sweep_lock_dir="${CEKERNEL_VAR_DIR}/locks/${sweep_hash}/${sweep_issue}.lock"
+      if [[ -d "$sweep_lock_dir" ]]; then
+        if [[ "$dry_run" -eq 1 ]]; then
+          echo "[dry-run] would release lock: $sweep_lock_dir" >&2
+        else
+          issue_lock_release "$sweep_root" "$sweep_issue"
+        fi
+        cleaned=$((cleaned + 1))
+      fi
+    done
+  fi
+
+  # ── 6. Summary ──
   if [[ "$cleaned" -eq 0 ]]; then
     echo "gc: nothing to clean." >&2
   else
