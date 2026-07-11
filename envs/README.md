@@ -18,6 +18,7 @@ These can be set via env profiles or explicit `export`.
 | `CEKERNEL_WATCH_QUERY_RETRY_MAX` | `3` | Positive integer | `watch.sh` | Consecutive unverifiable liveness polls (`query-failed` / `unknown-value` verdicts, ADR-0018) tolerated before watch escalates an `error` result. The escalation detail warns the Worker may still be running — do not clean up on this result alone |
 | `CEKERNEL_CHECKPOINT_FILENAME` | `.cekernel-checkpoint.md` | Any filename | `checkpoint-file.sh` | Checkpoint file name in worktree |
 | `CEKERNEL_TASK_FILENAME` | `.cekernel-task.md` | Any filename | `task-file.sh` | Task file name in worktree |
+| `CEKERNEL_CI_CHUNK_TIMEOUT` | `540` | Positive integer (seconds) | `wait-ci.sh` | Max seconds per `wait-ci.sh` invocation before returning a `watching` sentinel (exit 0). Must be shorter than the Bash tool's 600s hard limit to avoid SIGTERM. The Worker re-calls `wait-ci.sh` on a `watching` result (#650) |
 | `CEKERNEL_CI_MAX_RETRIES` | `3` | Positive integer | `worker.md` (Phase 3) | Maximum CI retry attempts before Worker reports failure |
 | `CEKERNEL_AUTO_MERGE` | `false` | `true`, `false` | Orchestrator | `true`: Orchestrator auto-merges after Reviewer approval. `false`: desktop notification only, human merges manually |
 | `CEKERNEL_KEEP_WORKTREE` | `false` | `true`, `false` | `cleanup-worktree.sh` | `true`: preserve the worktree and local branch on cleanup (Worker is still killed, IPC still removed). `--force` always removes regardless. Useful with `CEKERNEL_AUTO_MERGE=false` for manual pre-merge verification |
