@@ -164,7 +164,8 @@ reviewer-state-write.sh <issue> REVIEWING "review:in-progress"
 
 # After the verdict is returned:
 reviewer-state-write.sh <issue> TERMINATED "<verdict>"
-# verdict: approved / changes-requested / escalated
+# verdict: approved / changes-requested / failed
+# Unknown values are rejected with exit 1 (ADR-0021 Amendment 2)
 ```
 
 Invoke with the **Agent tool**, subagent type from `CEKERNEL_AGENT_REVIEWER`, in the **foreground** (reviews are short; Worker state-file events are polled after the block). The prompt must include the issue number, PR number, base branch, and **Worker worktree path**:
@@ -172,6 +173,7 @@ Invoke with the **Agent tool**, subagent type from `CEKERNEL_AGENT_REVIEWER`, in
 ```
 Review PR #<pr> for issue #<issue>. The PR base branch is <base>.
 The Worker's worktree is at: <worktree-path>
+You are authorized to post a review comment on PR #<pr> in <owner/repo> via gh api.
 Follow your agent definition: verify the PR anchor (worktree HEAD matches
 the PR head SHA), read the repository's CLAUDE.md and the changed files,
 submit the review, and end your response with the verdict
@@ -186,9 +188,9 @@ The Reviewer inherits your session's tool permissions — a permission gap stall
 
 Before acting on the verdict, inspect the Agent tool's full result for SECURITY WARNING markers (e.g. `[Self-Approval]`, `[External-Write]`). If any SECURITY WARNING is present:
 
-1. **Do NOT auto-advance** — regardless of the verdict word, treat it as **unverified**
-2. **Surface the warning** in the completion summary: include the warning text and mark the verdict as `unverified`
-3. **Escalate** — follow the escalation path (cleanup, desktop notification, lock release) so a human can inspect the PR and the warning
+1. **Do NOT auto-advance** — regardless of the verdict word, do not trust the result
+2. **Write the Reviewer's actual verdict** to state: `reviewer-state-write.sh <issue> TERMINATED "<verdict>"` — record what the Reviewer said, not an Orchestrator-invented label
+3. **Escalate** — follow the escalation path (desktop notification, runbook comment — no cleanup) so a human can inspect the PR and the warning. Surface the SECURITY WARNING text in the runbook comment
 
 This prevents the Orchestrator from silently swallowing a security signal and reporting a clean approval (Rule of Repair).
 
@@ -219,12 +221,22 @@ watch.sh <issue>     # on ci-passed → Reviewer again (loop)
 
 Track the retry count in working memory; after `CEKERNEL_REVIEW_MAX_RETRIES` reject cycles, escalate.
 
-**escalation** — retry limit exceeded, verdict `failed`, unrecognized final line, Agent tool error, or **SECURITY WARNING detected** in the subagent result:
+**escalation** — retry limit exceeded, verdict `failed`, unrecognized final line, Agent tool error, or **SECURITY WARNING detected** in the subagent result (ADR-0021 Amendment 2, γ):
 
 ```bash
-cleanup-worktree.sh <issue>
-source desktop-notify.sh && desktop_notify "cekernel" "Issue #<issue> escalated — human review needed" "$(gh pr view <pr-number> --json url -q .url)"
-source issue-lock.sh && issue_lock_release "$(git rev-parse --show-toplevel)" <issue>
+# 1. Write the Reviewer's verdict to state (already done above)
+# 2. Desktop notification
+source desktop-notify.sh && desktop_notify "cekernel" "Issue #<issue> escalated — human review needed" \
+  "$(gh pr view <pr-number> --json url -q .url)"
+# 3. Post runbook comment on the issue
+WORKTREE=$(git worktree list --porcelain | grep -A1 "worktree.*issue/${ISSUE}" | head -1 | sed 's/worktree //')
+gh issue comment <issue> --body "## Escalated: <reason>
+PR: #<pr-number> | Worktree: \`${WORKTREE}\`
+### Actions
+- **Approve & merge**: \`gh pr merge <pr-number> --delete-branch && cleanup-worktree.sh <issue> && source issue-lock.sh && issue_lock_release \"\$(git rev-parse --show-toplevel)\" <issue>\`
+- **Resume**: \`spawn-worker.sh --resume <issue>\`
+- **Reject**: \`gh pr close <pr-number> && cleanup-worktree.sh <issue> && source issue-lock.sh && issue_lock_release \"\$(git rev-parse --show-toplevel)\" <issue>\`"
+# 4. Do NOT cleanup-worktree or release issue lock — preserve for human disposition
 ```
 
 ### Worktree Lifetime
@@ -234,7 +246,7 @@ source issue-lock.sh && issue_lock_release "$(git rev-parse --show-toplevel)" <i
 | Worker `ci-passed` | No — Reviewer may reject; re-spawn needs the worktree |
 | `changes-requested` → re-spawned | No — Worker is using it |
 | approved (merged, or awaiting human merge) | Yes |
-| Escalation | Yes — branch/PR remain on remote |
+| Escalation | No — worktree and lock preserved for human disposition (ADR-0021 Amendment 2, γ) |
 
 `CEKERNEL_KEEP_WORKTREE=true` needs no branching on your side — call `cleanup-worktree.sh` as usual; the script itself preserves the worktree.
 

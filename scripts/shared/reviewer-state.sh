@@ -11,6 +11,10 @@
 # State machine (simpler than Worker):
 #   REVIEWING → TERMINATED (with verdict as detail)
 #
+# Verdict enum (TERMINATED detail, ADR-0021 Amendment 2):
+#   approved | changes-requested | failed
+#   Unknown values are rejected with exit 1 (Rule of Repair).
+#
 # State file format: STATE:TIMESTAMP:detail (one line, detail may contain colons)
 # State file path: ${CEKERNEL_IPC_DIR}/reviewer-{issue}.state
 #
@@ -21,6 +25,9 @@
 
 # Valid states for Reviewer
 _CEKERNEL_REVIEWER_VALID_STATES="REVIEWING TERMINATED"
+
+# Valid verdicts for TERMINATED state (ADR-0021 Amendment 2, β)
+_CEKERNEL_REVIEWER_VALID_VERDICTS="approved changes-requested failed"
 
 # reviewer_state_list_active <ipc-dir>
 #   List issue numbers of non-TERMINATED reviewers in the given IPC directory.
@@ -64,6 +71,17 @@ reviewer_state_write() {
       return 1
       ;;
   esac
+
+  # Validate verdict for TERMINATED state (ADR-0021 Amendment 2, β)
+  if [[ "$state" == "TERMINATED" ]]; then
+    case "$detail" in
+      approved|changes-requested|failed) ;;
+      *)
+        echo "Error: invalid reviewer verdict '${detail}'. Valid: ${_CEKERNEL_REVIEWER_VALID_VERDICTS}" >&2
+        return 1
+        ;;
+    esac
+  fi
 
   local state_file="${CEKERNEL_IPC_DIR}/reviewer-${issue}.state"
   local timestamp
