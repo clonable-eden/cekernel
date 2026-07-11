@@ -271,14 +271,19 @@ make_handle() {
   assert_eq "ps no session token" "no orchestrators." "$output"
 }
 
-@test "ps shows session, claude token, and the alive verdict" {
+@test "ps outputs JSON Lines with type=orchestrator for orchestrator row" {
   make_orchestrator "$IPC_A" "$ORCH_TOKEN_A"
   mock_claude_enqueue_agents \
     "[$(mock_claude_agent_record "$ORCH_TOKEN_A" background /repo 1700000000000 busy)]"
   run bash "$ORCHCTL" ps
-  assert_match "shows session" "$SESSION_A" "$output"
-  assert_match "shows claude token" "$ORCH_TOKEN_A" "$output"
-  assert_match "shows alive verdict" "alive" "$output"
+  local line
+  line=$(echo "$output" | grep '"type":"orchestrator"')
+  assert_match "shows session" "$SESSION_A" "$line"
+  assert_match "shows claude token" "$ORCH_TOKEN_A" "$line"
+  assert_match "shows alive verdict" '"verdict":"alive"' "$line"
+  # Verify it's valid JSON
+  echo "$line" | jq . >/dev/null 2>&1
+  assert_eq "valid JSON" "0" "$?"
 }
 
 @test "ps surfaces a blocked session distinctly (ADR-0016)" {
@@ -286,14 +291,14 @@ make_handle() {
   mock_claude_enqueue_agents \
     "[$(mock_claude_agent_record "$ORCH_TOKEN_A" background /repo 1700000000000 blocked)]"
   run bash "$ORCHCTL" ps
-  assert_match "shows blocked state" "blocked" "$output"
+  assert_match "shows blocked verdict" '"verdict":"blocked"' "$output"
 }
 
 @test "ps shows not-listed when the session is absent (ADR-0018 vocabulary)" {
   make_orchestrator "$IPC_A" "$ORCH_TOKEN_A"
   # queue empty → agents --json replies []
   run bash "$ORCHCTL" ps
-  assert_match "shows not-listed" "not-listed" "$output"
+  assert_match "shows not-listed" '"verdict":"not-listed"' "$output"
 }
 
 @test "ps elapsed reads from orchestrator.spawned" {
@@ -302,10 +307,10 @@ make_handle() {
   mock_claude_enqueue_agents \
     "[$(mock_claude_agent_record "$ORCH_TOKEN_A" background /repo 1700000000000 busy)]"
   run bash "$ORCHCTL" ps
-  assert_match "elapsed from .spawned (epoch 0 → hours)" 'elapsed=[0-9]+h' "$output"
+  assert_match "elapsed from .spawned (epoch 0 → hours)" '"elapsed":"[0-9]+h' "$output"
 }
 
-@test "ps lists multiple sessions" {
+@test "ps lists multiple sessions as JSON Lines" {
   make_orchestrator "$IPC_A" "$ORCH_TOKEN_A"
   make_orchestrator "$IPC_B" "$ORCH_TOKEN_B"
   mock_claude_enqueue_agents "[
@@ -314,9 +319,9 @@ make_handle() {
   ]"
   run bash "$ORCHCTL" ps
   local line_count
-  line_count=$(echo "$output" | grep -c "orchestrator" || true)
-  assert_eq "two orchestrators" "2" "$line_count"
-  assert_match "done state shown as-is" "done" "$output"
+  line_count=$(echo "$output" | grep -c '"type":"orchestrator"' || true)
+  assert_eq "two orchestrator JSON lines" "2" "$line_count"
+  assert_match "done verdict shown" '"verdict":"done"' "$output"
 }
 
 @test "ps --session filters to the given session" {
@@ -327,7 +332,7 @@ make_handle() {
     $(mock_claude_agent_record "$ORCH_TOKEN_B" background /repo 1700000001000 busy)
   ]"
   run bash "$ORCHCTL" ps --session "$SESSION_B"
-  assert_match "shows filtered session" "$SESSION_B" "$output"
+  assert_match "shows filtered session" '"session":"'"$SESSION_B"'"' "$output"
   if [[ "$output" == *"$SESSION_A"* ]]; then
     echo "FAIL: ps --session should not show other sessions" >&2
     return 1
@@ -349,7 +354,7 @@ make_handle() {
 
 # ── ps managed rows (agents --json view layer, ADR-0016 Phase 4 / #549) ──
 
-@test "ps joins worker row: issue, phase, priority from cekernel files" {
+@test "ps joins worker row: JSON with issue, phase, priority, verdict" {
   make_orchestrator "$IPC_A" "$ORCH_TOKEN_A"
   make_worker "$IPC_A" 10
   make_handle "$IPC_A" 10 worker "$WORKER_TOKEN"
@@ -359,12 +364,15 @@ make_handle() {
   ]"
   run bash "$ORCHCTL" ps
   local worker_line
-  worker_line=$(echo "$output" | grep "#10")
-  assert_match "row shows type worker" "worker" "$worker_line"
-  assert_match "row shows claude token" "claude=${WORKER_TOKEN}" "$worker_line"
-  assert_match "row joins phase from state file" "phase=phase1:implement" "$worker_line"
-  assert_match "row joins priority from priority file" "priority=10" "$worker_line"
-  assert_match "row shows alive verdict" "alive" "$worker_line"
+  worker_line=$(echo "$output" | grep '"issue":10')
+  assert_match "row shows type worker" '"type":"worker"' "$worker_line"
+  assert_match "row shows claude token" "$WORKER_TOKEN" "$worker_line"
+  assert_match "row joins phase from state file" '"phase":"phase1:implement"' "$worker_line"
+  assert_match "row joins priority from priority file" '"priority":10' "$worker_line"
+  assert_match "row shows alive verdict" '"verdict":"alive"' "$worker_line"
+  # Verify valid JSON
+  echo "$worker_line" | jq . >/dev/null 2>&1
+  assert_eq "valid JSON" "0" "$?"
 }
 
 @test "ps surfaces a blocked worker session distinctly (ADR-0016 MUST)" {
@@ -376,7 +384,7 @@ make_handle() {
     $(mock_claude_agent_record "$WORKER_TOKEN" background /repo 1700000001000 blocked)
   ]"
   run bash "$ORCHCTL" ps
-  assert_match "worker row shows blocked" "blocked" "$(echo "$output" | grep "#10")"
+  assert_match "worker row shows blocked" '"verdict":"blocked"' "$(echo "$output" | grep '"issue":10')"
 }
 
 @test "ps shows not-listed for a worker token absent from the roster" {
@@ -386,7 +394,7 @@ make_handle() {
   mock_claude_enqueue_agents \
     "[$(mock_claude_agent_record "$ORCH_TOKEN_A" background /repo 1700000000000 busy)]"
   run bash "$ORCHCTL" ps
-  assert_match "worker row shows not-listed" "not-listed" "$(echo "$output" | grep "#10")"
+  assert_match "worker row shows not-listed" '"verdict":"not-listed"' "$(echo "$output" | grep '"issue":10')"
 }
 
 @test "ps shows worker rows in a session without an orchestrator token" {
@@ -397,8 +405,8 @@ make_handle() {
   mock_claude_enqueue_agents \
     "[$(mock_claude_agent_record "$WORKER_TOKEN" background /repo 1700000001000 busy)]"
   run bash "$ORCHCTL" ps
-  assert_match "worker row shown" "#10" "$output"
-  assert_match "worker row shows alive" "alive" "$(echo "$output" | grep "#10")"
+  assert_match "worker row shown" '"issue":10' "$output"
+  assert_match "worker row shows alive" '"verdict":"alive"' "$(echo "$output" | grep '"issue":10')"
   if [[ "$output" == *"no orchestrators."* ]]; then
     echo "FAIL: worker rows found — must not print 'no orchestrators.'" >&2
     return 1
@@ -411,7 +419,7 @@ make_handle() {
   mock_claude_enqueue_agents \
     "[$(mock_claude_agent_record "$REVIEWER_TOKEN" background /repo 1700000001000 busy)]"
   run bash "$ORCHCTL" ps
-  assert_match "row shows type reviewer" "reviewer" "$(echo "$output" | grep "#11")"
+  assert_match "row shows type reviewer" '"type":"reviewer"' "$(echo "$output" | grep '"issue":11')"
 }
 
 @test "ps --session filter applies to worker rows" {
@@ -424,8 +432,8 @@ make_handle() {
     $(mock_claude_agent_record "$REVIEWER_TOKEN" background /repo 1700000002000 busy)
   ]"
   run bash "$ORCHCTL" ps --session "$SESSION_A"
-  assert_match "filtered session worker shown" "#10" "$output"
-  if [[ "$output" == *"#20"* ]]; then
+  assert_match "filtered session worker shown" '"issue":10' "$output"
+  if [[ "$output" == *'"issue":20'* ]]; then
     echo "FAIL: ps --session should not show other sessions' workers" >&2
     return 1
   fi
@@ -596,15 +604,20 @@ make_reviewer_state() {
 
 # ── ps: reviewer-*.state surface (#627) ──
 
-@test "ps shows reviewer row from reviewer-*.state (no handle needed)" {
+@test "ps shows reviewer row from reviewer-*.state as JSON" {
   make_orchestrator "$IPC_A" "$ORCH_TOKEN_A"
   make_reviewer_state "$IPC_A" 10
   mock_claude_enqueue_agents \
     "[$(mock_claude_agent_record "$ORCH_TOKEN_A" background /repo 1700000000000 busy)]"
   run bash "$ORCHCTL" ps
-  assert_match "reviewer row shown" "#10" "$output"
-  assert_match "row shows type reviewer" "reviewer" "$(echo "$output" | grep "#10")"
-  assert_match "row shows state" "REVIEWING" "$(echo "$output" | grep "#10")"
+  local reviewer_line
+  reviewer_line=$(echo "$output" | grep '"issue":10')
+  assert_match "row shows type reviewer" '"type":"reviewer"' "$reviewer_line"
+  assert_match "row shows state" '"state":"REVIEWING"' "$reviewer_line"
+  assert_match "row shows detail" '"detail":"review:in-progress"' "$reviewer_line"
+  # Verify valid JSON
+  echo "$reviewer_line" | jq . >/dev/null 2>&1
+  assert_eq "valid JSON" "0" "$?"
 }
 
 @test "ps excludes TERMINATED reviewer from reviewer-*.state" {
@@ -613,13 +626,13 @@ make_reviewer_state() {
   mock_claude_enqueue_agents \
     "[$(mock_claude_agent_record "$ORCH_TOKEN_A" background /repo 1700000000000 busy)]"
   run bash "$ORCHCTL" ps
-  if [[ "$output" == *"#10"* ]]; then
+  if [[ "$output" == *'"issue":10'* ]]; then
     echo "FAIL: TERMINATED reviewer should not appear in ps" >&2
     return 1
   fi
 }
 
-@test "ps shows both worker and reviewer rows" {
+@test "ps shows both worker and reviewer rows as JSON Lines" {
   make_orchestrator "$IPC_A" "$ORCH_TOKEN_A"
   make_worker "$IPC_A" 10
   make_handle "$IPC_A" 10 worker "$WORKER_TOKEN"
@@ -629,8 +642,8 @@ make_reviewer_state() {
     $(mock_claude_agent_record "$WORKER_TOKEN" background /repo 1700000001000 busy)
   ]"
   run bash "$ORCHCTL" ps
-  assert_match "worker row" "#10" "$output"
-  assert_match "reviewer row" "#11" "$output"
+  assert_match "worker row" '"issue":10' "$output"
+  assert_match "reviewer row" '"issue":11' "$output"
 }
 
 @test "ps --session filter applies to reviewer rows" {
@@ -638,7 +651,7 @@ make_reviewer_state() {
   make_reviewer_state "$IPC_B" 20
   mock_claude_enqueue_agents "[]"
   run bash "$ORCHCTL" ps --session "$SESSION_A"
-  if [[ "$output" == *"#20"* ]]; then
+  if [[ "$output" == *'"issue":20'* ]]; then
     echo "FAIL: ps --session should not show other sessions' reviewers" >&2
     return 1
   fi
