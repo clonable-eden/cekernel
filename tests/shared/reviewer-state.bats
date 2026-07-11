@@ -47,6 +47,36 @@ teardown() {
   assert_eq "TERMINATED: exit 0" "0" "$status"
 }
 
+@test "reviewer_state_write validates verdict for TERMINATED state" {
+  # Valid verdicts: approved, changes-requested, failed
+  run reviewer_state_write 42 TERMINATED "approved"
+  assert_eq "approved: exit 0" "0" "$status"
+  run reviewer_state_write 42 TERMINATED "changes-requested"
+  assert_eq "changes-requested: exit 0" "0" "$status"
+  run reviewer_state_write 42 TERMINATED "failed"
+  assert_eq "failed: exit 0" "0" "$status"
+
+  # Invalid verdicts: unverified, escalated, anything else
+  run reviewer_state_write 42 TERMINATED "unverified"
+  assert_eq "unverified: exit 1" "1" "$status"
+  run reviewer_state_write 42 TERMINATED "escalated"
+  assert_eq "escalated: exit 1" "1" "$status"
+  run reviewer_state_write 42 TERMINATED "APPROVED"
+  assert_eq "APPROVED (uppercase): exit 1" "1" "$status"
+  run reviewer_state_write 42 TERMINATED ""
+  assert_eq "empty verdict: exit 1" "1" "$status"
+}
+
+@test "reviewer_state_write allows any detail for REVIEWING state" {
+  # REVIEWING does not enforce verdict enum — detail is freeform
+  run reviewer_state_write 42 REVIEWING "review:in-progress"
+  assert_eq "review:in-progress: exit 0" "0" "$status"
+  run reviewer_state_write 42 REVIEWING "anything"
+  assert_eq "anything: exit 0" "0" "$status"
+  run reviewer_state_write 42 REVIEWING ""
+  assert_eq "empty: exit 0" "0" "$status"
+}
+
 @test "reviewer_state_write errors without CEKERNEL_IPC_DIR" {
   unset CEKERNEL_IPC_DIR
   run reviewer_state_write 42 REVIEWING "test"
