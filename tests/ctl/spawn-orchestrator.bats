@@ -176,6 +176,51 @@ enqueue_capture() {
 
 # ── conditional --bare (ADR-0016 Amendment 1) ──
 
+# ── env.sh generation (#652) ──
+
+@test "spawn generates env.sh in CEKERNEL_IPC_DIR with CEKERNEL_* vars" {
+  enqueue_capture
+  export CEKERNEL_AGENT_WORKER="cekernel:worker"
+  export CEKERNEL_AGENT_REVIEWER="cekernel:reviewer"
+  run_spawn "test prompt"
+  assert_eq "exit status" "0" "$status"
+
+  assert_file_exists "env.sh generated" "${CEKERNEL_IPC_DIR}/env.sh"
+  local content
+  content=$(cat "${CEKERNEL_IPC_DIR}/env.sh")
+  assert_match "env.sh has CEKERNEL_SESSION_ID" "CEKERNEL_SESSION_ID=" "$content"
+  assert_match "env.sh has CEKERNEL_IPC_DIR" "CEKERNEL_IPC_DIR=" "$content"
+  assert_match "env.sh has CEKERNEL_ENV" "CEKERNEL_ENV=" "$content"
+  assert_match "env.sh has CEKERNEL_AGENT_WORKER" "CEKERNEL_AGENT_WORKER=" "$content"
+  assert_match "env.sh has CEKERNEL_AGENT_REVIEWER" "CEKERNEL_AGENT_REVIEWER=" "$content"
+}
+
+@test "env.sh includes PATH with orchestrator, process, and shared scripts" {
+  enqueue_capture
+  run_spawn "test prompt"
+  assert_eq "exit status" "0" "$status"
+
+  local content
+  content=$(cat "${CEKERNEL_IPC_DIR}/env.sh")
+  assert_match "env.sh has PATH export" "export PATH=" "$content"
+  assert_match "env.sh PATH includes orchestrator scripts" "scripts/orchestrator" "$content"
+  assert_match "env.sh PATH includes process scripts" "scripts/process" "$content"
+  assert_match "env.sh PATH includes shared scripts" "scripts/shared" "$content"
+}
+
+@test "env.sh is sourceable and sets variables" {
+  enqueue_capture
+  run_spawn "test prompt"
+  assert_eq "exit status" "0" "$status"
+
+  # Source env.sh in a clean environment and verify
+  local sid
+  sid=$(bash -c "unset CEKERNEL_SESSION_ID; source '${CEKERNEL_IPC_DIR}/env.sh' && echo \$CEKERNEL_SESSION_ID")
+  assert_eq "sourcing env.sh sets CEKERNEL_SESSION_ID" "$CEKERNEL_SESSION_ID" "$sid"
+}
+
+# ── conditional --bare (ADR-0016 Amendment 1) ──
+
 @test "spawn succeeds without --bare-compatible auth, dropping --bare (OAuth)" {
   enqueue_capture
   unset ANTHROPIC_API_KEY
