@@ -116,12 +116,24 @@ PR title, body, and issue link format follow the target repository's conventions
 
 > `phase-transition.sh <issue> WAITING "phase3:ci-waiting"` — when fixing failures: `phase-transition.sh <issue> RUNNING "phase3:ci-fixing"`
 
-On entry, load the env profile (reads `CEKERNEL_CI_MAX_RETRIES` etc.; `CEKERNEL_ENV` is already in your environment). If sourcing fails, fall back to the defaults stated in this document:
+On entry, load the env profile (reads `CEKERNEL_CI_MAX_RETRIES` etc.; `CEKERNEL_ENV` is already in your environment). If sourcing fails, fall back to the defaults stated in this document.
+
+**Use `wait-ci.sh` — the sanctioned blocking CI wait primitive**:
 
 ```bash
 source load-env.sh
-gh pr checks <pr-number> --watch
+wait-ci.sh <pr-number>    # foreground, chunk-timeout: 540s (Bash tool safe)
+# Result JSON: {"result":"passed|failed|watching", "pr":<N>}
+# - "passed"  → CI green, proceed to Phase 4
+# - "failed"  → read `gh pr checks`, fix, push, re-invoke wait-ci.sh
+# - "watching" → chunk timeout expired, re-invoke wait-ci.sh (NOT an error)
 ```
+
+**Anti-pattern — do NOT**:
+- Poll `gh run view` or `gh pr checks` (without `--watch`) in a loop
+- Detach `gh pr checks --watch` to background and `tail` the output file
+- Run multiple concurrent `gh pr checks --watch` or `bats` background processes
+- Read CI output files repeatedly when a background task notification is pending
 
 On CI failure: check `gh pr checks`, fix, push, wait again. After `CEKERNEL_CI_MAX_RETRIES` failures (default: 3), post a Result comment (Status: failed, reason in Summary) and run `notify-complete.sh <issue-number> failed "reason"`.
 
@@ -150,3 +162,4 @@ notify-complete.sh <issue-number> ci-passed <pr-number>
 - **Never merge PRs** — merge is the Orchestrator's responsibility after Reviewer approval
 - Do not delete the worktree (that is the Orchestrator's responsibility)
 - Do not read or modify orchestrator scripts (`scripts/orchestrator/`) — outside Worker authority
+- **Use `git rm` to delete tracked files** — plain `rm` on tracked files triggers an interactive prompt that stalls the session; `git rm` avoids this and correctly stages the deletion
