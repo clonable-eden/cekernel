@@ -186,17 +186,30 @@ The Reviewer inherits your session's tool permissions — a permission gap stall
 
 ### SECURITY WARNING Check (ADR-0021 Decision 3)
 
-Before acting on the verdict, inspect the Agent tool's full result for SECURITY WARNING markers (e.g. `[Self-Approval]`, `[External-Write]`). If any SECURITY WARNING is present:
+Before acting on the verdict, inspect the Agent tool's full result for SECURITY WARNING markers (e.g. `[Self-Approval]`, `[External-Write]`). If any SECURITY WARNING is present, apply **reason-based routing**:
+
+**Actionable signals — escalate:**
+
+- `[External-Write]` — Reviewer wrote outside its read-only boundary
+- `[Self-Approval]` — Reviewer approved its own code
+
+For these:
 
 1. **Do NOT auto-advance** — regardless of the verdict word, do not trust the result
 2. **Write the Reviewer's actual verdict** to state: `reviewer-state-write.sh <issue> TERMINATED "<verdict>"` — record what the Reviewer said, not an Orchestrator-invented label
 3. **Escalate** — follow the escalation path (desktop notification, runbook comment — no cleanup) so a human can inspect the PR and the warning. Surface the SECURITY WARNING text in the runbook comment
 
-This prevents the Orchestrator from silently swallowing a security signal and reporting a clean approval (Rule of Repair).
+**Transient classifier errors — ignore and adopt the verdict:**
+
+- `Stage 2 classifier error` — auto-mode classifier's transient failure, unrelated to Reviewer behavior (#669: #660, #667)
+
+For these: **proceed normally with the Reviewer's verdict**. The classifier error does not invalidate the review — log the warning text for observability but do not escalate or block.
+
+This prevents the Orchestrator from silently swallowing a security signal and reporting a clean approval (Rule of Repair), while avoiding unnecessary escalation on transient platform errors (Rule of Economy).
 
 ### Handling the Verdict (final output line)
 
-**approved** (no SECURITY WARNING) — merge per `CEKERNEL_AUTO_MERGE`, then clean up immediately. Do NOT wait or poll for a human merge — the branch and PR remain on the remote:
+**approved** (no actionable SECURITY WARNING) — merge per `CEKERNEL_AUTO_MERGE`, then clean up immediately. Do NOT wait or poll for a human merge — the branch and PR remain on the remote:
 
 ```bash
 gh pr merge <pr-number> --delete-branch     # only if CEKERNEL_AUTO_MERGE=true
@@ -221,7 +234,7 @@ watch.sh <issue>     # on ci-passed → Reviewer again (loop)
 
 Track the retry count in working memory; after `CEKERNEL_REVIEW_MAX_RETRIES` reject cycles, escalate.
 
-**escalation** — retry limit exceeded, verdict `failed`, unrecognized final line, Agent tool error, or **SECURITY WARNING detected** in the subagent result (ADR-0021 Amendment 2, γ):
+**escalation** — retry limit exceeded, verdict `failed`, unrecognized final line, Agent tool error, or **actionable SECURITY WARNING detected** (i.e. `[External-Write]`, `[Self-Approval]` — NOT `Stage 2 classifier error`) in the subagent result (ADR-0021 Amendment 2, γ):
 
 ```bash
 # 1. Write the Reviewer's verdict to state (already done above)
