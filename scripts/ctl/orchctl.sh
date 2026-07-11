@@ -321,6 +321,11 @@ cmd_ls() {
 }
 
 # ── ps: agents --json view layer (ADR-0016 Phase 4, ADR-0021 #627) ──
+# Outputs JSON Lines — one line per orchestrator/worker/reviewer — with a
+# `type` field distinguishing process kinds (#660). Schema matches `ls`
+# with `type` added. Tree structure assembly is the consumer's
+# responsibility (skill / jq).
+#
 # `claude agents --json` is fetched ONCE per invocation (the body is an
 # OPAQUE snapshot — only claude-bg.sh predicates parse it, ADR-0018);
 # every registered token (orchestrator.claude-session-id,
@@ -381,11 +386,17 @@ cmd_ps() {
           elapsed=$(format_elapsed "$(($(date +%s) - spawned_at))")
         fi
 
-        local state
-        state=$(claude_bg_token_verdict_from_json "$agents_json" "$token") || true
+        local verdict
+        verdict=$(claude_bg_token_verdict_from_json "$agents_json" "$token") || true
 
         found=$((found + 1))
-        echo "orchestrator  claude=${token}  session=${sid}  elapsed=${elapsed}  ${state}"
+        jq -cn \
+          --arg session "$sid" \
+          --arg type "orchestrator" \
+          --arg claude "$token" \
+          --arg elapsed "${elapsed:-}" \
+          --arg verdict "$verdict" \
+          '{session: $session, type: $type, claude: $claude, elapsed: $elapsed, verdict: $verdict}'
       fi
     fi
 
@@ -403,8 +414,8 @@ cmd_ps() {
       mtoken=$(tr -d '[:space:]' < "$handle_file")
       [[ -n "$mtoken" ]] || continue
 
-      local mstate
-      mstate=$(claude_bg_token_verdict_from_json "$agents_json" "$mtoken") || true
+      local mverdict
+      mverdict=$(claude_bg_token_verdict_from_json "$agents_json" "$mtoken") || true
 
       # Join cekernel-specific columns from state/priority files.
       # CEKERNEL_IPC_DIR is scoped to each command substitution (subshell)
@@ -414,7 +425,15 @@ cmd_ps() {
       priority=$(CEKERNEL_IPC_DIR="$session_dir" worker_priority_read "$issue" | jq -r '.priority')
 
       found=$((found + 1))
-      echo "  ${mtype}  #${issue}  claude=${mtoken}  phase=${phase}  priority=${priority}  ${mstate}"
+      jq -cn \
+        --arg session "$sid" \
+        --arg type "$mtype" \
+        --argjson issue "$issue" \
+        --arg claude "$mtoken" \
+        --arg phase "$phase" \
+        --argjson priority "$priority" \
+        --arg verdict "$mverdict" \
+        '{session: $session, type: $type, issue: $issue, claude: $claude, phase: $phase, priority: $priority, verdict: $verdict}'
     done
 
     # ── Managed rows: Reviewer subagents (state-file based, ADR-0021 #627) ──
@@ -427,7 +446,13 @@ cmd_ps() {
       rdetail=$(echo "$rstate_json" | jq -r '.detail')
 
       found=$((found + 1))
-      echo "  reviewer  #${rissue}  state=${rstate}  detail=${rdetail}"
+      jq -cn \
+        --arg session "$sid" \
+        --arg type "reviewer" \
+        --argjson issue "$rissue" \
+        --arg state "$rstate" \
+        --arg detail "$rdetail" \
+        '{session: $session, type: $type, issue: $issue, state: $state, detail: $detail}'
     done
   done
 
