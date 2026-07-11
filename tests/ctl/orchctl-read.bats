@@ -1,10 +1,10 @@
 #!/usr/bin/env bats
 bats_require_minimum_version 1.5.0
 # orchctl-read.bats — bats-core tests for scripts/ctl/orchctl.sh read subcommands
-# (ls / inspect / target resolution / ps / count / usage)
+# (ls / target resolution / ps / count / usage)
 #
 # Consolidates (ADR-0017 Decision 4):
-#   tests/ctl/test-orchctl.sh       — ls / inspect / target resolution / usage
+#   tests/ctl/test-orchctl.sh       — ls / target resolution / usage
 #   tests/ctl/test-orchctl-ps.sh    — ps command
 #   tests/ctl/test-orchctl-count.sh — count command
 #
@@ -178,25 +178,25 @@ make_handle() {
     "$(echo "$output" | grep '"issue":10')"
 }
 
-# ── Target resolution (via inspect) ──
+# ── Target resolution (via term) ──
 
 @test "resolve: unique issue resolves" {
   make_worker "$IPC_A" 10
-  run bash "$ORCHCTL" inspect 10
+  run bash "$ORCHCTL" term 10
   assert_eq "exit 0" "0" "$status"
-  assert_match "resolves issue 10" '"issue":10' "$output"
+  [[ -f "${IPC_A}/worker-10.signal" ]] || { echo "FAIL: signal file not written"; return 1; }
 }
 
 @test "resolve: non-existent issue errors" {
   make_worker "$IPC_A" 10
-  run bash "$ORCHCTL" inspect 999
+  run bash "$ORCHCTL" term 999
   assert_eq "exit 1" "1" "$status"
 }
 
 @test "resolve: ambiguous issue errors with candidates" {
   make_worker "$IPC_A" 10
   make_worker "$IPC_B" 10 "RUNNING:2026-02-28T10:00:00Z:test"
-  run bash "$ORCHCTL" inspect 10
+  run bash "$ORCHCTL" term 10
   assert_eq "exit 1" "1" "$status"
   assert_match "error shows ambiguous" "ambiguous" "$output"
 }
@@ -204,58 +204,27 @@ make_handle() {
 @test "resolve: repo:issue filter matches session-ID prefix" {
   make_worker "$IPC_A" 10
   make_worker "$IPC_B" 10 "RUNNING:2026-02-28T10:00:00Z:test"
-  run bash "$ORCHCTL" inspect test-orchctl-repo1:10
+  run bash "$ORCHCTL" term test-orchctl-repo1:10
   assert_eq "exit 0" "0" "$status"
-  assert_match "resolves issue" '"issue":10' "$output"
-  assert_match "correct session" "$SESSION_A" "$output"
+  [[ -f "${IPC_A}/worker-10.signal" ]] || { echo "FAIL: signal file not written in correct session"; return 1; }
 }
 
 @test "resolve: org/repo filter matches repo metadata file" {
   make_worker "$IPC_A" 10
   echo "clonable-eden/test-repo" > "${IPC_A}/repo"
-  run bash "$ORCHCTL" inspect "clonable-eden/test-repo:10"
+  run bash "$ORCHCTL" term "clonable-eden/test-repo:10"
   assert_eq "exit 0" "0" "$status"
-  assert_match "resolves issue" '"issue":10' "$output"
+  [[ -f "${IPC_A}/worker-10.signal" ]] || { echo "FAIL: signal file not written"; return 1; }
 }
 
 @test "resolve: explicit --session resolves; wrong issue errors" {
   make_worker "$IPC_A" 10
-  run bash "$ORCHCTL" inspect 10 --session "$SESSION_A"
+  run bash "$ORCHCTL" term 10 --session "$SESSION_A"
   assert_eq "--session exit 0" "0" "$status"
-  assert_match "resolves issue" '"issue":10' "$output"
-  assert_match "correct session" "$SESSION_A" "$output"
+  [[ -f "${IPC_A}/worker-10.signal" ]] || { echo "FAIL: signal file not written"; return 1; }
 
-  run bash "$ORCHCTL" inspect 999 --session "$SESSION_A"
+  run bash "$ORCHCTL" term 999 --session "$SESSION_A"
   assert_eq "--session wrong issue: exit 1" "1" "$status"
-}
-
-# ── inspect ──
-
-@test "inspect output contains state, priority, session, type, detail, timestamp" {
-  make_worker "$IPC_A" 10
-  echo "5" > "${IPC_A}/worker-10.priority"
-  echo "worker" > "${IPC_A}/worker-10.type"
-  run bash "$ORCHCTL" inspect 10 --session "$SESSION_A"
-  assert_match "contains state" '"state":"RUNNING"' "$output"
-  assert_match "contains priority" '"priority":5' "$output"
-  assert_match "contains session" "$SESSION_A" "$output"
-  assert_match "contains type" '"type":"worker"' "$output"
-  assert_match "contains detail" '"detail":"phase1:implement"' "$output"
-  assert_match "contains timestamp" '"timestamp":"2026-02-28T10:00:00Z"' "$output"
-}
-
-@test "inspect output contains backend from metadata file" {
-  make_worker "$IPC_A" 10
-  echo "headless" > "${IPC_A}/worker-10.backend"
-  run bash "$ORCHCTL" inspect 10 --session "$SESSION_A"
-  assert_match "backend metadata: headless" '"backend":"headless"' "$output"
-}
-
-@test "inspect elapsed reads from .spawned file" {
-  make_worker "$IPC_A" 10
-  echo "0" > "${IPC_A}/worker-10.spawned"
-  run bash "$ORCHCTL" inspect 10 --session "$SESSION_A"
-  assert_match "elapsed from .spawned (epoch 0 → hours)" '"elapsed":"[0-9]+h' "$output"
 }
 
 # ── ps (session-ID based, ADR-0016 Phase 2) ──
