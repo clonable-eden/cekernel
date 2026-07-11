@@ -32,9 +32,15 @@ setup() {
   IPC="${IPC_BASE}/${SESSION}"
 
   BGPIDS=""
+
+  # gc's escalation-residue sweep (#671) enumerates the CWD repo's
+  # .worktrees/ — run every test outside any git repo so gc never
+  # touches the real repo's worktrees.
+  cd "$BATS_TEST_TMPDIR"
 }
 
 teardown() {
+  cd /
   local p
   for p in $BGPIDS; do
     kill "$p" 2>/dev/null || true
@@ -784,4 +790,129 @@ worker_state() {
   local reviewer_state
   reviewer_state=$(cat "${session_dir}/reviewer-51.state")
   assert_match "reviewer state unchanged" "^REVIEWING:" "$reviewer_state"
+}
+
+# ── gc: escalation-residue sweep — worktree + lock vs PR state (#671) ──
+# ADR-0021 Amendment 2 (γ): escalation preserves the worktree and lock for
+# human disposition. Once the PR reaches a terminal state (merged/closed),
+# gc reclaims both. Degradation policy (ADR-0018): an open PR, a missing
+# PR, or a failed gh query all preserve the resources — never reap on doubt.
+
+# Create a temp main repo with a spawn.sh-convention worktree for $1.
+# Sets: SWEEP_REPO, SWEEP_ROOT, SWEEP_BRANCH, SWEEP_WT
+make_sweep_repo() {
+  local issue="$1"
+  SWEEP_REPO="${BATS_TEST_TMPDIR}/sweep-repo"
+  mkdir -p "$SWEEP_REPO"
+  git -C "$SWEEP_REPO" init --quiet
+  git -C "$SWEEP_REPO" -c user.name=test -c user.email=test@test \
+    commit --allow-empty -m "initial" --quiet
+  SWEEP_BRANCH="issue/${issue}-sweep-test"
+  SWEEP_WT="${SWEEP_REPO}/.worktrees/${SWEEP_BRANCH}"
+  git -C "$SWEEP_REPO" worktree add -b "$SWEEP_BRANCH" "$SWEEP_WT" HEAD --quiet
+  # Path as the sweep resolves it (symlink-free), for the lock hash
+  SWEEP_ROOT=$(git -C "$SWEEP_REPO" rev-parse --show-toplevel)
+
+  # Isolate cleanup-worktree.sh side effects (trust registry, backend)
+  export CLAUDE_JSON="${BATS_TEST_TMPDIR}/claude.json"
+  export CEKERNEL_BACKEND=headless
+}
+
+# Create an issue lock for $1 with a LIVE holder ($$) — the escalation
+# case: section-2's holder-liveness gc must NOT free it; only the
+# PR-state sweep may. Sets: SWEEP_LOCK
+make_sweep_lock() {
+  local issue="$1"
+  source "${CEKERNEL_DIR}/scripts/shared/issue-lock.sh"
+  local hash
+  hash=$(issue_lock_repo_hash "$SWEEP_ROOT")
+  SWEEP_LOCK="${CEKERNEL_VAR_DIR}/locks/${hash}/${issue}.lock"
+  mkdir -p "$SWEEP_LOCK"
+  echo "$$" > "${SWEEP_LOCK}/pid"
+}
+
+run_gc_in_repo() {
+  run bash -c "cd '$SWEEP_REPO' && bash '$ORCHCTL' gc $*"
+}
+
+@test "gc sweep reclaims worktree, branch, and lock when PR is merged" {
+  make_sweep_repo 42
+  make_sweep_lock 42
+  # Worker finished: TERMINATED state counts as inactive
+  mkdir -p "$IPC"
+  echo "TERMINATED:2026-07-11T10:00:00Z:ci-passed:pr-99" > "${IPC}/worker-42.state"
+  mock_bin gh 'echo MERGED'
+
+  run_gc_in_repo
+  assert_eq "gc exit 0" "0" "$status"
+  assert_not_exists "worktree removed" "$SWEEP_WT"
+  assert_eq "local branch deleted" "" \
+    "$(git -C "$SWEEP_REPO" branch --list "$SWEEP_BRANCH")"
+  assert_not_exists "lock released despite live holder" "$SWEEP_LOCK"
+}
+
+@test "gc sweep reclaims worktree when PR is closed (rejected disposition)" {
+  make_sweep_repo 43
+  # No worker state at all → inactive
+  mock_bin gh 'echo CLOSED'
+
+  run_gc_in_repo
+  assert_eq "gc exit 0" "0" "$status"
+  assert_not_exists "worktree removed" "$SWEEP_WT"
+}
+
+@test "gc sweep preserves worktree and lock when PR is open" {
+  make_sweep_repo 44
+  make_sweep_lock 44
+  mock_bin gh 'echo OPEN'
+
+  run_gc_in_repo
+  assert_eq "gc exit 0" "0" "$status"
+  assert_dir_exists "worktree preserved (open PR = disposition pending)" "$SWEEP_WT"
+  assert_dir_exists "lock preserved" "$SWEEP_LOCK"
+}
+
+@test "gc sweep preserves worktree and lock when gh fails (cannot verify)" {
+  make_sweep_repo 45
+  make_sweep_lock 45
+  mock_bin gh 'exit 1'
+
+  run_gc_in_repo
+  assert_eq "gc exit 0 despite gh failure" "0" "$status"
+  assert_dir_exists "worktree preserved (gh failed → never reap on doubt)" "$SWEEP_WT"
+  assert_dir_exists "lock preserved" "$SWEEP_LOCK"
+}
+
+@test "gc sweep preserves worktree when no PR exists for the branch" {
+  make_sweep_repo 46
+  mock_bin gh ':'  # empty output, exit 0 — branch has no PR
+
+  run_gc_in_repo
+  assert_eq "gc exit 0" "0" "$status"
+  assert_dir_exists "worktree preserved (no PR to verify against)" "$SWEEP_WT"
+}
+
+@test "gc sweep preserves worktree of an active worker even when PR is merged" {
+  make_sweep_repo 47
+  mkdir -p "$IPC"
+  echo "WAITING:2026-07-11T10:00:00Z:phase3:ci-waiting" > "${IPC}/worker-47.state"
+  echo "$$" > "${IPC}/handle-47.worker"  # live handle → not reaped as stale
+  mock_bin gh 'echo MERGED'
+
+  run_gc_in_repo
+  assert_eq "gc exit 0" "0" "$status"
+  assert_dir_exists "worktree preserved (non-TERMINATED worker)" "$SWEEP_WT"
+}
+
+@test "gc --dry-run reports sweep candidates without reclaiming" {
+  make_sweep_repo 48
+  make_sweep_lock 48
+  mock_bin gh 'echo MERGED'
+
+  run_gc_in_repo --dry-run
+  assert_eq "gc exit 0" "0" "$status"
+  assert_dir_exists "worktree preserved in dry-run" "$SWEEP_WT"
+  assert_dir_exists "lock preserved in dry-run" "$SWEEP_LOCK"
+  assert_match "dry-run names the worktree" "would reclaim worktree" "$output"
+  assert_match "dry-run names the lock" "would release lock" "$output"
 }
