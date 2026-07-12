@@ -978,7 +978,18 @@ cmd_gc() {
         orch_verdict=$(claude_bg_token_verdict "$orch_token" 2>/dev/null) || true
         case "$orch_verdict" in
           done|stopped|not-listed) ;;  # verifiably dead — reap below
-          *) continue ;;               # alive/blocked or cannot verify
+          *)
+            # Alive/blocked or cannot verify — keep the session, and
+            # protect its active reviewers from the orphan sweep below
+            # (#678). Reviewers are Orchestrator subagents: they can
+            # only be running while the orchestrator session is alive,
+            # so orchestrator liveness is the reviewer liveness signal.
+            local rev_issue
+            for rev_issue in $(reviewer_state_list_active "$session_dir"); do
+              echo "${session_dir}:${rev_issue}" >> "$active_issues_file"
+            done
+            continue
+            ;;
         esac
       fi
 
@@ -991,9 +1002,11 @@ cmd_gc() {
         claude_bg_stop "$orch_token"
       fi
 
+      # claude-session-id (prefix-less) is the pre-v2 legacy name of
+      # orchestrator.claude-session-id — sweep it with the rest (#678).
       for meta_file in "$orch_sid_file" "$orch_legacy_pid_file" \
         "${session_dir}orchestrator.spawned" "${session_dir}repo" \
-        "${session_dir}env.sh"; do
+        "${session_dir}claude-session-id" "${session_dir}env.sh"; do
         if [[ -f "$meta_file" ]]; then
           if [[ "$dry_run" -eq 1 ]]; then
             echo "[dry-run] would remove stale metadata: $meta_file" >&2
@@ -1012,6 +1025,11 @@ cmd_gc() {
       [[ -d "$session_dir" ]] || continue
 
       _gc_clean_orphan_files "$session_dir" "worker-*.*"   "worker-"  "IPC file"
+      # Reviewer files (#678): reviewers are subagents — never active
+      # once the orchestrator session is dead. Active reviewers of live
+      # sessions are protected via active_issues (registered in the
+      # orchestrator liveness check above).
+      _gc_clean_orphan_files "$session_dir" "reviewer-*.*" "reviewer-" "reviewer file"
       _gc_clean_orphan_files "$session_dir" "handle-*.*"   "handle-"  "handle"
       _gc_clean_orphan_files "$session_dir" "pane-*.*"     "pane-"    "pane"
       _gc_clean_orphan_files "$session_dir" "payload-*.b64" "payload-" "payload"
