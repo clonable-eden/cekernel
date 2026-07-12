@@ -202,6 +202,14 @@ path already reasons about Orchestrator liveness, but does not clean
 `reviewer-*.state` today). Decide the exact mechanism when wiring
 `reviewer-*.state` into gc.
 
+*(Resolved by #678, 2026-07-12: the interim answer — exclude reviewer state
+from gc entirely — leaked IPC session dirs forever, since a leftover
+`reviewer-*.state` blocked `rmdir` (48 dirs observed). gc now sweeps
+`reviewer-*.*` under the standard orphan rule, and the Orchestrator-liveness
+check protects active reviewers exactly as anticipated here: when the
+orchestrator session is alive or unverifiable, its non-TERMINATED reviewers
+are registered as active before the sweep — never reap on doubt.)*
+
 ## Consequences
 
 ### Positive

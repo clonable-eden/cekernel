@@ -753,37 +753,82 @@ worker_state() {
   assert_match "detail is crashed:detected-by-gc" "crashed:detected-by-gc" "$state_content"
 }
 
-# ── gc: reviewer-*.state isolation (#627, ADR-0021 OQ2) ──
-# gc must NOT touch reviewer-*.state files. A REVIEWING record has no
-# session token, so the worker sweep would immediately reap it. The fix
-# is to not sweep reviewer state at all — staleness is bounded by the
-# Orchestrator's liveness (future scope).
+# ── gc: reviewer-*.* orphan sweep (#678, supersedes #627 / ADR-0021 OQ2) ──
+# ADR-0021 OQ2 originally excluded reviewer state from gc entirely, which
+# leaked IPC session dirs forever (rmdir never succeeded — 48 dirs observed).
+# New semantics: reviewers are Orchestrator subagents — they can only be
+# running while the orchestrator session is alive. gc protects active
+# (non-TERMINATED) reviewer state of alive/unverifiable orchestrator
+# sessions ("never reap on doubt"); everything else follows the same
+# orphan rule as worker files.
 
-@test "gc does NOT reap live REVIEWING reviewer state" {
+@test "gc preserves REVIEWING reviewer state while its orchestrator session is alive" {
+  mock_claude
   local session_dir="${IPC_BASE}/session-gc-rev1"
   mkdir -p "$session_dir"
+  echo "$SESSION_TOKEN" > "${session_dir}/orchestrator.claude-session-id"
   echo "REVIEWING:2026-07-09T10:00:00Z:review:in-progress" > "${session_dir}/reviewer-42.state"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$SESSION_TOKEN" background /repo 1700000000000 busy)]"
   run bash "$ORCHCTL" gc
-  assert_file_exists "live REVIEWING state preserved" "${session_dir}/reviewer-42.state"
+  assert_file_exists "REVIEWING state of live session preserved" \
+    "${session_dir}/reviewer-42.state"
 }
 
-@test "gc does NOT reap TERMINATED reviewer state" {
+@test "gc removes reviewer files of a dead orchestrator session and reclaims the dir" {
+  mock_claude
   local session_dir="${IPC_BASE}/session-gc-rev2"
   mkdir -p "$session_dir"
+  echo "$SESSION_TOKEN" > "${session_dir}/orchestrator.claude-session-id"
+  echo "REVIEWING:2026-07-09T10:00:00Z:review:in-progress" > "${session_dir}/reviewer-42.state"
   echo "TERMINATED:2026-07-09T10:00:00Z:approved" > "${session_dir}/reviewer-43.state"
+  echo "1711000000" > "${session_dir}/reviewer-44.spawned"  # legacy artifact
+  # empty agents queue → [] → session not listed → verifiably dead
   run bash "$ORCHCTL" gc
-  assert_file_exists "TERMINATED reviewer state preserved" "${session_dir}/reviewer-43.state"
+  assert_not_exists "REVIEWING state of dead session removed" \
+    "${session_dir}/reviewer-42.state"
+  assert_not_exists "TERMINATED reviewer state removed" \
+    "${session_dir}/reviewer-43.state"
+  assert_not_exists "legacy reviewer .spawned removed" \
+    "${session_dir}/reviewer-44.spawned"
+  assert_not_exists "emptied session dir removed" "$session_dir"
+}
+
+@test "gc removes orphan reviewer state when no orchestrator metadata remains" {
+  # The reported leak (#678): a previous gc reaped the orchestrator
+  # metadata but left reviewer-*.state behind, so rmdir failed forever.
+  local session_dir="${IPC_BASE}/session-gc-rev3"
+  mkdir -p "$session_dir"
+  echo "TERMINATED:2026-07-09T10:00:00Z:approved" > "${session_dir}/reviewer-655.state"
+  run bash "$ORCHCTL" gc
+  assert_not_exists "orphan reviewer state removed" "${session_dir}/reviewer-655.state"
+  assert_not_exists "emptied session dir removed" "$session_dir"
+}
+
+@test "gc preserves reviewer state of an issue with an active worker" {
+  local session_dir="${IPC_BASE}/session-gc-rev4"
+  mkdir -p "$session_dir"
+  # Active worker (non-TERMINATED state + live handle) on the same issue
+  echo "RUNNING:2026-07-09T10:00:00Z:phase1:implement" > "${session_dir}/worker-60.state"
+  echo "$$" > "${session_dir}/handle-60.worker"
+  echo "TERMINATED:2026-07-09T10:00:00Z:changes-requested" > "${session_dir}/reviewer-60.state"
+  run bash "$ORCHCTL" gc
+  assert_file_exists "reviewer state of active issue preserved" \
+    "${session_dir}/reviewer-60.state"
 }
 
 @test "gc does NOT interfere with reviewer state when reaping stale workers" {
   mock_claude
-  local session_dir="${IPC_BASE}/session-gc-rev3"
+  local session_dir="${IPC_BASE}/session-gc-rev5"
   mkdir -p "$session_dir"
+  echo "$SESSION_TOKEN" > "${session_dir}/orchestrator.claude-session-id"
   # Stale worker: dead handle
   echo "RUNNING:2026-07-09T10:00:00Z:working" > "${session_dir}/worker-50.state"
   echo "99999999" > "${session_dir}/handle-50.worker"
-  # Live reviewer for a different issue
+  # Live reviewer for a different issue, orchestrator session alive
   echo "REVIEWING:2026-07-09T10:00:00Z:review:in-progress" > "${session_dir}/reviewer-51.state"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$SESSION_TOKEN" background /repo 1700000000000 busy)]"
   run bash "$ORCHCTL" gc
   # Worker should be reaped
   local worker_state
@@ -794,6 +839,28 @@ worker_state() {
   local reviewer_state
   reviewer_state=$(cat "${session_dir}/reviewer-51.state")
   assert_match "reviewer state unchanged" "^REVIEWING:" "$reviewer_state"
+}
+
+@test "gc --dry-run reports orphan reviewer files without removing them" {
+  local session_dir="${IPC_BASE}/session-gc-rev6"
+  mkdir -p "$session_dir"
+  echo "TERMINATED:2026-07-09T10:00:00Z:approved" > "${session_dir}/reviewer-70.state"
+  run bash "$ORCHCTL" gc --dry-run
+  assert_file_exists "dry-run preserves reviewer state" "${session_dir}/reviewer-70.state"
+  assert_match "dry-run reports the reviewer file" "reviewer-70.state" "$output"
+}
+
+@test "gc removes legacy prefix-less claude-session-id with dead orchestrator metadata" {
+  mock_claude
+  local session_dir="${IPC_BASE}/session-gc-rev7"
+  mkdir -p "$session_dir"
+  # Pre-v2 layout: orchestrator.pid + prefix-less claude-session-id
+  echo "99999999" > "${session_dir}/orchestrator.pid"
+  echo "some-old-session-uuid" > "${session_dir}/claude-session-id"
+  run bash "$ORCHCTL" gc
+  assert_not_exists "legacy pid file swept" "${session_dir}/orchestrator.pid"
+  assert_not_exists "legacy claude-session-id swept" "${session_dir}/claude-session-id"
+  assert_not_exists "emptied session dir removed" "$session_dir"
 }
 
 # ── gc: escalation-residue sweep — worktree + lock vs PR state (#671) ──
