@@ -30,12 +30,6 @@
 #     — Outputs one path per line to stdout
 #     — Returns 1 if no .spawned files or no transcripts found
 #
-#   transcript_locate_all <issue-number> [session-id] [claude-home] [project-slug] [var-dir]
-#     — Combine worker + orchestrator transcript discovery
-#     — Falls back to .spawned-based session lookup when session-id is empty
-#     — Outputs one path per line to stdout
-#     — Returns partial results when only some transcripts are found
-#
 # Claude Code transcript locations (as of ADR-0013):
 #   Worker/Reviewer: ~/.claude/projects/*-issue-{number}-*/*.jsonl
 #   Orchestrator (claude -p):  ~/.claude/projects/<project>/<session-id>.jsonl
@@ -323,46 +317,6 @@ transcript_locate_orchestrator_by_issue() {
 
   if [[ "$any_found" -eq 0 ]]; then
     echo "No Orchestrator transcripts found for issue #${issue_number} (sessions checked from .spawned files)" >&2
-    return 1
-  fi
-}
-
-# transcript_locate_all <issue-number> [session-id] [claude-home] [project-slug] [var-dir]
-# Combines worker + orchestrator transcript discovery.
-# When session-id is empty, falls back to .spawned-based session reverse lookup.
-# Partial success is allowed: returns whatever is found, warns about missing.
-transcript_locate_all() {
-  local issue_number="${1:?Usage: transcript_locate_all <issue-number> [session-id] [claude-home] [project-slug] [var-dir]}"
-  local session_id="${2:-}"
-  local claude_home="${3:-${HOME}/.claude}"
-  local project_slug="${4:-}"
-  local var_dir="${5:-${CEKERNEL_VAR_DIR:-$HOME/.local/var/cekernel}}"
-
-  local any_found=0
-
-  # Worker/Reviewer transcripts
-  if transcript_locate_worker "$issue_number" "$claude_home" "$var_dir" 2>/dev/null; then
-    any_found=1
-  else
-    echo "Warning: No Worker/Reviewer transcripts found for issue #${issue_number}" >&2
-  fi
-
-  # Orchestrator transcripts (explicit session ID or .spawned fallback)
-  if [[ -n "$session_id" ]]; then
-    if transcript_locate_orchestrator "$session_id" "$claude_home" "$project_slug" 2>/dev/null; then
-      any_found=1
-    else
-      echo "Warning: No Orchestrator transcripts found for session ${session_id}" >&2
-    fi
-  else
-    # Fallback: scan .spawned files for session reverse lookup
-    if transcript_locate_orchestrator_by_issue "$issue_number" "$var_dir" "$claude_home" "$project_slug" 2>/dev/null; then
-      any_found=1
-    fi
-  fi
-
-  if [[ "$any_found" -eq 0 ]]; then
-    echo "No transcripts found for issue #${issue_number}" >&2
     return 1
   fi
 }

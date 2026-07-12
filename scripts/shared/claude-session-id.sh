@@ -20,11 +20,6 @@
 #     — Save session ID to ${CEKERNEL_IPC_DIR}/orchestrator.claude-session-id
 #     — Requires CEKERNEL_IPC_DIR to be set
 #     — Returns 1 if CEKERNEL_IPC_DIR is not set
-#
-#   claude_session_id_read
-#     — Read the persisted session ID from ${CEKERNEL_IPC_DIR}/orchestrator.claude-session-id
-#     — Output: session ID string to stdout
-#     — Returns 1 if file not found or CEKERNEL_IPC_DIR not set
 
 # claude_session_id_persist <session-id>
 # Saves the Claude Code session ID to the IPC directory.
@@ -41,22 +36,4 @@ claude_session_id_persist() {
 
   echo "$session_id" > "$tmp"
   mv -f "$tmp" "$target"
-}
-
-# claude_session_id_read
-# Reads the persisted Claude Code session ID from the IPC directory.
-claude_session_id_read() {
-  if [[ -z "${CEKERNEL_IPC_DIR:-}" ]]; then
-    echo "Error: CEKERNEL_IPC_DIR not set. Source session-id.sh first." >&2
-    return 1
-  fi
-
-  local target="${CEKERNEL_IPC_DIR}/orchestrator.claude-session-id"
-
-  if [[ ! -f "$target" ]]; then
-    echo "claude_session_id_read: file not found: ${target}" >&2
-    return 1
-  fi
-
-  cat "$target"
 }

@@ -98,23 +98,3 @@ setup() {
   assert_eq "exit 0" "0" "$status"
   assert_match "finds orchestrator transcript" "agent-010\.jsonl" "$output"
 }
-
-@test "locate_all combines worker and orchestrator transcripts" {
-  # Worker transcripts already exist from setup ($PROJECT_DIR has 2 .jsonl files)
-  # Add orchestrator subagent transcripts
-  local mock_session="mock-all-sess"
-  local mock_ipc="${VAR_DIR}/ipc/${mock_session}"
-  mkdir -p "$mock_ipc"
-  touch "${mock_ipc}/worker-42.spawned"
-
-  local sess_dir="${CLAUDE_HOME}/projects/-Users-t-repo/${mock_session}/subagents"
-  mkdir -p "$sess_dir"
-  touch "${sess_dir}/agent-all-001.jsonl"
-
-  run transcript_locate_all 42 "" "$CLAUDE_HOME" "-Users-t-repo" "$VAR_DIR"
-  assert_eq "exit 0" "0" "$status"
-  local count
-  count=$(echo "$output" | wc -l | tr -d ' ')
-  # 2 worker transcripts + 1 orchestrator transcript = 3
-  assert_eq "combines all transcripts" "3" "$count"
-}
