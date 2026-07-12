@@ -15,7 +15,7 @@ No arguments required — by default, picks up all open issues with the `ready` 
 Optional flags:
 
 - `--yes`, `-y` — Skip the user confirmation step. Required for non-interactive execution (cron, at).
-- `--env <profile>` — Env profile (default: `default`). Available: `default`, `headless`, `ci`, or any custom profile in `.cekernel/envs/`.
+- `--env <profile>` — Env profile (default: `default`). Available: `default`, `headless`, `tmux`, `wezterm`, or any custom profile in `.cekernel/envs/`.
 - `--label <label>` — Override the target label (default: `ready`).
 
 ```

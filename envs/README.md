@@ -10,7 +10,7 @@ These can be set via env profiles or explicit `export`.
 |----------|---------|-------------|---------|---------|
 | `CEKERNEL_BACKEND` | `headless` | `wezterm`, `tmux`, `headless` | `backend-adapter.sh` | Select Worker process backend |
 | `CEKERNEL_MAX_ORCHESTRATORS` | `3` | Positive integer | `dispatch`, `orchestrate` | Maximum number of concurrently running orchestrators |
-| `CEKERNEL_MAX_ORCH_CHILDREN` | `5` | Positive integer | `spawn.sh` | Maximum concurrent children (workers + reviewers) per orchestrator |
+| `CEKERNEL_MAX_ORCH_CHILDREN` | `5` | Positive integer | `spawn.sh` | Maximum concurrent workers per orchestrator (reviewer subagents are not counted) |
 | `CEKERNEL_WORKER_TIMEOUT` | `3600` | Positive integer (seconds) | `watch.sh` | Worker timeout before auto-termination |
 | `CEKERNEL_WATCH_CHUNK_TIMEOUT` | `540` | Positive integer (seconds) | `watch.sh` | Max seconds per `watch.sh` invocation before returning a `watching` sentinel (exit 0). Must be shorter than the Bash tool's 600s hard limit to avoid SIGTERM. The Orchestrator re-calls `watch.sh` on a `watching` result; cumulative elapsed is computed from the Worker's `.spawned` timestamp (#630) |
 | `CEKERNEL_STATE_POLL_INTERVAL` | `5` | Positive integer (seconds) | `watch.sh` | State file poll interval (local fs read — cheap). Completion latency is bounded by this value (ADR-0020 Phase 1: polling split) |
@@ -23,6 +23,7 @@ These can be set via env profiles or explicit `export`.
 | `CEKERNEL_AUTO_MERGE` | `false` | `true`, `false` | Orchestrator | `true`: Orchestrator auto-merges after Reviewer approval. `false`: desktop notification only, human merges manually |
 | `CEKERNEL_KEEP_WORKTREE` | `false` | `true`, `false` | `cleanup-worktree.sh` | `true`: preserve the worktree and local branch on cleanup (Worker is still killed, IPC still removed). `--force` always removes regardless. Useful with `CEKERNEL_AUTO_MERGE=false` for manual pre-merge verification |
 | `CEKERNEL_REVIEW_MAX_RETRIES` | `2` | Positive integer | Orchestrator | Max cycles of Reviewer reject → Worker re-implement. Escalates to human when exceeded |
+| `CEKERNEL_GC_STALE_TIMEOUT` | `1800` | Positive integer (seconds) | `orchctl.sh` (`gc`) | Age threshold for reaping a NEW/READY worker state with no handle file. Younger states are preserved (the worker may still be starting up) |
 | `CEKERNEL_NOTIFY_MACOS_ACTION` | `none` | `none`, `open`, `pbcopy` | `desktop-notify-backend/macos.sh` | macOS notification URL action: `none` = notify only, `open` = open URL in browser, `pbcopy` = copy URL to clipboard |
 | `CEKERNEL_VAR_DIR` | `~/.local/var/cekernel` | Directory path | `registry.sh`, `wrapper.sh` | Runtime state directory (locks, logs, runners, registry) |
 | `CEKERNEL_SCHEDULE_POLL_INTERVAL` | `15` | Positive integer (seconds) | `wrapper.sh` | Poll interval for the scheduled runner's `agents --json` supervision loop (ADR-0016 Phase 3). Captured at schedule time — exported env vars do not reach the cron/at runtime |

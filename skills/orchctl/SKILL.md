@@ -9,7 +9,7 @@ allowed-tools: Bash, Read
 Worker control interface for cekernel — like `systemctl` / `supervisorctl`, manages running Workers across all sessions.
 
 ```
-/orchctl ls | ps [--session <id>] | suspend|resume|recover|term|kill <target> | nice <target> <priority>
+/orchctl ls | ps [--session <id>] | suspend|resume|recover|term|kill <target> | nice <target> <priority> | gc [--dry-run]
 ```
 
 Note: In plugin mode, `/cekernel:orchctl` also works.
@@ -46,6 +46,7 @@ Try `<issue>` alone first; if multiple sessions match, show the candidates and a
 | `term <target>` | Sends TERM — graceful exit at the next signal check | Confirm action |
 | `kill <target>` | Immediate termination + TERMINATED (when `term` is insufficient) | Confirm action |
 | `nice <target> <priority>` | Change priority: `critical` (0), `high` (5), `normal` (10), `low` (15), or numeric 0-19 (lower = higher) | Confirm action |
+| `gc [--dry-run]` | Reap stale resources across all sessions: dead-PID locks, orphan IPC files, dead orchestrator sessions and their metadata, stale worker states (writes `TERMINATED`/`crashed:detected-by-gc`). `--dry-run` reports without removing | Show the summary line; with `--dry-run`, list what would be cleaned |
 
 `ps` notes: Output is JSON Lines (same as `ls`). Each line has a `type` field: `orchestrator`, `worker`, or `reviewer`. The `verdict` field shows the ADR-0018 verdict (`alive`, `blocked`, `done`, `not-listed`, etc.). **`blocked` means stalled on a permission dialog — surface it prominently.** Reviewer rows come from `reviewer-*.state` files (subagents have no session token) and show `state`/`detail`. Sessions spawned by an interactive Orchestrator have no `orchestrator` row, but their Worker rows still appear. Tree structure assembly (grouping workers under their orchestrator) is the skill's responsibility.
 

@@ -9,11 +9,19 @@ Worker lifecycle events are recorded in the session-scoped log directory.
 ```
 $CEKERNEL_VAR_DIR/ipc/{CEKERNEL_SESSION_ID}/
 ├── orchestrator.claude-session-id # Claude Code session UUID (captured by spawn-orchestrator.sh)
-├── worker-4.state    # Worker #4 state file
-├── worker-7.state    # Worker #7 state file
+├── orchestrator.spawned  # Orchestrator spawn timestamp (epoch, spawn-orchestrator.sh)
+├── env.sh                # Orchestrator env delivery script (#652, spawn-orchestrator.sh)
+├── repo                  # Repo name for orchctl ls/ps filtering (orchestrator-launch)
+├── worker-4.state        # Worker #4 state file
+├── worker-4.type         # Agent type: worker or reviewer (spawn.sh)
+├── worker-4.backend      # Resolved backend name (spawn.sh)
+├── worker-4.signal       # Pending signal: TERM/SUSPEND (send-signal.sh)
+├── handle-4.worker       # Opaque session token / PID handle (bg-session.sh)
+├── pane-4.worker         # WezTerm/tmux pane target (backends, legacy liveness)
+├── worker-7.state        # Worker #7 state file
 └── logs/
-    ├── worker-4.log  # Worker #4 log
-    └── worker-7.log  # Worker #7 log
+    ├── worker-4.log      # Worker #4 log
+    └── worker-7.log      # Worker #7 log
 ```
 
 ### Log Format
@@ -47,7 +55,6 @@ Post-mortem analysis (`/postmortem` skill, [ADR-0013](./adr/0013-transcript-base
 
 Functions:
 - `claude_session_id_persist <uuid>` — write UUID to `${CEKERNEL_IPC_DIR}/orchestrator.claude-session-id`
-- `claude_session_id_read` — read the persisted UUID
 
 ### Spawn Markers (`.spawned` files)
 
@@ -72,7 +79,6 @@ Locates `.jsonl` transcript files by issue number or session ID.
 | `transcript_locate_worker` | issue number | Glob `~/.claude/projects/*-issue-{N}-*/*.jsonl` |
 | `transcript_locate_orchestrator` | session UUID | Glob `~/.claude/projects/*/{uuid}/subagents/*.jsonl` |
 | `transcript_locate_orchestrator_by_issue` | issue number | Scan `${CEKERNEL_VAR_DIR}/ipc/*/{worker,reviewer}-{N}.spawned` for session reverse lookup |
-| `transcript_locate_all` | issue number + optional session UUID | Combine worker + orchestrator discovery |
 
 > **Note**: Transcript paths depend on Claude Code's internal storage layout. All path resolution is centralized in these two scripts to localize the impact of upstream changes.
 

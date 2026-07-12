@@ -522,6 +522,7 @@ worker_state() {
   echo "$SESSION_TOKEN" > "${session_dir}/orchestrator.claude-session-id"
   echo "1711000000" > "${session_dir}/orchestrator.spawned"
   echo "my-repo" > "${session_dir}/repo"
+  echo "export CEKERNEL_SESSION_ID=x" > "${session_dir}/env.sh"
   mock_claude_enqueue_agents \
     "[$(mock_claude_agent_record "$SESSION_TOKEN" background /repo 1700000000000 done)]"
 
@@ -534,6 +535,9 @@ worker_state() {
     "${session_dir}/orchestrator.claude-session-id"
   assert_not_exists "orchestrator.spawned removed" "${session_dir}/orchestrator.spawned"
   assert_not_exists "repo file removed" "${session_dir}/repo"
+  assert_not_exists "env.sh removed (#672 — was leaking, blocking rmdir)" \
+    "${session_dir}/env.sh"
+  assert_not_exists "emptied session dir removed" "$session_dir"
 }
 
 @test "gc preserves orchestrator metadata when the session is alive (busy/blocked)" {

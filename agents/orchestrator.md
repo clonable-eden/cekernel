@@ -86,7 +86,7 @@ watch.sh 4           # run_in_background: true ONLY while more foreground work r
 
 | Variable | Default | Description |
 |---|---|---|
-| `CEKERNEL_MAX_ORCH_CHILDREN` | 3 | Max concurrent children (workers + reviewers); `spawn.sh` exits 2 at the limit |
+| `CEKERNEL_MAX_ORCH_CHILDREN` | 5 | Max concurrent workers (reviewer subagents are not counted); `spawn.sh` exits 2 at the limit |
 | `CEKERNEL_WORKER_TIMEOUT` | 3600 | Worker timeout in seconds (`watch.sh` returns `timeout`) |
 | `CEKERNEL_TERM_GRACE_PERIOD` | 120 | Grace period (seconds) after TERM before force-kill |
 | `CEKERNEL_MIN_RUNTIME` | 300 | Minimum Worker runtime (seconds) before suspension allowed |
