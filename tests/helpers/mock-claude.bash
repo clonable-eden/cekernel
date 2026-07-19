@@ -9,7 +9,7 @@
 # `agents --json` records carry extra fields — pid, id, name — and a
 # numeric epoch-millis startedAt, with a realpath'd cwd).
 #
-# ── Observed (status, state) matrix — v2.1.205, 2026-07-09 (ADR-0018) ──
+# ── Observed (status, state) matrix — v2.1.214, 2026-07-18 (ADR-0018) ──
 #
 #   | `status`  | `state`   | Verdict            |
 #   |-----------|-----------|--------------------|
@@ -19,6 +19,7 @@
 #   | idle      | working   | alive   (v2.1.205: between turns, #638)  |
 #   | blocked   | working   | blocked (v2.1.201 shape)              |
 #   | idle      | blocked   | blocked (v2.1.202 shape)              |
+#   | waiting   | blocked   | blocked (v2.1.214: permission prompt, #681)  |
 #   | (absent)  | blocked   | blocked (pre-split legacy shape)      |
 #   | idle      | done      | done               |
 #   | (absent)  | done      | done    (--all, daemon-restart rows)  |
@@ -87,8 +88,12 @@
 #                                 <status|-> <state|->
 #     Prints one FULL agents record with an EXPLICIT (status, state)
 #     pair; "-" omits the field. Covers the non-canonical matrix rows
-#     (busy/-, -/done, blocked/working, pre-split legacy -/busy) and
+#     (busy/-, -/done, blocked/working, waiting/blocked — the v2.1.214
+#     permission-prompt shape #681 — pre-split legacy -/busy) and
 #     out-of-matrix pairs for unknown-value contract tests (ADR-0018).
+#     (The real waiting/blocked record also carries waitingFor:
+#     "permission prompt" — an ADDITIONAL field per the non-exclusive
+#     field-set rule below; emit support for it is #673 scope.)
 #
 #   mock_claude_fail_agents
 #     Makes every subsequent `claude agents --json` call fail (exit 1,
