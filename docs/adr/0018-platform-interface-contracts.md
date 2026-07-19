@@ -233,9 +233,18 @@ observed signal that tracks the semantic difference across versions.
      default 600s). Any guard failing → keep, as today
    - `claude_bg_wait_terminal` — returns `blocked` and `stale-blocked`
      as distinct terminal outcomes
-   - `watch.sh` — genuine `blocked` keeps the current handler
-     (TERMINATED:blocked + stop); `stale-blocked` defers to the Worker's
-     own state file and never fabricates a `TERMINATED:blocked` record
+   - Boolean projection (`claude_bg_token_alive`) — `stale-blocked`
+     projects to alive (conservative). The gc triple-guard path is the
+     ONLY consumer permitted to treat it as reapable; every other
+     predicate consumer sees an occupied session. Leaving this
+     unspecified would invite per-consumer reinterpretation — the
+     failure shape this ADR exists to prevent
+   - `watch.sh` / Orchestrator — genuine `blocked` keeps the current
+     pipeline unchanged: `watch.sh` writes `TERMINATED:blocked` and
+     surfaces the `blocked` result; the **Orchestrator** then stops the
+     session and cleans up (agents/orchestrator.md blocked handler).
+     `stale-blocked` defers to the Worker's own state file and never
+     fabricates a `TERMINATED:blocked` record
 4. **Staleness coupling extends to the new column**: claude-bg.sh
    header, claude-code-constraints.md matrix, and mock-claude.bash
    update together; the mock emits `waitingFor` for the genuine-stall
@@ -294,13 +303,15 @@ triple guard); both #673 failure directions are covered by live evidence
 (probe session `47455a37` for genuine, session `14b5ebde` for phantom);
 vocabulary stays honest.
 
-**Negative**: consumers gain one more verdict case; a genuinely-blocked
-*orchestrator* whose workers all finished could in principle be reaped
-after the grace period — accepted because a permission dialog nobody
-answers within the grace window has no recovery path anyway
-(`defaultMode: "auto"` makes the case rare), and the reap merely stops a
-session that would otherwise stall forever.
+**Negative**: consumers gain one more verdict case. The residual
+misclassification risk is drift-shaped, not design-shaped: a genuine
+stall is reaped only if the CLI stops emitting `waitingFor` for real
+permission prompts (schema drift), misclassifying it as `stale-blocked`
+— and even then the triple guard (workers all TERMINATED + IPC
+quiescent + grace) must also pass before a reap. By design, a genuine
+stall with `waitingFor` present maps to `blocked` and is never reaped.
 
 **Follow-ups**: implementation issue for the split + consumer policies
-(worker-scale granularity); nudge experiment on next phantom occurrence;
-matrix re-probe on CLI upgrade.
+(worker-scale granularity), including the `CEKERNEL_GC_STALE_BLOCKED_GRACE`
+entry in the `envs/README.md` catalog; nudge experiment on next phantom
+occurrence; matrix re-probe on CLI upgrade.
