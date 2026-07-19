@@ -15,7 +15,7 @@
 #   bg-session.sh  — lifecycle core, predicates only
 #   backends / watch / orchctl / wrapper / issue-lock — verdict consumers
 #
-# ── Observed (status, state) matrix — v2.1.205, 2026-07-09 (ADR-0018) ──
+# ── Observed (status, state) matrix — v2.1.214, 2026-07-18 (ADR-0018) ──
 #
 #   | `status`  | `state`   | Verdict            |
 #   |-----------|-----------|--------------------|
@@ -25,6 +25,7 @@
 #   | idle      | working   | alive   (v2.1.205: between turns, #638)  |
 #   | blocked   | working   | blocked (v2.1.201 shape)              |
 #   | idle      | blocked   | blocked (v2.1.202 shape)              |
+#   | waiting   | blocked   | blocked (v2.1.214: permission prompt, #681)  |
 #   | (absent)  | blocked   | blocked (pre-split legacy shape)      |
 #   | idle      | done      | done               |
 #   | (absent)  | done      | done    (--all, daemon-restart rows)  |
@@ -162,7 +163,10 @@ claude_bg_token_verdict_from_json() {
       echo "alive"
       return 0
       ;;
-    blocked/working|blocked/-|idle/blocked|-/blocked)
+    blocked/working|blocked/-|idle/blocked|waiting/blocked|-/blocked)
+      # waiting/blocked: v2.1.214 shape (#681) — session stalled on a
+      # permission prompt (record also carries waitingFor: "permission
+      # prompt"; ingesting that field is #673 scope).
       echo "blocked"
       return 0
       ;;
