@@ -69,6 +69,17 @@ enqueue_pair() {
   assert_eq "verdict" "blocked" "$output"
 }
 
+@test "verdict matrix: waiting/blocked is blocked (v2.1.214 shape, #681)" {
+  # claude 2.1.214: a session genuinely stalled on a permission prompt
+  # reports status=waiting, state=blocked (with waitingFor: "permission
+  # prompt" — ingestion of that field is #673 scope). Observed 2026-07-18
+  # via live probe.
+  enqueue_pair waiting blocked
+  run claude_bg_token_verdict "$FULL_UUID"
+  assert_eq "exit status" "0" "$status"
+  assert_eq "verdict" "blocked" "$output"
+}
+
 @test "verdict matrix: legacy pre-split state:blocked (no status) is blocked" {
   enqueue_pair - blocked
   run claude_bg_token_verdict "$FULL_UUID"
