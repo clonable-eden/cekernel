@@ -177,3 +177,141 @@ is not maintainable.
   side-effect-free observers, or the effect must be documented in the
   constraints doc.
 - CLAUDE.md: add the review criterion.
+
+## Amendment 1 (2026-07-19): `blocked` verdict split — evidence-based via `waitingFor` (#673)
+
+### Context
+
+The `blocked` verdict conflates two realities that live probing
+(2026-07-18/19, claude v2.1.214) proved distinguishable:
+
+| Reality | Observed shape | `waitingFor` |
+|---------|----------------|--------------|
+| **Genuine permission stall** (probe, `--permission-mode default`) | `waiting/blocked` | `"permission prompt"` — present |
+| **Phantom blocked**: session completed normally, transcript shows final summary | `idle/blocked` | field absent |
+
+The phantom case first hit production 2026-07-10/11 (three orchestrators,
+slot exhaustion) and was reproduced on 2026-07-19: the orchestrator
+processing #681 itself finished cleanly yet reported `idle/blocked` for
+13+ minutes, holding a concurrency slot (session `14b5ebde`, raw record
+and transcript preserved in #673). Upstream docs define completion as
+`done`/`failed` — the phantom is a CLI defect, but it recurs on the
+current CLI, so cekernel must absorb it (this ADR's charter: drift is
+absorbed at the boundary, not denied).
+
+Today's consumer behavior is mutually inconsistent (audited in #673):
+`orchctl count` treats `blocked` as occupying, `orchctl gc` refuses to
+reap it, yet `claude_bg_wait_terminal` treats it as terminal. A phantom
+therefore occupies a slot forever that nothing may reclaim.
+
+**Version fragility**: `idle/blocked` meant a *genuine* stall on v2.1.202
+and means *phantom* on v2.1.214. Any split keyed on `(status, state)`
+alone inherits this instability; `waitingFor` presence is the only
+observed signal that tracks the semantic difference across versions.
+
+### Decision
+
+1. **Ingest `waitingFor` as a third verdict input** in `claude-bg.sh`.
+   The matrix gains a `waitingFor` column.
+2. **Split the verdict**:
+   - `state: blocked` + `waitingFor` present → **`blocked`** (genuine
+     stall; unchanged semantics)
+   - `state: blocked` + `waitingFor` absent → **`stale-blocked`** (new
+     token, exit 0): "the CLI says blocked but presents no evidence of
+     waiting"
+   - Legacy pre-`waitingFor` shapes (`blocked/working`, `blocked/-`,
+     `-/blocked`) → `blocked` (conservative: absence of the field on a
+     CLI that never emitted it is not evidence)
+3. **`stale-blocked` is a report, not an interpretation** (Rule of
+   Repair, the #581 lesson): the mechanism never coerces it to `done`.
+   Degradation policy stays at each call site (Rule of Separation):
+   - `orchctl count` — `stale-blocked` still counts as occupying (a slot
+     frees only when its session is actually gone)
+   - `orchctl gc` — may reap a `stale-blocked` orchestrator **only when**
+     all child workers are `TERMINATED` **and** its IPC dir has been
+     quiescent for a grace period (`CEKERNEL_GC_STALE_BLOCKED_GRACE`,
+     default 600s). Any guard failing → keep, as today
+   - `claude_bg_wait_terminal` — returns `blocked` and `stale-blocked`
+     as distinct terminal outcomes
+   - Boolean projection (`claude_bg_token_alive`) — `stale-blocked`
+     projects to alive (conservative). The gc triple-guard path is the
+     ONLY consumer permitted to treat it as reapable; every other
+     predicate consumer sees an occupied session. Leaving this
+     unspecified would invite per-consumer reinterpretation — the
+     failure shape this ADR exists to prevent
+   - `watch.sh` / Orchestrator — genuine `blocked` keeps the current
+     pipeline unchanged: `watch.sh` writes `TERMINATED:blocked` and
+     surfaces the `blocked` result; the **Orchestrator** then stops the
+     session and cleans up (agents/orchestrator.md blocked handler).
+     `stale-blocked` defers to the Worker's own state file and never
+     fabricates a `TERMINATED:blocked` record
+4. **Staleness coupling extends to the new column**: claude-bg.sh
+   header, claude-code-constraints.md matrix, and mock-claude.bash
+   update together; the mock emits `waitingFor` for the genuine-stall
+   row and omits it for the phantom row.
+
+### UNIX Philosophy Alignment
+
+> Rule of Repair: "When you must fail, fail noisily and as soon as
+> possible."
+
+`stale-blocked` surfaces the platform defect as a distinct, visible
+token instead of silently occupying a slot (status quo) or silently
+coercing to `done` (the #581 failure class).
+
+> Rule of Separation: "Separate policy from mechanism."
+
+The mechanism reports evidence (`waitingFor` seen / not seen); what to
+*do* about a phantom — count it, reap it, how long to wait — remains
+explicit per consumer.
+
+> Rule of Representation: "Fold knowledge into data so program logic can
+> be stupid and robust."
+
+The version-fragility problem is solved by adding one observed *data*
+column, not by version-sniffing logic.
+
+### Platform Constraints
+
+The `agents --json` surface remains **Confidence: Evolving**.
+`waitingFor` is observed on v2.1.214 only; the phantom's shape
+(`idle/blocked`) collides with a historical genuine shape. Staleness
+risk: re-probe the matrix on CLI upgrades (the reproduction recipe is in
+#681/#673). Polling remains the only observation channel — hence a
+grace-period heuristic, not an event.
+
+### Alternatives Considered
+
+- **Discriminate by `status` (`waiting` vs `idle`)**: rejected —
+  `idle/blocked` was genuine on v2.1.202; version-fragile (see Context).
+- **Coerce `waitingFor`-absent blocked to `done`**: rejected — #581
+  class. Transcript-level completion evidence is unavailable to the
+  mechanism layer; gc's guarded reap achieves the effect without lying
+  about observations.
+- **Wait for the upstream fix**: rejected — falsified by the 2026-07-19
+  reproduction on current CLI; the defensive design is sound even if
+  upstream later fixes the phantom (the `stale-blocked` path simply
+  stops firing).
+- **Nudge remediation** (send a message to the phantom session so a
+  fresh end-of-turn rewrites the state): unverified platform behavior —
+  recorded as a follow-up experiment, not a decision.
+
+### Consequences
+
+**Positive**: phantom slot leaks become self-healing (gc reaps under
+triple guard); both #673 failure directions are covered by live evidence
+(probe session `47455a37` for genuine, session `14b5ebde` for phantom);
+vocabulary stays honest.
+
+**Negative**: consumers gain one more verdict case. The residual
+misclassification risk is drift-shaped, not design-shaped: a genuine
+stall is reaped only if the CLI stops emitting `waitingFor` for real
+permission prompts (schema drift), misclassifying it as `stale-blocked`
+— and even then the triple guard (workers all TERMINATED + IPC
+quiescent + grace) must also pass before a reap. By design, a genuine
+stall with `waitingFor` present maps to `blocked` and is never reaped.
+
+**Follow-ups**: implementation issue for the split + consumer policies
+(worker-scale granularity), including the `CEKERNEL_GC_STALE_BLOCKED_GRACE`
+entry in the `envs/README.md` catalog; nudge experiment on next phantom
+occurrence; matrix re-probe on CLI upgrade.
