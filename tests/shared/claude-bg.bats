@@ -9,7 +9,7 @@ bats_require_minimum_version 1.5.0
 # distinct echoed token + exit code, never a coerced alive/dead.
 #
 # Exit-code contract (mirrored in the claude-bg.sh header):
-#   0 — verdict (alive | blocked | done | stopped)
+#   0 — verdict (alive | blocked | stale-blocked | done | stopped)
 #   3 — not-listed
 #   4 — query-failed
 #   5 — unknown-value (+ stderr warning: drift must be visible)
@@ -27,9 +27,10 @@ setup() {
 }
 
 # Enqueue a single-record roster with an explicit (status, state) pair
+# and an optional waitingFor value ("-"/omitted → field absent)
 enqueue_pair() {
   mock_claude_enqueue_agents \
-    "[$(mock_claude_agent_record_pair "$FULL_UUID" background /tmp/x 1700000000000 "$1" "$2")]"
+    "[$(mock_claude_agent_record_pair "$FULL_UUID" background /tmp/x 1700000000000 "$1" "$2" "${3:--}")]"
 }
 
 # ── claude_bg_token_verdict: matrix rows (verdicts, exit 0) ──
@@ -55,32 +56,60 @@ enqueue_pair() {
   assert_eq "verdict" "alive" "$output"
 }
 
-@test "verdict matrix: idle/blocked is blocked (v2.1.202 shape)" {
-  enqueue_pair idle blocked
+@test "verdict matrix: waiting/blocked with waitingFor is blocked (genuine stall, #681)" {
+  # claude 2.1.214: a session genuinely stalled on a permission prompt
+  # reports status=waiting, state=blocked, waitingFor="permission prompt"
+  # (live probe 2026-07-18, session 47455a37). waitingFor presence is the
+  # evidence of a genuine stall (ADR-0018 Amendment 1).
+  enqueue_pair waiting blocked "permission prompt"
   run claude_bg_token_verdict "$FULL_UUID"
   assert_eq "exit status" "0" "$status"
   assert_eq "verdict" "blocked" "$output"
 }
 
-@test "verdict matrix: blocked/working is blocked (v2.1.201 shape)" {
+@test "verdict matrix: idle/blocked without waitingFor is stale-blocked (phantom, #673)" {
+  # claude 2.1.214 phantom: session completed normally yet reports
+  # idle/blocked with NO waitingFor (live evidence 2026-07-19, session
+  # 14b5ebde). The CLI says blocked but presents no evidence of waiting
+  # → stale-blocked, a distinct verdict token (exit 0), never coerced
+  # to done (#581 lesson).
+  enqueue_pair idle blocked
+  run claude_bg_token_verdict "$FULL_UUID"
+  assert_eq "exit status" "0" "$status"
+  assert_eq "verdict" "stale-blocked" "$output"
+}
+
+@test "verdict matrix: idle/blocked with waitingFor is blocked" {
+  enqueue_pair idle blocked "permission prompt"
+  run claude_bg_token_verdict "$FULL_UUID"
+  assert_eq "exit status" "0" "$status"
+  assert_eq "verdict" "blocked" "$output"
+}
+
+@test "verdict matrix: waiting/blocked without waitingFor is stale-blocked" {
+  enqueue_pair waiting blocked
+  run claude_bg_token_verdict "$FULL_UUID"
+  assert_eq "exit status" "0" "$status"
+  assert_eq "verdict" "stale-blocked" "$output"
+}
+
+@test "verdict matrix: legacy blocked/working stays blocked without waitingFor (v2.1.201 shape)" {
+  # Legacy pre-waitingFor shape: absence of the field on a CLI that never
+  # emitted it is not evidence — conservative blocked (ADR-0018 A1).
   enqueue_pair blocked working
   run claude_bg_token_verdict "$FULL_UUID"
   assert_eq "exit status" "0" "$status"
   assert_eq "verdict" "blocked" "$output"
 }
 
-@test "verdict matrix: waiting/blocked is blocked (v2.1.214 shape, #681)" {
-  # claude 2.1.214: a session genuinely stalled on a permission prompt
-  # reports status=waiting, state=blocked (with waitingFor: "permission
-  # prompt" — ingestion of that field is #673 scope). Observed 2026-07-18
-  # via live probe.
-  enqueue_pair waiting blocked
+@test "verdict matrix: legacy blocked/absent-state stays blocked without waitingFor" {
+  enqueue_pair blocked -
   run claude_bg_token_verdict "$FULL_UUID"
   assert_eq "exit status" "0" "$status"
   assert_eq "verdict" "blocked" "$output"
 }
 
-@test "verdict matrix: legacy pre-split state:blocked (no status) is blocked" {
+@test "verdict matrix: legacy pre-split state:blocked (no status) stays blocked" {
   enqueue_pair - blocked
   run claude_bg_token_verdict "$FULL_UUID"
   assert_eq "exit status" "0" "$status"
@@ -194,6 +223,16 @@ enqueue_pair() {
   mock_claude_enqueue_agents "[]"
   run claude_bg_token_alive "$FULL_UUID"
   assert_eq "not-listed is dead" "1" "$status"
+}
+
+@test "token_alive: stale-blocked projects to alive (conservative, ADR-0018 A1)" {
+  # Boolean projection: stale-blocked is an occupied session for every
+  # predicate consumer — only the gc triple-guard path may treat it as
+  # reapable (ADR-0018 Amendment 1 Decision 3).
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$FULL_UUID" background /tmp/x 1700000000000 stale-blocked)]"
+  run claude_bg_token_alive "$FULL_UUID"
+  assert_eq "stale-blocked is alive" "0" "$status"
 }
 
 @test "token_alive: query-failed and unknown-value propagate — never coerced to dead" {
@@ -321,6 +360,17 @@ enqueue_pair() {
   run claude_bg_wait_terminal "$FULL_UUID" 0 5
   assert_eq "exit status" "0" "$status"
   assert_eq "final state" "blocked" "$output"
+}
+
+@test "wait_terminal: stale-blocked is a distinct terminal outcome (ADR-0018 A1)" {
+  # A phantom-blocked session never transitions on its own — waiting
+  # longer cannot help — and the caller must be able to distinguish it
+  # from a genuine blocked stall.
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$FULL_UUID" background /tmp/x 1700000000000 stale-blocked)]"
+  run claude_bg_wait_terminal "$FULL_UUID" 0 5
+  assert_eq "exit status" "0" "$status"
+  assert_eq "final state" "stale-blocked" "$output"
 }
 
 @test "wait_terminal: stopped is terminal" {
