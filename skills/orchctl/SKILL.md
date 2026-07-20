@@ -38,8 +38,8 @@ Try `<issue>` alone first; if multiple sessions match, show the candidates and a
 
 | Command | Behavior | Present to user as |
 |---------|----------|--------------------|
-| `ls` | JSON Lines, one per Worker (`session`, `repo`, `issue`, `type`, `state`, `detail`, `priority`, `priority_name`, `elapsed`, `backend`); `no workers.` if none | Table: Session / Repo / Issue / Type / State / Detail / Priority / Elapsed / Backend. Use `orchctl ls \| jq 'select(.issue == N)'` to filter a specific worker |
-| `ps [--session <id>]` | JSON Lines, one per process (`session`, `type` [orchestrator/worker/reviewer], `claude`, `elapsed`, `verdict`, plus `issue`/`phase`/`priority` for workers, `state`/`detail` for reviewers); `no orchestrators.` if none | Table: Session / Type / Issue / Verdict / Phase / Priority / Elapsed |
+| `ls` | JSON Lines, one per Worker (`session`, `repo`, `issue`, `type`, `state`, `detail`, `priority`, `priority_name`, `elapsed`, `backend`); if none, stdout is empty (0 lines) and `no workers.` goes to stderr | Table: Session / Repo / Issue / Type / State / Detail / Priority / Elapsed / Backend. Use `orchctl ls \| jq 'select(.issue == N)'` to filter a specific worker |
+| `ps [--session <id>]` | JSON Lines, one per process (`session`, `type` [orchestrator/worker/reviewer], `claude`, `elapsed`, `verdict`, plus `issue`/`phase`/`priority` for workers, `state`/`detail` for reviewers); if none, stdout is empty (0 lines) and `no orchestrators.` goes to stderr | Table: Session / Type / Issue / Verdict / Phase / Priority / Elapsed |
 | `suspend <target>` | Sends SUSPEND (RUNNING/WAITING/READY only); Worker checkpoints and stops at the next phase boundary | Confirm action |
 | `resume <target>` | SUSPENDED (or TERMINATED with `crashed*` detail) → READY; prints the restart command | Confirm, then show the printed `spawn-worker.sh --resume` command for the user to run |
 | `recover <target>` | Marks a dead RUNNING/WAITING Worker as `TERMINATED`/`crashed:detected-by-recover`; errors if the process is alive (suggest `term`/`kill`) | Confirm transition, suggest `orchctl resume` next |
