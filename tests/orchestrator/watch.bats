@@ -245,6 +245,35 @@ teardown() {
   assert_match "detail is blocked" "blocked:" "$state_line"
 }
 
+@test "watch defers stale-blocked to the worker state file — no TERMINATED:blocked fabrication (ADR-0018 A1)" {
+  # Phantom blocked (state:blocked, no waitingFor): the CLI presents no
+  # evidence of a stall, so the Worker's own state file stays the source
+  # of truth — watch keeps polling and must never fabricate a
+  # TERMINATED:blocked record. Genuine blocked keeps the current
+  # pipeline (test above) unchanged.
+  worker_state_write 703 RUNNING "phase3:ci-waiting"
+  echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-703.worker"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$TOKEN" background /tmp/wt 1700000000000 stale-blocked)]"
+
+  local out="${BATS_TEST_TMPDIR}/watch-out.json"
+  # 1s state poll so several backend verdict checks (1s cadence) run
+  # against the phantom BEFORE the worker completes at ~3s
+  CEKERNEL_STATE_POLL_INTERVAL=1 bash "$WATCH_SCRIPT" 703 > "$out" 2>/dev/null &
+  local watch_pid=$!
+  sleep 3
+  # The state file must still be the Worker's own record at this point
+  assert_match "no TERMINATED:blocked fabricated while polling" "^RUNNING:" \
+    "$(cat "${CEKERNEL_IPC_DIR}/worker-703.state")"
+  worker_state_write 703 TERMINATED "ci-passed:99"
+  wait "$watch_pid"
+
+  local result_json
+  result_json=$(cat "$out")
+  assert_match "completion arrives via the state file" '"result":"ci-passed"' "$result_json"
+  assert_match "detail is 99" '"detail":"99"' "$result_json"
+}
+
 @test "watch does NOT write TERMINATED for timeout (slot held)" {
   worker_state_write 702 RUNNING "phase1:implement"
   echo "$TOKEN" > "${CEKERNEL_IPC_DIR}/handle-702.worker"
