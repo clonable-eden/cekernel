@@ -78,6 +78,15 @@ check_worker() {
         status="blocked"
         detail="session waiting on a permission dialog"
         ;;
+      stale-blocked)
+        # Phantom blocked (ADR-0018 Amendment 1): the CLI reports
+        # blocked without waitingFor evidence — the worker's own state
+        # file stays authoritative. Surfaced distinctly (Rule of
+        # Repair) but NOT counted unhealthy: no recovery/escalation.
+        backend_conclusive=1
+        status="stale-blocked"
+        detail="session reports blocked without waitingFor evidence (phantom) — deferring to worker state"
+        ;;
       query-failed|unknown-value)
         backend_conclusive=1
         status="unknown"
