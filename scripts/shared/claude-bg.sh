@@ -108,9 +108,12 @@
 #       follow up with claude_bg_capture_session_id). Exit 1 when the
 #       spawn itself fails. stdout of claude is consumed here; stderr
 #       passes through for the caller to route.
-#       Session env is guaranteed by the SPAWNER, not the daemon
-#       (ADR-0018 Decision 3, #589): export CEKERNEL_* / PATH before
-#       calling — the daemon's inherited environment is unspecified.
+#       CEKERNEL_* is scrubbed from the claude env (#688): a cold-started
+#       daemon captures the spawn-time env and serves it to every later
+#       session (#589) — a leaked CEKERNEL_SESSION_ID sends sessions of
+#       other cekernel runs into a foreign IPC dir. Session env travels
+#       exclusively via env.sh / .cekernel-env (#652, ADR-0018
+#       Decision 3); non-CEKERNEL env (e.g. PATH) passes through.
 #
 #   claude_bg_stop <token>
 #     — Stop the session via `claude stop`. The token (full UUID or short
@@ -261,13 +264,20 @@ claude_bg_spawn() {
   # Launch the session. `claude --bg` returns immediately after printing
   # `backgrounded · <short-id>`; the on-demand daemon supervises it.
   # Claude Code session markers are unset to avoid nested-session
-  # detection. Env injection is the caller's responsibility (ADR-0018
-  # Decision 3): exported variables reach the daemon only when this call
-  # auto-starts it — a pre-existing daemon serves its own env (#589).
-  local spawn_out
+  # detection. CEKERNEL_* is scrubbed (#688): a cold-started daemon
+  # captures this call's env and serves it to EVERY later session (#589)
+  # — a leaked CEKERNEL_SESSION_ID makes sessions of other cekernel runs
+  # write into a foreign IPC dir. Session env travels exclusively via
+  # env.sh / .cekernel-env (#652), never via this process env.
+  local spawn_out _cek_var
   spawn_out=$(
-    cd "$cwd" && \
-    unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ACCESS_TOKEN && \
+    cd "$cwd" || exit 1
+    unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ACCESS_TOKEN
+    # env|sed enumeration: portable across bash 3.2 AND zsh (this helper
+    # is sourced in Claude Code's zsh Bash tool — ${!CEKERNEL_@} is not):
+    for _cek_var in $(env | sed -n 's/^\(CEKERNEL_[A-Za-z0-9_]*\)=.*/\1/p'); do
+      unset "$_cek_var"
+    done
     claude --bg "$@"
   ) || return 1
 
