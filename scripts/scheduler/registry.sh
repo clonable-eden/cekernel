@@ -13,7 +13,8 @@
 # Field semantics (ADR-0016 Phase 3):
 #   last_run_status — "success" | "error", recorded by the generated runner
 #     from the final session verdict (claude-bg.sh, ADR-0018) of the spawned
-#     background session: done → success; blocked/stopped/poll-timeout/spawn-failure →
+#     background session: done → success; blocked/stale-blocked/stopped/
+#     poll-timeout/spawn-failure →
 #     error. Fidelity note: "success" means the SESSION reached `done`
 #     (terminated) — NOT that the job inside it succeeded. Job-level
 #     outcomes stay in transcripts and desktop notifications.

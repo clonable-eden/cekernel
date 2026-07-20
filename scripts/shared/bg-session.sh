@@ -12,7 +12,7 @@
 # `agents --json` output or invokes the claude CLI itself:
 #
 #   spawn       → claude_bg_spawn + claude_bg_capture_session_id
-#   liveness    → claude_bg_token_verdict (alive|blocked = alive)
+#   liveness    → claude_bg_token_verdict (alive|blocked|stale-blocked = alive)
 #   status      → claude_bg_token_verdict (verdict vocabulary passthrough)
 #   termination → claude_bg_stop (also reaps lingering done sessions)
 #
