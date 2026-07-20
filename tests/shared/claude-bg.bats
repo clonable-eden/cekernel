@@ -273,6 +273,37 @@ enqueue_pair() {
   assert_eq "no short id" "" "$output"
 }
 
+@test "spawn: scrubs CEKERNEL_* from the claude --bg environment (#688)" {
+  # A cold-started daemon captures the env of the `claude --bg` call that
+  # starts it and serves it to EVERY later session (#589). If CEKERNEL_*
+  # leaks in, later sessions of OTHER cekernel sessions inherit a stale
+  # CEKERNEL_SESSION_ID and write into a foreign IPC dir (#688). env.sh /
+  # .cekernel-env is the sole delivery channel (#652), so the spawn env
+  # must carry no CEKERNEL_* at all.
+  export CEKERNEL_STALE_MARKER="cekernel-stale1234"
+  export CEKERNEL_AGENT_ORCHESTRATOR="orchestrator"
+  run claude_bg_spawn /tmp "prompt"
+  assert_eq "exit status" "0" "$status"
+  assert_file_exists "bg env recorded" "${MOCK_CLAUDE_STATE_DIR}/bg-env.log"
+  if grep -q '^CEKERNEL_' "${MOCK_CLAUDE_STATE_DIR}/bg-env.log"; then
+    echo "CEKERNEL_* leaked into the claude --bg environment:" >&2
+    grep '^CEKERNEL_' "${MOCK_CLAUDE_STATE_DIR}/bg-env.log" >&2
+    return 1
+  fi
+}
+
+@test "spawn: non-CEKERNEL environment passes through to claude --bg" {
+  # The scrub must be surgical: PATH and other variables still reach an
+  # auto-started daemon (the PATH shim itself depends on it).
+  export CEKERNEL_STALE_MARKER="cekernel-stale1234"
+  export OTHER_SPAWN_VAR="survives-scrub"
+  run claude_bg_spawn /tmp "prompt"
+  assert_eq "exit status" "0" "$status"
+  assert_file_exists "bg env recorded" "${MOCK_CLAUDE_STATE_DIR}/bg-env.log"
+  assert_match "non-CEKERNEL var reaches claude" "OTHER_SPAWN_VAR=survives-scrub" \
+    "$(cat "${MOCK_CLAUDE_STATE_DIR}/bg-env.log")"
+}
+
 @test "spawn: fails when claude --bg fails" {
   # Replace the shim with one that always fails (mock_bin re-registers)
   mock_bin claude 'exit 1'
