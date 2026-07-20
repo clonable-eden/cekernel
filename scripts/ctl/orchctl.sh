@@ -1167,13 +1167,16 @@ cmd_gc() {
 }
 
 # ── count: Count running orchestrators (internal, ADR-0014) ──
-# Session-ID based (ADR-0016 Phase 2): a session counts on an alive or
-# blocked verdict — the vocabulary lives in claude-bg.sh, not here (Rule
-# of Separation). Single fetch per invocation (Phase 4): all tokens
-# resolve against one opaque snapshot.
+# Session-ID based (ADR-0016 Phase 2): a session counts on an alive,
+# blocked, or stale-blocked verdict — the vocabulary lives in
+# claude-bg.sh, not here (Rule of Separation). Single fetch per
+# invocation (Phase 4): all tokens resolve against one opaque snapshot.
 # Degradation policy (ADR-0018 — the consumer decides): unknown-value
 # counts as alive. For a concurrency guard, over-counting refuses a spawn
 # (safe); under-counting spawns a duplicate orchestrator (not safe).
+# stale-blocked counts as occupying (ADR-0018 Amendment 1 Decision 3):
+# a slot frees only when its session is actually gone — the gc
+# triple-guard reap is the reclaim path, not this counter.
 cmd_count() {
   local count=0
 
@@ -1194,7 +1197,7 @@ cmd_count() {
       local verdict
       verdict=$(claude_bg_token_verdict_from_json "$agents_json" "$token") || true
       case "$verdict" in
-        alive|blocked|unknown-value) count=$((count + 1)) ;;
+        alive|blocked|stale-blocked|unknown-value) count=$((count + 1)) ;;
       esac
     done
   fi
