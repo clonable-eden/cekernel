@@ -77,10 +77,11 @@ bg_session_spawn() {
 
   # Session env is guaranteed by the SPAWNER, not the daemon (ADR-0018
   # Decision 3, #589): source .cekernel-env in the spawn subshell so a
-  # daemon auto-started by this call inherits PATH and CEKERNEL_* values.
-  # A PRE-EXISTING daemon serves its own (possibly stale) env — its
-  # inherited environment is declared unspecified — so Workers also
-  # source .cekernel-env per Bash call (the normative mechanism).
+  # daemon auto-started by this call inherits PATH. CEKERNEL_* never
+  # reaches the daemon — claude_bg_spawn scrubs it (#688) so no daemon
+  # can serve a stale session ID to later runs. Workers resolve
+  # CEKERNEL_* by sourcing .cekernel-env per Bash call (the normative
+  # mechanism, #652).
   # `--bg --bare` with a prompt composes without warnings (verified
   # v2.1.201, 2026-07-07 — unlike the hidden --exec path). stderr is
   # discarded — analysis uses transcripts.

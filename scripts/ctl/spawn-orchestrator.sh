@@ -52,10 +52,10 @@ CEKERNEL_PROCESS_SCRIPTS="$(cd "${SCRIPT_DIR}/../process" && pwd)"
 CEKERNEL_SHARED_SCRIPTS="$(cd "${SCRIPT_DIR}/../shared" && pwd)"
 
 # ── Generate env.sh for Orchestrator env delivery (#652) ──
-# The daemon's inherited environment is UNSPECIFIED: a pre-existing daemon
-# keeps its own env, so subshell exports below only reach auto-started
-# daemons (ADR-0018 Decision 3, #589). env.sh is the reliable delivery
-# channel — the Orchestrator sources it on every Bash call.
+# env.sh is the SOLE delivery channel for CEKERNEL_* — the Orchestrator
+# sources it on every Bash call. claude_bg_spawn scrubs CEKERNEL_* from
+# the spawn env (#688), so no daemon (auto-started or pre-existing) ever
+# carries a session's CEKERNEL_* (ADR-0018 Decision 3, #589).
 {
   # Required variables — always include (some may not be exported, e.g.
   # CEKERNEL_ENV is set but not exported by load-env.sh)
@@ -82,15 +82,14 @@ CEKERNEL_SHARED_SCRIPTS="$(cd "${SCRIPT_DIR}/../shared" && pwd)"
 # ── Launch Orchestrator as a background agent session ──
 # Subshell exports are best-effort (reach auto-started daemons only).
 # The reliable env channel is env.sh above — the Orchestrator sources it.
+# CEKERNEL_* is NOT exported here: claude_bg_spawn scrubs it (#688), so
+# such exports are unreachable by design — env.sh is the sole channel.
 # CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 stays for now: under --bg an
 # auto-detached Bash call no longer kills the process (#558), but whether
 # a background-task completion re-invokes a `done` session is unverified —
 # without re-invocation the Orchestrator would stall silently.
 # stderr discarded — analysis uses transcripts.
 SHORT_ID=$(
-  export CEKERNEL_SESSION_ID="${CEKERNEL_SESSION_ID}" && \
-  export CEKERNEL_IPC_DIR="${CEKERNEL_IPC_DIR}" && \
-  export CEKERNEL_ENV="${CEKERNEL_ENV}" && \
   export CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 && \
   export PATH="${CEKERNEL_ORCHESTRATOR_SCRIPTS}:${CEKERNEL_PROCESS_SCRIPTS}:${CEKERNEL_SHARED_SCRIPTS}:${PATH}" && \
   claude_bg_spawn "$REPO_ROOT" "${CEKERNEL_BARE_FLAGS[@]}" --agent "$AGENT_NAME" "$PROMPT" 2>/dev/null
