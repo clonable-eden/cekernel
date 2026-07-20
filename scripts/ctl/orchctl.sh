@@ -502,7 +502,10 @@ cmd_recover() {
     local wverdict
     wverdict=$(backend_worker_status "$RESOLVED_ISSUE" 2>/dev/null) || true
     case "$wverdict" in
-      alive|blocked) is_alive=1 ;;
+      # stale-blocked is an occupied session (ADR-0018 Amendment 1
+      # Decision 3): only the gc triple-guard path may treat it as
+      # reapable — recover refuses the crash write.
+      alive|blocked|stale-blocked) is_alive=1 ;;
       query-failed|unknown-value)
         echo "Error: cannot verify worker #${RESOLVED_ISSUE} (${wverdict})." \
           "Refusing to mark it crashed — retry when the agents query recovers." >&2
@@ -689,6 +692,10 @@ cmd_gc() {
   # Stale timeout for NEW/READY state (seconds). Default: 30 minutes.
   local stale_timeout="${CEKERNEL_GC_STALE_TIMEOUT:-1800}"
 
+  # Grace period for the stale-blocked orchestrator triple guard
+  # (seconds, ADR-0018 Amendment 1 Decision 3). Default: 10 minutes.
+  local stale_blocked_grace="${CEKERNEL_GC_STALE_BLOCKED_GRACE:-600}"
+
   # ── Helper: lazy single `agents --json` fetch per gc run (#573) ──
   # Returns 0 with gc_agents_json populated when the query succeeded;
   # returns 1 when it failed (transient or no CLI) — callers must then
@@ -754,6 +761,10 @@ cmd_gc() {
         case "$gc_verdict" in
           done|stopped|not-listed) ;;  # verifiably dead
           *)
+            # alive/blocked/stale-blocked/query-failed/unknown-value all
+            # count as a live handle. stale-blocked stays occupied here
+            # (ADR-0018 Amendment 1 Decision 3): the ORCHESTRATOR
+            # triple-guard path below is the only reap route.
             has_live_handle=1
             break
             ;;
@@ -950,10 +961,46 @@ cmd_gc() {
     done
   }
 
+  # ── Helper: stale-blocked orchestrator triple guard (ADR-0018 A1) ──
+  # Returns 0 (reapable) only when ALL three guards hold for the session:
+  #   1. every child worker state is TERMINATED
+  #   2. the IPC dir is quiescent — no file activity since the newest
+  #      mtime in the session dir
+  #   3. the grace period has elapsed since that newest mtime
+  #      (CEKERNEL_GC_STALE_BLOCKED_GRACE, default 600s)
+  # Guards 2+3 share one observation: the newest mtime must be at least
+  # <grace> seconds old. Any guard failing → 1 (keep, as today).
+  _gc_stale_blocked_reapable() {
+    local sdir="$1"
+
+    # Guard 1: all child workers TERMINATED
+    local sb_state_file sb_line
+    for sb_state_file in "${sdir}"worker-*.state; do
+      [[ -f "$sb_state_file" ]] || continue
+      sb_line=$(cat "$sb_state_file")
+      [[ "${sb_line%%:*}" == "TERMINATED" ]] || return 1
+    done
+
+    # Guards 2+3: newest mtime in the session dir is >= grace old.
+    # stat flag order matters: GNU first (-c; BSD rejects it), because
+    # BSD-style `stat -f %m` means --file-system on GNU and would emit
+    # a mount point instead of failing.
+    local sb_now sb_newest=0 sb_file sb_mtime
+    sb_now=$(date +%s)
+    while IFS= read -r sb_file; do
+      sb_mtime=$(stat -c %Y "$sb_file" 2>/dev/null || stat -f %m "$sb_file" 2>/dev/null) || continue
+      [[ "$sb_mtime" -gt "$sb_newest" ]] && sb_newest="$sb_mtime"
+    done < <(find "$sdir" -type f 2>/dev/null)
+    [[ $((sb_now - sb_newest)) -ge "$stale_blocked_grace" ]]
+  }
+
   # ── 3. Clean stale orchestrator sessions (ADR-0016 Phase 2) ──
   # Liveness is session-ID based via the ADR-0018 verdict: only a
   # verifiable done/stopped/not-listed verdict is dead — query-failed
   # and unknown-value stay conservative (gc refuses to reap on doubt).
+  # stale-blocked (phantom blocked, ADR-0018 Amendment 1) is reaped
+  # ONLY under the triple guard above — this is the single consumer
+  # permitted to treat it as reapable; genuine blocked is never reaped.
   # Dead sessions are reaped via the stop primitive (done sessions
   # linger until explicitly stopped — ADR-0016) and their metadata files
   # removed. Legacy orchestrator.pid files (pre-v2) are swept
@@ -978,6 +1025,19 @@ cmd_gc() {
         orch_verdict=$(claude_bg_token_verdict "$orch_token" 2>/dev/null) || true
         case "$orch_verdict" in
           done|stopped|not-listed) ;;  # verifiably dead — reap below
+          stale-blocked)
+            # Phantom blocked (ADR-0018 Amendment 1): reap only when the
+            # triple guard holds; otherwise keep, as today. A kept
+            # session protects its reviewers like the alive branch —
+            # the phantom's orchestrator may in fact still be running.
+            if ! _gc_stale_blocked_reapable "$session_dir"; then
+              local sb_rev_issue
+              for sb_rev_issue in $(reviewer_state_list_active "$session_dir"); do
+                echo "${session_dir}:${sb_rev_issue}" >> "$active_issues_file"
+              done
+              continue
+            fi
+            ;;  # guards hold — reap below
           *)
             # Alive/blocked or cannot verify — keep the session, and
             # protect its active reviewers from the orphan sweep below
