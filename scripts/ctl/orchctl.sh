@@ -211,7 +211,7 @@ cmd_ls() {
   local found=0
 
   if [[ ! -d "$IPC_BASE" ]]; then
-    echo "no workers."
+    echo "no workers." >&2
     return 0
   fi
 
@@ -303,7 +303,7 @@ cmd_ls() {
   done
 
   if [[ "$found" -eq 0 ]]; then
-    echo "no workers."
+    echo "no workers." >&2
   fi
 }
 
@@ -339,7 +339,7 @@ cmd_ps() {
   local found=0
 
   if [[ ! -d "$IPC_BASE" ]]; then
-    echo "no orchestrators."
+    echo "no orchestrators." >&2
     return 0
   fi
 
@@ -444,7 +444,7 @@ cmd_ps() {
   done
 
   if [[ "$found" -eq 0 ]]; then
-    echo "no orchestrators."
+    echo "no orchestrators." >&2
   fi
 }
 

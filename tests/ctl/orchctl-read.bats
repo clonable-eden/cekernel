@@ -76,15 +76,25 @@ make_handle() {
 
 # ── ls ──
 
-@test "ls with no sessions prints 'no workers.'" {
-  run bash "$ORCHCTL" ls
-  assert_eq "ls no sessions" "no workers." "$output"
+@test "ls with no sessions: empty stdout, 'no workers.' on stderr, exit 0" {
+  run --separate-stderr bash "$ORCHCTL" ls
+  assert_eq "ls no sessions: exit 0" "0" "$status"
+  assert_eq "ls no sessions: stdout empty" "" "$output"
+  assert_eq "ls no sessions: message on stderr" "no workers." "$stderr"
 }
 
-@test "ls with empty session prints 'no workers.'" {
+@test "ls with empty session: empty stdout, 'no workers.' on stderr, exit 0" {
   mkdir -p "$IPC_A"
-  run bash "$ORCHCTL" ls
-  assert_eq "ls empty session" "no workers." "$output"
+  run --separate-stderr bash "$ORCHCTL" ls
+  assert_eq "ls empty session: exit 0" "0" "$status"
+  assert_eq "ls empty session: stdout empty" "" "$output"
+  assert_eq "ls empty session: message on stderr" "no workers." "$stderr"
+}
+
+@test "ls with no workers pipes cleanly into jq" {
+  run bash -c "bash '$ORCHCTL' ls 2>/dev/null | jq ."
+  assert_eq "ls | jq exit 0" "0" "$status"
+  assert_eq "ls | jq stdout empty" "" "$output"
 }
 
 @test "ls one worker: one JSON line with session, issue, state, priority" {
@@ -229,15 +239,25 @@ make_handle() {
 
 # ── ps (session-ID based, ADR-0016 Phase 2) ──
 
-@test "ps with no sessions prints 'no orchestrators.'" {
-  run bash "$ORCHCTL" ps
-  assert_eq "ps no sessions" "no orchestrators." "$output"
+@test "ps with no sessions: empty stdout, 'no orchestrators.' on stderr, exit 0" {
+  run --separate-stderr bash "$ORCHCTL" ps
+  assert_eq "ps no sessions: exit 0" "0" "$status"
+  assert_eq "ps no sessions: stdout empty" "" "$output"
+  assert_eq "ps no sessions: message on stderr" "no orchestrators." "$stderr"
 }
 
-@test "ps with session but no orchestrator.claude-session-id prints 'no orchestrators.'" {
+@test "ps with session but no orchestrator.claude-session-id: empty stdout, message on stderr" {
   mkdir -p "$IPC_A"
-  run bash "$ORCHCTL" ps
-  assert_eq "ps no session token" "no orchestrators." "$output"
+  run --separate-stderr bash "$ORCHCTL" ps
+  assert_eq "ps no session token: exit 0" "0" "$status"
+  assert_eq "ps no session token: stdout empty" "" "$output"
+  assert_eq "ps no session token: message on stderr" "no orchestrators." "$stderr"
+}
+
+@test "ps with no orchestrators pipes cleanly into jq" {
+  run bash -c "bash '$ORCHCTL' ps 2>/dev/null | jq ."
+  assert_eq "ps | jq exit 0" "0" "$status"
+  assert_eq "ps | jq stdout empty" "" "$output"
 }
 
 @test "ps outputs JSON Lines with type=orchestrator for orchestrator row" {
@@ -308,17 +328,21 @@ make_handle() {
   fi
 }
 
-@test "ps --session with non-existent session prints 'no orchestrators.'" {
+@test "ps --session with non-existent session: empty stdout, message on stderr" {
   make_orchestrator "$IPC_A" "$ORCH_TOKEN_A"
-  run bash "$ORCHCTL" ps --session "nonexistent-session"
-  assert_eq "nonexistent session" "no orchestrators." "$output"
+  run --separate-stderr bash "$ORCHCTL" ps --session "nonexistent-session"
+  assert_eq "nonexistent session: exit 0" "0" "$status"
+  assert_eq "nonexistent session: stdout empty" "" "$output"
+  assert_eq "nonexistent session: message on stderr" "no orchestrators." "$stderr"
 }
 
 @test "ps ignores a legacy orchestrator.pid file (v2 is session-ID based)" {
   mkdir -p "$IPC_A"
   echo "$$" > "${IPC_A}/orchestrator.pid"
-  run bash "$ORCHCTL" ps
-  assert_eq "legacy pid file alone shows nothing" "no orchestrators." "$output"
+  run --separate-stderr bash "$ORCHCTL" ps
+  assert_eq "legacy pid file alone: exit 0" "0" "$status"
+  assert_eq "legacy pid file alone: stdout empty" "" "$output"
+  assert_eq "legacy pid file alone: message on stderr" "no orchestrators." "$stderr"
 }
 
 # ── ps managed rows (agents --json view layer, ADR-0016 Phase 4 / #549) ──
