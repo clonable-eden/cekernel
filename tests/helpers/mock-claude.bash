@@ -112,6 +112,10 @@
 #
 # Recorded state (files under MOCK_CLAUDE_STATE_DIR):
 #   bg-argv.log   one line per `--bg` call: the full argv, space-joined
+#   bg-env.log    env(1) output observed by each `--bg` call, appended —
+#                 the environment a cold-started daemon would capture
+#                 (#688: spawn-time env scrubbing is behavior, so tests
+#                 assert on what the claude process actually saw)
 #   stop.log      one line per `stop <id>` call: the <id> argument
 #
 # Shim behavior:
@@ -160,6 +164,7 @@ else
   for arg in "$@"; do
     if [[ "$arg" == "--bg" ]]; then
       echo "$*" >> "$STATE_DIR/bg-argv.log"
+      env >> "$STATE_DIR/bg-env.log"
       short_id=""
       if [[ -s "$STATE_DIR/short-ids" ]]; then
         short_id=$(head -n 1 "$STATE_DIR/short-ids")
