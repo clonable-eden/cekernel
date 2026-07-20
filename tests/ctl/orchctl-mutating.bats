@@ -250,6 +250,21 @@ worker_state() {
   assert_match "state unchanged (RUNNING)" "^RUNNING:" "$(worker_state 10)"
 }
 
+@test "recover refuses a stale-blocked worker (occupied session, ADR-0018 A1)" {
+  # Only the gc triple-guard path may treat stale-blocked as reapable —
+  # recover must see an occupied session and refuse the crash write.
+  mock_claude
+  make_worker 10
+  echo "headless" > "${IPC}/worker-10.backend"
+  echo "$SESSION_TOKEN" > "${IPC}/handle-10.worker"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$SESSION_TOKEN" background /tmp/wt 1700000000000 stale-blocked)]"
+
+  run bash "$ORCHCTL" recover 10 --session "$SESSION"
+  assert_eq "recover stale-blocked: exit 1" "1" "$status"
+  assert_match "state unchanged (RUNNING)" "^RUNNING:" "$(worker_state 10)"
+}
+
 @test "recover non-RUNNING worker errors" {
   make_worker 10 "TERMINATED:2026-02-28T10:00:00Z:done"
   echo "99999" > "${IPC}/handle-10.worker"
@@ -558,6 +573,99 @@ worker_state() {
   run bash "$ORCHCTL" gc
   assert_file_exists "blocked orchestrator metadata preserved" \
     "${session_dir}/orchestrator.claude-session-id"
+}
+
+# ── gc: stale-blocked orchestrator triple-guard reap (ADR-0018 A1) ──
+# A stale-blocked orchestrator (phantom blocked: state:blocked without
+# waitingFor) may be reaped ONLY when all three guards hold:
+#   1. all child workers are TERMINATED
+#   2. the IPC dir is quiescent (no recent file activity)
+#   3. the grace period has elapsed (CEKERNEL_GC_STALE_BLOCKED_GRACE)
+# Any guard failing → keep, as today. Genuine blocked is never reaped.
+
+# Register a stale-blocked orchestrator session with one child worker
+# state, then backdate every file so guards 2+3 hold by default.
+make_stale_blocked_orch() {
+  local session_dir="$1" worker_state_line="$2"
+  mkdir -p "$session_dir"
+  echo "$SESSION_TOKEN" > "${session_dir}/orchestrator.claude-session-id"
+  echo "1711000000" > "${session_dir}/orchestrator.spawned"
+  echo "$worker_state_line" > "${session_dir}/worker-90.state"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$SESSION_TOKEN" background /repo 1700000000000 stale-blocked)]"
+  # Quiescent IPC dir: every file's mtime is far in the past
+  find "$session_dir" -type f -exec touch -t 202601010000 {} +
+}
+
+@test "gc reaps a stale-blocked orchestrator when the triple guard holds" {
+  mock_claude
+  local session_dir="${IPC_BASE}/session-gc-sb1"
+  make_stale_blocked_orch "$session_dir" "TERMINATED:2026-07-01T10:00:00Z:ci-passed:99"
+
+  run env CEKERNEL_GC_STALE_BLOCKED_GRACE=60 bash "$ORCHCTL" gc
+  assert_eq "gc exit 0" "0" "$status"
+  assert_file_exists "phantom session stopped" "${MOCK_CLAUDE_STATE_DIR}/stop.log"
+  assert_eq "stop called with truncated job ID (#621)" "${SESSION_TOKEN:0:8}" \
+    "$(cat "${MOCK_CLAUDE_STATE_DIR}/stop.log")"
+  assert_not_exists "orchestrator metadata removed" \
+    "${session_dir}/orchestrator.claude-session-id"
+}
+
+@test "gc keeps a stale-blocked orchestrator while a child worker is not TERMINATED" {
+  mock_claude
+  local session_dir="${IPC_BASE}/session-gc-sb2"
+  make_stale_blocked_orch "$session_dir" "RUNNING:2026-07-01T10:00:00Z:phase1:implement"
+  # Live handle keeps the RUNNING worker active through gc's worker sweep
+  # (a numeric PID handle avoids consuming the mocked agents queue)
+  echo "$$" > "${session_dir}/handle-90.worker"
+
+  run env CEKERNEL_GC_STALE_BLOCKED_GRACE=60 bash "$ORCHCTL" gc
+  assert_file_exists "orchestrator metadata kept (guard 1 failed)" \
+    "${session_dir}/orchestrator.claude-session-id"
+  assert_not_exists "no stop for a kept session" "${MOCK_CLAUDE_STATE_DIR}/stop.log"
+}
+
+@test "gc keeps a stale-blocked orchestrator when the IPC dir saw recent activity" {
+  mock_claude
+  local session_dir="${IPC_BASE}/session-gc-sb3"
+  make_stale_blocked_orch "$session_dir" "TERMINATED:2026-07-01T10:00:00Z:ci-passed:99"
+  # Fresh mtime on one file → the dir is not quiescent
+  touch "${session_dir}/worker-90.state"
+
+  run env CEKERNEL_GC_STALE_BLOCKED_GRACE=60 bash "$ORCHCTL" gc
+  assert_file_exists "orchestrator metadata kept (guard 2 failed)" \
+    "${session_dir}/orchestrator.claude-session-id"
+  assert_not_exists "no stop for a kept session" "${MOCK_CLAUDE_STATE_DIR}/stop.log"
+}
+
+@test "gc keeps a stale-blocked orchestrator within the grace period" {
+  mock_claude
+  local session_dir="${IPC_BASE}/session-gc-sb4"
+  make_stale_blocked_orch "$session_dir" "TERMINATED:2026-07-01T10:00:00Z:ci-passed:99"
+
+  # Grace larger than the backdated mtime age → guard 3 fails
+  run env CEKERNEL_GC_STALE_BLOCKED_GRACE=9999999999 bash "$ORCHCTL" gc
+  assert_file_exists "orchestrator metadata kept (guard 3 failed)" \
+    "${session_dir}/orchestrator.claude-session-id"
+  assert_not_exists "no stop for a kept session" "${MOCK_CLAUDE_STATE_DIR}/stop.log"
+}
+
+@test "gc never reaps a genuine blocked orchestrator even when the guards would hold" {
+  mock_claude
+  local session_dir="${IPC_BASE}/session-gc-sb5"
+  mkdir -p "$session_dir"
+  echo "$SESSION_TOKEN" > "${session_dir}/orchestrator.claude-session-id"
+  echo "TERMINATED:2026-07-01T10:00:00Z:ci-passed:99" > "${session_dir}/worker-90.state"
+  # Genuine stall: waiting/blocked WITH waitingFor (logical blocked)
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$SESSION_TOKEN" background /repo 1700000000000 blocked)]"
+  find "$session_dir" -type f -exec touch -t 202601010000 {} +
+
+  run env CEKERNEL_GC_STALE_BLOCKED_GRACE=0 bash "$ORCHCTL" gc
+  assert_file_exists "genuine blocked orchestrator kept" \
+    "${session_dir}/orchestrator.claude-session-id"
+  assert_not_exists "no stop for a genuine blocked session" \
+    "${MOCK_CLAUDE_STATE_DIR}/stop.log"
 }
 
 @test "gc --dry-run preserves stale orchestrator metadata and does not stop" {

@@ -16,10 +16,12 @@
 #   backend_get_handle      — Get the opaque worker token (issue): the
 #                             `claude --bg` session token on all backends
 #   backend_worker_alive    — Check if Worker is alive (issue): exit 0 on
-#                             an alive/blocked verdict (ADR-0018)
+#                             an alive/blocked/stale-blocked verdict
+#                             (ADR-0018 + Amendment 1)
 #   backend_worker_status   — Echo the ADR-0018 verdict vocabulary
-#                             (alive|blocked|done|stopped|not-listed|
-#                             query-failed|unknown-value|missing)
+#                             (alive|blocked|stale-blocked|done|stopped|
+#                             not-listed|query-failed|unknown-value|
+#                             missing)
 #   backend_kill_worker     — Terminate a Worker (issue): session stop +
 #                             visualization cleanup on terminal backends
 #

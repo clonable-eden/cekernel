@@ -300,26 +300,30 @@ roster observation; claude v2.1.202):
   `(.status // .state)` breaks the other direction: `done` sessions
   carry `status: "idle"`, so the expression returns "idle" and terminal
   detection never fires (#591).
-- **Observed (status, state) matrix** (ADR-0018 — this table is the
-  contract; it is mirrored in `scripts/shared/claude-bg.sh` and
-  `tests/helpers/mock-claude.bash`; last updated v2.1.214, 2026-07-18):
+- **Observed (status, state, waitingFor) matrix** (ADR-0018 +
+  Amendment 1 — this table is the contract; it is mirrored in
+  `scripts/shared/claude-bg.sh` and `tests/helpers/mock-claude.bash`;
+  last updated v2.1.214, 2026-07-19):
 
-  | `status` | `state` | Verdict |
-  |----------|---------|---------|
-  | `busy` | `working` | alive |
-  | `busy` | (absent) | alive |
-  | (absent) | `busy` | alive (pre-split legacy shape) |
-  | `idle` | `working` | alive (v2.1.205: between turns, #638) |
-  | `blocked` | `working` | blocked (v2.1.201 shape) |
-  | `idle` | `blocked` | blocked (v2.1.202 shape) |
-  | `waiting` | `blocked` | blocked (v2.1.214: permission prompt, #681) |
-  | (absent) | `blocked` | blocked (pre-split legacy shape) |
-  | `idle` | `done` | terminal (`done`) |
-  | (absent) | `done` | terminal (`done`; `--all`, daemon-restart rows) |
-  | `idle` | `stopped` | terminal (`stopped`) |
-  | (absent) | `stopped` | terminal (`stopped`; `--all`, daemon-restart rows) |
-  | — session absent — | | not-listed |
-  | any pair not above | | unknown-value |
+  | `status` | `state` | `waitingFor` | Verdict |
+  |----------|---------|--------------|---------|
+  | `busy` | `working` | any | alive |
+  | `busy` | (absent) | any | alive |
+  | (absent) | `busy` | any | alive (pre-split legacy shape) |
+  | `idle` | `working` | any | alive (v2.1.205: between turns, #638) |
+  | `blocked` | `working` | any | blocked (v2.1.201 legacy pre-waitingFor shape) |
+  | `blocked` | (absent) | any | blocked (legacy pre-waitingFor shape) |
+  | (absent) | `blocked` | any | blocked (legacy pre-waitingFor shape) |
+  | `idle` | `blocked` | present | blocked |
+  | `idle` | `blocked` | absent | stale-blocked (v2.1.214 phantom, #673) |
+  | `waiting` | `blocked` | present | blocked (v2.1.214: permission prompt, #681) |
+  | `waiting` | `blocked` | absent | stale-blocked |
+  | `idle` | `done` | any | terminal (`done`) |
+  | (absent) | `done` | any | terminal (`done`; `--all`, daemon-restart rows) |
+  | `idle` | `stopped` | any | terminal (`stopped`) |
+  | (absent) | `stopped` | any | terminal (`stopped`; `--all`, daemon-restart rows) |
+  | — session absent — | | | not-listed |
+  | any combination not above | | | unknown-value |
 
   Real roster tally (2026-07-07, v2.1.202; updated 2026-07-09,
   v2.1.205; updated 2026-07-18, v2.1.214): `busy/working`,
@@ -337,8 +341,15 @@ roster observation; claude v2.1.202):
   `claude --bg --permission-mode default` and a tool the settings do
   not auto-approve (`defaultMode: "auto"` auto-approves Write, so the
   explicit `--permission-mode default` is required). `waitingFor` is
-  observational only for now — ingesting it as a verdict-split input
-  is #673 scope.
+  the third verdict input (ADR-0018 Amendment 1, #673):
+  `state: blocked` without it is `stale-blocked` on the v2.1.214
+  shapes — a **phantom** where the session completed normally yet
+  reports blocked indefinitely (live evidence 2026-07-19, session
+  `14b5ebde`). Legacy pre-`waitingFor` shapes stay `blocked`
+  (absence of the field on a CLI that never emitted it is not
+  evidence). Staleness risk: `idle/blocked` meant a GENUINE stall on
+  v2.1.202 — re-probe the matrix on CLI upgrades (recipe in
+  #681/#673).
 - **`agents --json` does not resurrect the daemon** (isolated-HOME
   probe, v2.1.202, #593): with no daemon running, `claude agents
   --json` (and `--all`) returns `[]` with exit 0, starts no `claude

@@ -45,6 +45,9 @@ issue_lock_repo_hash() {
 # unknown-value both count as ALIVE. Never steal a lock on doubt —
 # duplicate Workers are worse than a lock held until explicit release,
 # and schema drift (unknown-value) is not evidence of death.
+# stale-blocked (phantom blocked, ADR-0018 Amendment 1) also counts as
+# ALIVE: it is an occupied session for every predicate consumer — only
+# the orchctl gc triple-guard path may treat it as reapable.
 _issue_lock_holder_alive() {
   local holder="$1"
 
@@ -64,7 +67,7 @@ _issue_lock_holder_alive() {
   local verdict
   verdict=$(claude_bg_token_verdict "$holder" 2>/dev/null) || true
   case "$verdict" in
-    alive|blocked|query-failed|unknown-value) return 0 ;;
+    alive|blocked|stale-blocked|query-failed|unknown-value) return 0 ;;
     *) return 1 ;;  # done | stopped | not-listed — verifiably dead
   esac
 }

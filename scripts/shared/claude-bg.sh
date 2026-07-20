@@ -15,39 +15,52 @@
 #   bg-session.sh  — lifecycle core, predicates only
 #   backends / watch / orchctl / wrapper / issue-lock — verdict consumers
 #
-# ── Observed (status, state) matrix — v2.1.214, 2026-07-18 (ADR-0018) ──
+# ── Observed (status, state, waitingFor) matrix — v2.1.214, 2026-07-18/19
+#    (ADR-0018 + Amendment 1: `waitingFor` is the third verdict input) ──
 #
-#   | `status`  | `state`   | Verdict            |
-#   |-----------|-----------|--------------------|
-#   | busy      | working   | alive              |
-#   | busy      | (absent)  | alive              |
-#   | (absent)  | busy      | alive   (pre-split legacy shape)      |
-#   | idle      | working   | alive   (v2.1.205: between turns, #638)  |
-#   | blocked   | working   | blocked (v2.1.201 shape)              |
-#   | idle      | blocked   | blocked (v2.1.202 shape)              |
-#   | waiting   | blocked   | blocked (v2.1.214: permission prompt, #681)  |
-#   | (absent)  | blocked   | blocked (pre-split legacy shape)      |
-#   | idle      | done      | done               |
-#   | (absent)  | done      | done    (--all, daemon-restart rows)  |
-#   | idle      | stopped   | stopped            |
-#   | (absent)  | stopped   | stopped (--all, daemon-restart rows)  |
-#   | — session absent —    | not-listed         |
-#   | anything else         | unknown-value      |
+#   | `status`  | `state`   | `waitingFor` | Verdict            |
+#   |-----------|-----------|--------------|--------------------|
+#   | busy      | working   | any          | alive              |
+#   | busy      | (absent)  | any          | alive              |
+#   | (absent)  | busy      | any          | alive   (pre-split legacy shape)      |
+#   | idle      | working   | any          | alive   (v2.1.205: between turns, #638)  |
+#   | blocked   | working   | any          | blocked (v2.1.201 legacy pre-waitingFor shape) |
+#   | blocked   | (absent)  | any          | blocked (legacy pre-waitingFor shape) |
+#   | (absent)  | blocked   | any          | blocked (legacy pre-waitingFor shape) |
+#   | idle      | blocked   | present      | blocked            |
+#   | idle      | blocked   | absent       | stale-blocked (v2.1.214 phantom, #673) |
+#   | waiting   | blocked   | present      | blocked (v2.1.214: permission prompt, #681)  |
+#   | waiting   | blocked   | absent       | stale-blocked      |
+#   | idle      | done      | any          | done               |
+#   | (absent)  | done      | any          | done    (--all, daemon-restart rows)  |
+#   | idle      | stopped   | any          | stopped            |
+#   | (absent)  | stopped   | any          | stopped (--all, daemon-restart rows)  |
+#   | — session absent —                   | not-listed         |
+#   | anything else                        | unknown-value      |
 #
 # Liveness lives in `status`, terminality in `state` (#591: reading
 # `.status // .state` returned "idle" for done sessions and broke terminal
 # detection; #581: reading `.state` alone returned "working" for live
-# sessions and killed healthy Workers). This table is the contract — it is
-# mirrored in docs/claude-code-constraints.md § Background Agent Sessions
-# and tests/helpers/mock-claude.bash (STALENESS COUPLING: update all three
-# in the same PR).
+# sessions and killed healthy Workers). Blocked-evidence lives in
+# `waitingFor` (ADR-0018 Amendment 1, #673): a state:blocked record WITH
+# waitingFor is a genuine permission stall (`blocked`); WITHOUT it the CLI
+# presents no evidence of waiting (`stale-blocked` — observed as a phantom
+# on v2.1.214 where the session had completed normally). Legacy shapes
+# from pre-waitingFor CLIs stay `blocked`: absence of the field on a CLI
+# that never emitted it is not evidence. This table is the contract — it
+# is mirrored in docs/claude-code-constraints.md § Background Agent
+# Sessions and tests/helpers/mock-claude.bash (STALENESS COUPLING: update
+# all three in the same PR).
 #
 # ── Report contract (ADR-0018) ──
 # Verdict functions echo a token and exit with a matching code. The three
 # non-verdict reports are NEVER coerced into alive/dead — degradation
-# policy belongs to each consumer (Rule of Separation):
+# policy belongs to each consumer (Rule of Separation). stale-blocked is
+# a report, not an interpretation: the mechanism never coerces it to done
+# (#581 lesson) — the gc triple-guard path is the ONLY consumer permitted
+# to treat it as reapable (ADR-0018 Amendment 1 Decision 3):
 #
-#   exit 0 — verdict: alive | blocked | done | stopped
+#   exit 0 — verdict: alive | blocked | stale-blocked | done | stopped
 #   exit 3 — not-listed    (no session matches the token; also the shape
 #                           of a NOT-RUNNING daemon: `agents --json`
 #                           returns [] exit 0 without starting one —
@@ -78,9 +91,11 @@
 #       when the fetch fails.
 #
 #   claude_bg_token_alive <token>
-#     — Boolean projection of the verdict: exit 0 when alive or blocked
-#       (blocked = waiting on a permission dialog — alive but stalled,
-#       surfaced distinctly by supervision); exit 1 when VERIFIABLY not
+#     — Boolean projection of the verdict: exit 0 when alive, blocked
+#       (waiting on a permission dialog — alive but stalled, surfaced
+#       distinctly by supervision), or stale-blocked (phantom blocked —
+#       conservative: an occupied session for every predicate consumer;
+#       ADR-0018 Amendment 1 Decision 3); exit 1 when VERIFIABLY not
 #       alive (done, stopped, not-listed). Non-verdict reports propagate
 #       unchanged (exit 4 / 5) — callers with a degradation policy must
 #       branch on them instead of `if`-coercing.
@@ -107,8 +122,11 @@
 #   claude_bg_wait_terminal <token> <interval> <timeout>
 #     — Poll `agents --json --all` until the verdict is terminal for
 #       UNATTENDED supervision (ADR-0016 Phase 3, cron/at): done, stopped,
-#       or blocked — blocked means a permission dialog that no one will
-#       ever approve, so waiting longer cannot help. Echoes the final
+#       blocked, or stale-blocked — blocked means a permission dialog that
+#       no one will ever approve, and stale-blocked a phantom record that
+#       never transitions on its own, so waiting longer cannot help.
+#       blocked and stale-blocked are DISTINCT terminal outcomes
+#       (ADR-0018 Amendment 1). Echoes the final
 #       verdict, or "timeout" when <timeout> seconds elapse first.
 #       not-listed and query-failed are transient here (daemon restart
 #       window) and keep polling; so does unknown-value (drift is not
@@ -149,12 +167,17 @@ claude_bg_token_verdict_from_json() {
     return 3
   fi
 
-  local status state
+  local status state waiting_for
   status=$(printf '%s\n' "$rec" | jq -r '.status // "-"')
   state=$(printf '%s\n' "$rec" | jq -r '.state // "-"')
+  # Blocked-evidence input (ADR-0018 Amendment 1, #673): presence of a
+  # non-empty waitingFor value. null/empty carries no evidence of waiting
+  # and counts as absent.
+  waiting_for=$(printf '%s\n' "$rec" | jq -r '.waitingFor // ""')
 
-  # The observed (status, state) matrix — see the header table. Liveness
-  # lives in `status`, terminality in `state` (#581, #591).
+  # The observed (status, state, waitingFor) matrix — see the header
+  # table. Liveness lives in `status`, terminality in `state` (#581,
+  # #591), blocked-evidence in `waitingFor` (#673).
   case "${status}/${state}" in
     busy/working|busy/-|-/busy|idle/working)
       # idle/working: v2.1.205 shape (#638) — live session between active
@@ -163,11 +186,26 @@ claude_bg_token_verdict_from_json() {
       echo "alive"
       return 0
       ;;
-    blocked/working|blocked/-|idle/blocked|waiting/blocked|-/blocked)
-      # waiting/blocked: v2.1.214 shape (#681) — session stalled on a
-      # permission prompt (record also carries waitingFor: "permission
-      # prompt"; ingesting that field is #673 scope).
+    blocked/working|blocked/-|-/blocked)
+      # Legacy pre-waitingFor shapes (v2.1.201 and earlier) → blocked,
+      # conservative: absence of waitingFor on a CLI that never emitted
+      # it is not evidence (ADR-0018 Amendment 1).
       echo "blocked"
+      return 0
+      ;;
+    idle/blocked|waiting/blocked)
+      # waiting/blocked: v2.1.214 genuine permission stall carries
+      # waitingFor: "permission prompt" (#681, probe session 47455a37).
+      # idle/blocked without waitingFor: v2.1.214 phantom — the session
+      # completed normally yet reports blocked (#673, session 14b5ebde).
+      # The split keys on waitingFor presence, not on `status`, because
+      # idle/blocked meant a GENUINE stall on v2.1.202 — (status, state)
+      # alone is version-fragile.
+      if [[ -n "$waiting_for" ]]; then
+        echo "blocked"
+      else
+        echo "stale-blocked"
+      fi
       return 0
       ;;
     idle/done|-/done)
@@ -209,7 +247,7 @@ claude_bg_token_alive() {
   local verdict rc=0
   verdict=$(claude_bg_token_verdict "$1") || rc=$?
   case "$rc" in
-    0) [[ "$verdict" == "alive" || "$verdict" == "blocked" ]] ;;
+    0) [[ "$verdict" == "alive" || "$verdict" == "blocked" || "$verdict" == "stale-blocked" ]] ;;
     3) return 1 ;;      # not-listed — verifiably not alive
     *) return "$rc" ;;  # query-failed / unknown-value — never coerced
   esac
@@ -274,7 +312,7 @@ claude_bg_wait_terminal() {
     # (drift ≠ termination) are transient here — keep polling.
     verdict=$(claude_bg_token_verdict "$token" --all) || verdict=""
     case "$verdict" in
-      done|stopped|blocked)
+      done|stopped|blocked|stale-blocked)
         echo "$verdict"
         return 0
         ;;

@@ -75,13 +75,25 @@ setup() {
   assert_match "state" '"state":"working"' "$output"
 }
 
-@test "agent records emit the canonical (status, state) matrix pairs (ADR-0018)" {
-  # Observed shapes (verified 2026-07-07, v2.1.202, #593): blocked →
-  # idle/blocked; terminal → idle/done, idle/stopped; busy → busy/working.
+@test "agent records emit the canonical (status, state, waitingFor) matrix shapes (ADR-0018 A1)" {
+  # Observed shapes (verified 2026-07-18/19, v2.1.214, #681/#673):
+  # blocked (genuine stall) → waiting/blocked + waitingFor "permission
+  # prompt"; stale-blocked (phantom) → idle/blocked with waitingFor
+  # OMITTED; terminal → idle/done, idle/stopped; busy → busy/working.
   run mock_claude_agent_record \
     "cafe0001-0000-4000-8000-000000000001" background /tmp/wt 1700000000000 blocked
-  assert_match "blocked status is idle" '"status":"idle"' "$output"
+  assert_match "blocked status is waiting" '"status":"waiting"' "$output"
   assert_match "blocked state is blocked" '"state":"blocked"' "$output"
+  assert_match "blocked carries waitingFor evidence" '"waitingFor":"permission prompt"' "$output"
+
+  run mock_claude_agent_record \
+    "cafe0001-0000-4000-8000-000000000001" background /tmp/wt 1700000000000 stale-blocked
+  assert_match "stale-blocked status is idle" '"status":"idle"' "$output"
+  assert_match "stale-blocked state is blocked" '"state":"blocked"' "$output"
+  if [[ "$output" == *'"waitingFor"'* ]]; then
+    echo "phantom record must omit waitingFor: $output" >&2
+    return 1
+  fi
 
   run mock_claude_agent_record \
     "cafe0001-0000-4000-8000-000000000001" background /tmp/wt 1700000000000 stopped
@@ -109,6 +121,30 @@ setup() {
   assert_match "state present" '"state":"done"' "$output"
   if [[ "$output" == *'"status"'* ]]; then
     echo "record with status '-' must not carry a status field: $output" >&2
+    return 1
+  fi
+}
+
+@test "record_pair emits waitingFor from the optional 7th argument; '-'/omitted leaves it absent" {
+  # The third verdict input (ADR-0018 Amendment 1, #673)
+  run mock_claude_agent_record_pair \
+    "cafe0001-0000-4000-8000-000000000001" background /tmp/wt 1700000000000 \
+    waiting blocked "permission prompt"
+  assert_match "waitingFor present" '"waitingFor":"permission prompt"' "$output"
+
+  run mock_claude_agent_record_pair \
+    "cafe0001-0000-4000-8000-000000000001" background /tmp/wt 1700000000000 \
+    waiting blocked -
+  if [[ "$output" == *'"waitingFor"'* ]]; then
+    echo "record with waitingFor '-' must not carry the field: $output" >&2
+    return 1
+  fi
+
+  run mock_claude_agent_record_pair \
+    "cafe0001-0000-4000-8000-000000000001" background /tmp/wt 1700000000000 \
+    idle blocked
+  if [[ "$output" == *'"waitingFor"'* ]]; then
+    echo "record with waitingFor omitted must not carry the field: $output" >&2
     return 1
   fi
 }

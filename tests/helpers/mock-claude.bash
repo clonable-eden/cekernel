@@ -9,24 +9,28 @@
 # `agents --json` records carry extra fields — pid, id, name — and a
 # numeric epoch-millis startedAt, with a realpath'd cwd).
 #
-# ── Observed (status, state) matrix — v2.1.214, 2026-07-18 (ADR-0018) ──
+# ── Observed (status, state, waitingFor) matrix — v2.1.214, 2026-07-18/19
+#    (ADR-0018 + Amendment 1: `waitingFor` is the third verdict input) ──
 #
-#   | `status`  | `state`   | Verdict            |
-#   |-----------|-----------|--------------------|
-#   | busy      | working   | alive              |
-#   | busy      | (absent)  | alive              |
-#   | (absent)  | busy      | alive   (pre-split legacy shape)      |
-#   | idle      | working   | alive   (v2.1.205: between turns, #638)  |
-#   | blocked   | working   | blocked (v2.1.201 shape)              |
-#   | idle      | blocked   | blocked (v2.1.202 shape)              |
-#   | waiting   | blocked   | blocked (v2.1.214: permission prompt, #681)  |
-#   | (absent)  | blocked   | blocked (pre-split legacy shape)      |
-#   | idle      | done      | done               |
-#   | (absent)  | done      | done    (--all, daemon-restart rows)  |
-#   | idle      | stopped   | stopped            |
-#   | (absent)  | stopped   | stopped (--all, daemon-restart rows)  |
-#   | — session absent —    | not-listed         |
-#   | anything else         | unknown-value      |
+#   | `status`  | `state`   | `waitingFor` | Verdict            |
+#   |-----------|-----------|--------------|--------------------|
+#   | busy      | working   | any          | alive              |
+#   | busy      | (absent)  | any          | alive              |
+#   | (absent)  | busy      | any          | alive   (pre-split legacy shape)      |
+#   | idle      | working   | any          | alive   (v2.1.205: between turns, #638)  |
+#   | blocked   | working   | any          | blocked (v2.1.201 legacy pre-waitingFor shape) |
+#   | blocked   | (absent)  | any          | blocked (legacy pre-waitingFor shape) |
+#   | (absent)  | blocked   | any          | blocked (legacy pre-waitingFor shape) |
+#   | idle      | blocked   | present      | blocked            |
+#   | idle      | blocked   | absent       | stale-blocked (v2.1.214 phantom, #673) |
+#   | waiting   | blocked   | present      | blocked (v2.1.214: permission prompt, #681)  |
+#   | waiting   | blocked   | absent       | stale-blocked      |
+#   | idle      | done      | any          | done               |
+#   | (absent)  | done      | any          | done    (--all, daemon-restart rows)  |
+#   | idle      | stopped   | any          | stopped            |
+#   | (absent)  | stopped   | any          | stopped (--all, daemon-restart rows)  |
+#   | — session absent —                   | not-listed         |
+#   | anything else                        | unknown-value      |
 #
 # The same table lives in scripts/shared/claude-bg.sh (the sole parser)
 # and docs/claude-code-constraints.md § Background Agent Sessions.
@@ -72,10 +76,13 @@
 #     kind+cwd+startedAt fallback including the interactive-session
 #     mis-match regression at repo root.
 #     The <state> argument is the LOGICAL session state (busy|blocked|
-#     done|stopped). It is emitted in the canonical v2.1.202 field pair
-#     from the matrix above: busy → status:"busy",state:"working";
-#     blocked → status:"idle",state:"blocked"; done → status:"idle",
-#     state:"done"; stopped → status:"idle",state:"stopped".
+#     stale-blocked|done|stopped). It is emitted in the canonical field
+#     shape from the matrix above: busy → status:"busy",state:"working";
+#     blocked → status:"waiting",state:"blocked",waitingFor:"permission
+#     prompt" (the v2.1.214 genuine-stall shape, #681); stale-blocked →
+#     status:"idle",state:"blocked" with waitingFor OMITTED (the
+#     v2.1.214 phantom shape, #673); done → status:"idle",state:"done";
+#     stopped → status:"idle",state:"stopped".
 #     Non-canonical / legacy / out-of-matrix pairs are emitted with
 #     mock_claude_agent_record_pair below.
 #     Real records carry ADDITIONAL fields (pid, id, name) and a
@@ -85,15 +92,14 @@
 #     epoch-millis shape — pass numeric values (e.g. 1700000000000).
 #
 #   mock_claude_agent_record_pair <sessionId> <kind> <cwd> <startedAt> \
-#                                 <status|-> <state|->
+#                                 <status|-> <state|-> [waitingFor|-]
 #     Prints one FULL agents record with an EXPLICIT (status, state)
 #     pair; "-" omits the field. Covers the non-canonical matrix rows
-#     (busy/-, -/done, blocked/working, waiting/blocked — the v2.1.214
-#     permission-prompt shape #681 — pre-split legacy -/busy) and
+#     (busy/-, -/done, blocked/working, pre-split legacy -/busy) and
 #     out-of-matrix pairs for unknown-value contract tests (ADR-0018).
-#     (The real waiting/blocked record also carries waitingFor:
-#     "permission prompt" — an ADDITIONAL field per the non-exclusive
-#     field-set rule below; emit support for it is #673 scope.)
+#     The optional 7th argument emits a waitingFor field with the given
+#     value ("-" or omitted → field absent) — the third verdict input
+#     (ADR-0018 Amendment 1, #673).
 #
 #   mock_claude_fail_agents
 #     Makes every subsequent `claude agents --json` call fail (exit 1,
@@ -195,13 +201,18 @@ mock_claude_agent_record() {
   local cwd="${3:?missing <cwd>}"
   local started_at="${4:?missing <startedAt>}"
   local state="${5:?missing <state>}"
-  # Canonical v2.1.202 field pairs from the (status, state) matrix above
-  # (#591: liveness lives in `status`, terminality in `state`; blocked
-  # observed as idle/blocked on v2.1.202).
+  # Canonical field shapes from the (status, state, waitingFor) matrix
+  # above (#591: liveness lives in `status`, terminality in `state`;
+  # ADR-0018 Amendment 1: `waitingFor` presence splits the blocked
+  # verdict — genuine stall observed as waiting/blocked + waitingFor,
+  # phantom as idle/blocked without it, both on v2.1.214).
   case "$state" in
     busy)
       mock_claude_agent_record_pair "$session_id" "$kind" "$cwd" "$started_at" busy working ;;
     blocked)
+      mock_claude_agent_record_pair "$session_id" "$kind" "$cwd" "$started_at" \
+        waiting blocked "permission prompt" ;;
+    stale-blocked)
       mock_claude_agent_record_pair "$session_id" "$kind" "$cwd" "$started_at" idle blocked ;;
     done|stopped)
       mock_claude_agent_record_pair "$session_id" "$kind" "$cwd" "$started_at" idle "$state" ;;
@@ -213,17 +224,19 @@ mock_claude_agent_record() {
 }
 
 mock_claude_agent_record_pair() {
-  local session_id="${1:?Usage: mock_claude_agent_record_pair <sessionId> <kind> <cwd> <startedAt> <status|-> <state|->}"
+  local session_id="${1:?Usage: mock_claude_agent_record_pair <sessionId> <kind> <cwd> <startedAt> <status|-> <state|-> [waitingFor|-]}"
   local kind="${2:?missing <kind>}"
   local cwd="${3:?missing <cwd>}"
   local started_at="${4:?missing <startedAt>}"
   local status="${5:?missing <status|->}"
   local state="${6:?missing <state|->}"
+  local waiting_for="${7:--}"
   local fields
   fields=$(printf '"sessionId":"%s","kind":"%s","cwd":"%s","startedAt":%s' \
     "$session_id" "$kind" "$cwd" "$started_at")
   [[ "$status" != "-" ]] && fields="${fields},\"status\":\"${status}\""
   [[ "$state" != "-" ]] && fields="${fields},\"state\":\"${state}\""
+  [[ "$waiting_for" != "-" ]] && fields="${fields},\"waitingFor\":\"${waiting_for}\""
   printf '{%s}' "$fields"
 }
 

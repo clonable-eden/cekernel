@@ -12,10 +12,14 @@
 # state. `--bg` returns immediately,
 # so exit-code-based success/error recording is impossible; instead:
 #
-#   done                         → registry status "success"
-#   blocked / stopped / timeout  → registry status "error"
-#   spawn or capture failure     → registry status "error"
-#   duration                     → the poll window, not the job runtime
+#   done                          → registry status "success"
+#   blocked / stale-blocked /
+#   stopped / timeout             → registry status "error"
+#     (stale-blocked — phantom blocked, ADR-0018 Amendment 1 — is never
+#      coerced to success: session-level completion evidence is absent,
+#      so the conservative outcome is error, and the session is stopped)
+#   spawn or capture failure      → registry status "error"
+#   duration                      → the poll window, not the job runtime
 #
 # Fidelity note: "success" means the SESSION reached `done` (terminated),
 # not that the job inside it succeeded — job-level outcomes stay in

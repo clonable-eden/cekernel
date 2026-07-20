@@ -179,6 +179,15 @@ watch_one() {
             log_event "$issue" "WORKER_BLOCKED" "issue=#${issue} state=${state}"
             break
             ;;
+          stale-blocked)
+            # Phantom blocked (ADR-0018 Amendment 1): the CLI says
+            # blocked but presents no evidence of waiting — defer to the
+            # Worker's own state file (the primary poll above) and keep
+            # polling. Never fabricate a TERMINATED:blocked record.
+            # Genuine blocked keeps the branch above unchanged.
+            query_failures=0
+            log_event "$issue" "WATCH_STALE_BLOCKED" "issue=#${issue} deferring to state file"
+            ;;
           query-failed|unknown-value)
             # Unverifiable — retry, escalate when persistent.
             # ADR-0020: no TERMINATED write (slot held on doubt)

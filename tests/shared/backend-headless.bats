@@ -234,6 +234,21 @@ FULL_UUID="aaaa1111-2222-4333-8444-555566667777"
   assert_eq "blocked session is alive" "0" "$status"
 }
 
+@test "backend_worker_alive returns 0 for a stale-blocked session (occupied, ADR-0018 A1)" {
+  # Boolean projection: stale-blocked is an occupied session for every
+  # predicate consumer (only gc's triple guard may reap).
+  echo "$FULL_UUID" > "${CEKERNEL_IPC_DIR}/handle-500.worker"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$FULL_UUID" background "$WORKTREE_REAL" 1700000000000 stale-blocked)]"
+  run backend_worker_alive 500 worker
+  assert_eq "stale-blocked session is alive (typed lookup)" "0" "$status"
+
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$FULL_UUID" background "$WORKTREE_REAL" 1700000000000 stale-blocked)]"
+  run backend_worker_alive 500
+  assert_eq "stale-blocked session is alive (untyped lookup)" "0" "$status"
+}
+
 @test "backend_worker_alive returns 1 for a done session" {
   echo "$FULL_UUID" > "${CEKERNEL_IPC_DIR}/handle-500.worker"
   mock_claude_enqueue_agents \

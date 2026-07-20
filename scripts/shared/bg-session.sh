@@ -12,7 +12,7 @@
 # `agents --json` output or invokes the claude CLI itself:
 #
 #   spawn       → claude_bg_spawn + claude_bg_capture_session_id
-#   liveness    → claude_bg_token_verdict (alive|blocked = alive)
+#   liveness    → claude_bg_token_verdict (alive|blocked|stale-blocked = alive)
 #   status      → claude_bg_token_verdict (verdict vocabulary passthrough)
 #   termination → claude_bg_stop (also reaps lingering done sessions)
 #
@@ -41,7 +41,9 @@
 #     crash, #573), unknown-value (exit 5); plus "missing" (exit 1) when
 #     no handle file exists for the issue.
 #   bg_session_alive <issue> [type]
-#     exit 0 iff a session for the issue is alive or blocked. Boolean
+#     exit 0 iff a session for the issue is alive, blocked, or
+#     stale-blocked (phantom blocked — an occupied session for every
+#     predicate consumer, ADR-0018 Amendment 1 Decision 3). Boolean
 #     projection — callers that need a degradation policy for
 #     query-failed / unknown-value must use bg_session_status instead.
 #   bg_session_stop <issue> [type]
@@ -161,8 +163,9 @@ bg_session_status() {
 }
 
 # bg_session_alive <issue> [type]
-# exit 0 if the session is alive (alive or blocked verdict), exit 1
-# otherwise. If type is omitted, checks any handle-{issue}.* file.
+# exit 0 if the session is alive (alive, blocked, or stale-blocked
+# verdict — stale-blocked is an occupied session, ADR-0018 Amendment 1),
+# exit 1 otherwise. If type is omitted, checks any handle-{issue}.* file.
 # Boolean projection: non-verdict reports (query-failed, unknown-value)
 # count as not-confirmably-alive here — callers needing a degradation
 # policy must branch on bg_session_status.
@@ -173,7 +176,7 @@ bg_session_alive() {
   if [[ -n "$type" ]]; then
     local verdict
     verdict=$(bg_session_status "$issue" "$type" 2>/dev/null) || return 1
-    [[ "$verdict" == "alive" || "$verdict" == "blocked" ]]
+    [[ "$verdict" == "alive" || "$verdict" == "blocked" || "$verdict" == "stale-blocked" ]]
   else
     local handle_file
     for handle_file in "${CEKERNEL_IPC_DIR}"/handle-"${issue}".*; do

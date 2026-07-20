@@ -57,6 +57,19 @@ _active_worker() {
   assert_match "status blocked" '"status":"blocked"' "$output"
 }
 
+@test "health-check surfaces stale-blocked distinctly without counting it unhealthy (ADR-0018 A1)" {
+  # Phantom blocked: no evidence of a stall — the worker's own state
+  # file stays authoritative, so the report is distinct and visible but
+  # neither zombie nor blocked (no recovery/escalation trigger).
+  _active_worker 92
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$TOKEN" background /tmp/wt 1700000000000 stale-blocked)]"
+
+  run bash "$HEALTH_SCRIPT" 92
+  assert_eq "exit 0 (not unhealthy)" "0" "$status"
+  assert_match "status stale-blocked" '"status":"stale-blocked"' "$output"
+}
+
 @test "health-check reports zombie when the session is no longer listed" {
   _active_worker 92
   # empty agents queue → [] → session missing
