@@ -472,6 +472,16 @@ make_handle() {
   assert_match "output is a plain integer" '^[0-9]+$' "$output"
 }
 
+@test "count counts a stale-blocked session as occupying (ADR-0018 A1)" {
+  # Consumer policy: a slot frees only when its session is actually gone
+  # — the phantom still occupies until gc's triple-guard reap stops it.
+  make_orchestrator "$IPC_A" "$ORCH_TOKEN_A"
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$ORCH_TOKEN_A" background /repo 1700000000000 stale-blocked)]"
+  run bash "$ORCHCTL" count
+  assert_eq "stale-blocked counted as occupying" "1" "$output"
+}
+
 @test "count counts an unknown-value session conservatively (ADR-0018)" {
   # Degradation policy: for a concurrency guard, over-counting is safe
   # (refuses a spawn) and under-counting is not (duplicate orchestrators)
