@@ -206,6 +206,18 @@ lock_with_token() {
   assert_eq "acquire fails (locked)" "1" "$status"
 }
 
+@test "acquire fails while the token holder session is stale-blocked (occupied, ADR-0018 A1)" {
+  # A phantom-blocked holder is still an occupied session — only the gc
+  # triple-guard path may treat stale-blocked as reapable. Never steal
+  # a lock on a phantom.
+  mock_claude
+  lock_with_token
+  mock_claude_enqueue_agents \
+    "[$(mock_claude_agent_record "$TOKEN" background /tmp/wt 1700000000000 stale-blocked)]"
+  run issue_lock_acquire "$REPO_A" "$ISSUE"
+  assert_eq "acquire fails (locked)" "1" "$status"
+}
+
 @test "acquire steals the lock when the token holder session is done" {
   mock_claude
   lock_with_token
