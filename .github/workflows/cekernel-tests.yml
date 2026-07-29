@@ -38,7 +38,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Install bats-core (pinned)
         run: |
-          git clone --depth 1 --branch v1.13.0 https://github.com/bats-core/bats-core.git "${RUNNER_TEMP}/bats-core"
+          git clone --depth 1 --branch v1.14.0 https://github.com/bats-core/bats-core.git "${RUNNER_TEMP}/bats-core"
           echo "${RUNNER_TEMP}/bats-core/bin" >> "$GITHUB_PATH"
       - name: Run cekernel tests (bats)
         run: bats --recursive tests/
