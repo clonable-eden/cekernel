@@ -1,8 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended",
-    "helpers:pinGitHubActionDigests"
+    "config:recommended"
   ],
   "platformAutomerge": true,
   "minimumReleaseAge": "7 days",
@@ -13,17 +12,26 @@
       "matchStrings": ["--branch (?<currentValue>v[0-9.]+) https://github\\.com/bats-core/bats-core"],
       "datasourceTemplate": "github-releases",
       "depNameTemplate": "bats-core/bats-core"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.github/workflows/.+\\.ya?ml$/"],
+      "matchStrings": ["gh extension install (?<depName>github/gh-actions-lock) --pin (?<currentValue>v?\\d+\\.\\d+\\.\\d+)"],
+      "datasourceTemplate": "github-releases"
     }
   ],
   "packageRules": [
     {
       "matchManagers": ["github-actions"],
-      "groupName": "GitHub Actions",
-      "pinDigests": true
+      "groupName": "GitHub Actions"
     },
     {
       "matchUpdateTypes": ["patch", "minor", "pinDigest"],
       "automerge": true
+    },
+    {
+      "matchDepNames": ["github/gh-actions-lock"],
+      "automerge": false
     }
   ]
 }
