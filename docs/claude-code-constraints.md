@@ -6,9 +6,10 @@
 > unimplementable in practice.
 >
 > **Staleness warning**: Claude Code is actively evolving. Constraints listed
-> here reflect the platform as observed through early 2026. When making
-> architectural decisions, verify that constraints still hold — especially
-> those marked with a confidence level below "Stable".
+> here reflect the platform as observed through 2026-11 (latest probe:
+> claude v2.1.317, 2026-11-03). When making architectural decisions,
+> verify that constraints still hold — especially those marked with a
+> confidence level below "Stable".
 
 ## Execution Model
 
@@ -129,16 +130,30 @@ Known characteristics:
 
 ### Subagent Nesting
 
-**Confidence: Evolving** (officially supported since v2.1.172)
+**Confidence: Evolving** (officially supported since v2.1.172; depth
+limit re-probed on v2.1.317, 2026-11-03)
 
 Nested subagents are officially supported: a subagent can spawn its own
-subagents, with a **fixed depth limit of 5**. The historical constraint
-("nesting depth ≥ 2 is unreliable" — context exhaustion, communication
-failures) applied to versions before v2.1.172 and is obsolete.
+subagents. The historical constraint ("nesting depth ≥ 2 is unreliable" —
+context exhaustion, communication failures) applied to versions before
+v2.1.172 and is obsolete.
+
+**The depth limit is NOT a fixed 5** (verified v2.1.317, 2026-11-03). The
+"fixed depth limit of 5" recorded here from the v2.1.172 announcement is
+stale; the limit is governed by the
+`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` environment variable:
+- Default: from a `--bg` main thread, subagents could be spawned 3 levels
+  deep; the depth-3 subagent had **no Agent tool** (default depth 3)
+- `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1` removes the Agent tool from the
+  depth-1 subagent (verified via `claude -p`)
+- In both probes the limit manifested as a **missing Agent tool** at the
+  last permitted level, not as a spawn-time error — a subagent that
+  "cannot nest" sees no tool to call
 
 Additionally, since the Orchestrator became an independent process
 (`claude -p` / `--bg`, ADR-0016), it is a session **main thread** — a
-subagent it spawns via the Agent tool is only depth 1.
+subagent it spawns via the Agent tool is only depth 1. The Reviewer
+(depth 1) is therefore unaffected by the default or by any `≥ 1` setting.
 
 Related observations (claude v2.1.201, 2026-07-06):
 - Agent frontmatter supports `isolation: worktree`: the subagent receives a
@@ -237,7 +252,8 @@ Unverified (check before relying on them):
 ### Background Agent Sessions (`--bg` / on-demand daemon)
 
 **Confidence: Evolving** (research preview; observed on claude v2.1.201,
-2026-07-06; matrix re-verified on v2.1.202, 2026-07-07)
+2026-07-06; matrix re-verified on v2.1.202, 2026-07-07, v2.1.214,
+2026-07-18, and v2.1.317, 2026-11-03)
 
 `claude --bg` starts a session as a background agent and returns
 immediately; sessions are supervised by an on-demand daemon and managed
@@ -249,7 +265,19 @@ Observed characteristics:
 - `--bg` prints `backgrounded · <short-id>` to stdout; the short ID is the
   first 8 hex chars of the session UUID. Full `sessionId`, `cwd`, `kind`
   (`interactive`/`background`), and `state` come from `claude agents
-  --json` (`--all` includes finished sessions, `--cwd` filters)
+  --json` (`--all` includes finished sessions; `--cwd <path>` is a
+  **prefix filter** — see the v2.1.317 note below)
+- **`--bg` requires a trusted workspace** (verified v2.1.317, 2026-11-03):
+  in a directory whose trust dialog has never been accepted, `claude --bg`
+  prints `Workspace not trusted. Run claude ... once ...`, exits 1, and
+  creates **no session** (nothing appears in `agents --json`). Trust is
+  inherited from the enclosing trusted repository, so an unused
+  subdirectory (e.g., a fresh worktree under `.worktrees/`) of a trusted
+  checkout spawns normally. The non-interactive spawn cannot answer the
+  trust prompt — a cold clone must be trusted once interactively before
+  any cekernel spawn targets it. `claude_bg_spawn` propagates the exit 1
+  as a spawn failure (`|| return 1`), so this surfaces at the call site
+  rather than as a phantom session
 - `--bg` **ignores `--session-id`** (warning: `--bg manages the session
   id`) — external ID injection is impossible; capture is required
 - Observed states: `busy`, `done`, `stopped`, `blocked`. `blocked` means
@@ -305,7 +333,9 @@ roster observation; claude v2.1.202):
 - **Observed (status, state, waitingFor) matrix** (ADR-0018 +
   Amendment 1 — this table is the contract; it is mirrored in
   `scripts/shared/claude-bg.sh` and `tests/helpers/mock-claude.bash`;
-  last updated v2.1.214, 2026-07-19):
+  last updated v2.1.214, 2026-07-19; re-verified unchanged on v2.1.317,
+  2026-11-03 — `idle/done` and `waiting/blocked` + `waitingFor:
+  "permission prompt"` observed):
 
   | `status` | `state` | `waitingFor` | Verdict |
   |----------|---------|--------------|---------|
@@ -328,7 +358,8 @@ roster observation; claude v2.1.202):
   | any combination not above | | | unknown-value |
 
   Real roster tally (2026-07-07, v2.1.202; updated 2026-07-09,
-  v2.1.205; updated 2026-07-18, v2.1.214): `busy/working`,
+  v2.1.205; updated 2026-07-18, v2.1.214; re-confirmed 2026-11-03,
+  v2.1.317): `busy/working`,
   `busy/(absent)` (interactive), `idle/working` (v2.1.205, live session
   between turns, #638), `idle/blocked`, `waiting/blocked` (v2.1.214,
   #681), `idle/done`, `(absent)/done`, `(absent)/stopped`.
@@ -352,6 +383,21 @@ roster observation; claude v2.1.202):
   evidence). Staleness risk: `idle/blocked` meant a GENUINE stall on
   v2.1.202 — re-probe the matrix on CLI upgrades (recipe in
   #681/#673).
+- **`--cwd <path>` is a prefix filter on the realpath'd `cwd`, not an
+  exact match** (`--help`: "Show only background sessions started under
+  <path>"; probed v2.1.317, 2026-11-03). Passing the repository root
+  returns the root session AND every worktree session beneath it;
+  interactive sessions are included despite the flag's wording; a
+  relative `.` and a trailing slash both resolve; an unknown path returns
+  `[]` with exit 0. The same day, one probe observed `--cwd <realpath>`
+  returning `[]` for a session that `agents --json` listed — not
+  reproduced in a later probe against live sessions, cause unidentified
+  (a finished session is one candidate: `--cwd` without `--all` hides
+  it). Treat `--cwd` as a convenience view only: `claude-bg.sh` never
+  passes it — every predicate lists the full roster and prefix-matches
+  `sessionId`; the capture fallback's cwd match is an exact `jq`
+  equality on the realpath'd `cwd` field, which this prefix semantics
+  would not satisfy.
 - **`agents --json` does not resurrect the daemon** (isolated-HOME
   probe, v2.1.202, #593): with no daemon running, `claude agents
   --json` (and `--all`) returns `[]` with exit 0, starts no `claude
