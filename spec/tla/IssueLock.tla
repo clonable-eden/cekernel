@@ -12,11 +12,13 @@
 EXTENDS Naturals, FiniteSets
 
 CONSTANTS
-    Procs,      \* concurrent acquirers (spawn.sh in different Orchestrators)
-    Dead        \* token of a holder that is verifiably dead (not-listed)
+    Procs,          \* concurrent acquirers (spawn.sh in different Orchestrators)
+    Dead,           \* token of a holder that is verifiably dead (not-listed)
+    StaleAtStart    \* TRUE: a stale lock exists initially; FALSE: no lock
 
 NoFile == "none"    \* pid file absent
-Empty  == ""        \* holder_pid when `cat` reads a missing file
+Empty  == ""        \* pid file present but empty (truncated), or `cat` of a
+                    \* missing file -- both yield holder_pid=""
 
 Holders == Procs \cup {Dead}
 
@@ -30,18 +32,19 @@ vars == <<lockDir, pidFile, seen, pc>>
 
 TypeOK ==
     /\ lockDir \in BOOLEAN
-    /\ pidFile \in Holders \cup {NoFile}
+    /\ pidFile \in Holders \cup {NoFile, Empty}
     /\ seen \in [Procs -> Holders \cup {Empty}]
-    /\ pc \in [Procs -> {"mkdir1", "write1", "checkPid", "readPid", "verdict",
-                         "rmPid", "rmdir", "mkdir2", "write2", "ok", "fail"}]
+    /\ pc \in [Procs -> {"mkdir1", "trunc1", "fill1", "checkPid", "readPid",
+                         "verdict", "rmPid", "rmdir", "mkdir2", "trunc2",
+                         "fill2", "ok", "fail"}]
 
 \* _issue_lock_holder_alive: acquirers are alive while running; Dead is not;
 \* an empty holder is treated as dead (issue-lock.sh L58-60).
 Alive(h) == h \in Procs
 
 Init ==
-    /\ lockDir = TRUE           \* a stale lock left by a crashed Worker
-    /\ pidFile = Dead
+    /\ lockDir = StaleAtStart   \* stale lock left by a crashed Worker, or none
+    /\ pidFile = IF StaleAtStart THEN Dead ELSE NoFile
     /\ seen = [p \in Procs |-> Empty]
     /\ pc = [p \in Procs |-> "mkdir1"]
 
@@ -51,16 +54,29 @@ Goto(p, l) == pc' = [pc EXCEPT ![p] = l]
 Mkdir1(p) ==
     /\ pc[p] = "mkdir1"
     /\ IF ~lockDir
-         THEN lockDir' = TRUE  /\ Goto(p, "write1")
+         THEN lockDir' = TRUE  /\ Goto(p, "trunc1")
          ELSE UNCHANGED lockDir /\ Goto(p, "checkPid")
     /\ UNCHANGED <<pidFile, seen>>
 
 \* L86-87 / L100-101: echo "$$" > pid; return 0
-\* The redirect fails if the directory was removed meanwhile, but the
-\* function still returns 0 (errexit is off inside `if !` in spawn.sh).
-Write(p, from) ==
+\* `>` is two observable steps: open(O_CREAT|O_TRUNC) then write(2).
+\*
+\* Truncate: creates/empties the pid file. If the directory was removed
+\* meanwhile, the redirect fails, but the function still returns 0
+\* (errexit is off inside `if !` in spawn.sh).
+Truncate(p, from, to) ==
     /\ pc[p] = from
-    /\ pidFile' = IF lockDir THEN p ELSE pidFile
+    /\ IF lockDir
+         THEN pidFile' = Empty /\ Goto(p, to)
+         ELSE UNCHANGED pidFile /\ Goto(p, "ok")
+    /\ UNCHANGED <<lockDir, seen>>
+
+\* Fill: write(2) to the open fd. If the file was unlinked meanwhile the
+\* bytes go to the orphaned inode and stay invisible.
+\* Approximation: "still Empty" is taken to mean "still our inode".
+Fill(p, from) ==
+    /\ pc[p] = from
+    /\ pidFile' = IF pidFile = Empty THEN p ELSE pidFile
     /\ Goto(p, "ok")
     /\ UNCHANGED <<lockDir, seen>>
 
@@ -102,21 +118,23 @@ Rmdir(p) ==
 Mkdir2(p) ==
     /\ pc[p] = "mkdir2"
     /\ IF ~lockDir
-         THEN lockDir' = TRUE  /\ Goto(p, "write2")
+         THEN lockDir' = TRUE  /\ Goto(p, "trunc2")
          ELSE UNCHANGED lockDir /\ Goto(p, "fail")
     /\ UNCHANGED <<pidFile, seen>>
 
 Next ==
     \E p \in Procs :
         \/ Mkdir1(p)
-        \/ Write(p, "write1")
+        \/ Truncate(p, "trunc1", "fill1")
+        \/ Fill(p, "fill1")
         \/ CheckPid(p)
         \/ ReadPid(p)
         \/ Verdict(p)
         \/ RmPid(p)
         \/ Rmdir(p)
         \/ Mkdir2(p)
-        \/ Write(p, "write2")
+        \/ Truncate(p, "trunc2", "fill2")
+        \/ Fill(p, "fill2")
 
 Spec == Init /\ [][Next]_vars
 
